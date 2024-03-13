@@ -1,5 +1,4 @@
 from typing import Union, List, IO
-import json
 import numpy as np
 import zarr
 import numcodecs
