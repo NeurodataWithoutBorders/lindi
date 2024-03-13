@@ -10,36 +10,56 @@ from zarr.errors import ReadOnlyError
 
 
 class LindiH5Store(Store):
+    """A zarr store that reads from an HDF5 file using h5py.
+
+    This store is read-only.
+
+    Parameters
+    ----------
+    file : file-like object
+        The HDF5 file to read from (not h5py.File object, but a file-like object, e.g. a file opened with open()).
+    """
     def __init__(self, file: IO):
         self.file = file
         self.h5f = h5py.File(file, 'r')
 
     def __getitem__(self, key):
+        """Get an item from the store (required by zarr.Store)"""
         parts = key.split('/')
         if len(parts) == 0:
             raise KeyError(key)
         last_part = parts[-1]
         parent_key = '/'.join(parts[:-1])
         if last_part == '.zattrs':
+            """Get the attributes of a group or dataset"""
             h5_item = _get_h5_item(self.h5f, parent_key)
+            # We create a dummy zarr group and copy the attributes to it That
+            #   way we know that zarr has accepted them and they are serialized
+            #   in the correct format
             memory_store = MemoryStore()
             dummy_group = zarr.group(store=memory_store)
             for k, v in h5_item.attrs.items():
                 dummy_group.attrs[k] = _attr_h5_to_zarr(v)
             return memory_store.get('.zattrs')
         elif last_part == '.zgroup':
+            """Get the .zgroup JSON text for a group"""
             h5_item = _get_h5_item(self.h5f, parent_key)
             if not isinstance(h5_item, h5py.Group):
                 raise Exception(f'Item {parent_key} is not a group')
-            zgroup = {
-                "zarr_format": 2
-            }
-            return json.dumps(zgroup)
+            # We create a dummy zarr group and then get the .zgroup JSON text
+            #   from it
+            memory_store = MemoryStore()
+            dummy_group = zarr.group(store=memory_store)
+            return memory_store.get('.zgroup')
         elif last_part == '.zarray':
+            """Get the .zarray JSON text for a dataset"""
             h5_item = _get_h5_item(self.h5f, parent_key)
             if not isinstance(h5_item, h5py.Dataset):
                 return ''
+            # get the shape, chunks, dtype, and filters from the h5 dataset
             shape, chunks, dtype, filters = _h5_dataset_to_zarr_info(h5_item)
+            # We create a dummy zarr dataset with the appropriate shape, chunks,
+            #   dtype, and filters and then copy the .zarray JSON text from it
             memory_store = MemoryStore()
             dummy_group = zarr.group(store=memory_store)
             dummy_group.create_dataset(
@@ -54,10 +74,11 @@ class LindiH5Store(Store):
             zarray_text = memory_store.get('dummy_array/.zarray')
             return zarray_text
         else:
-            # Assume it's a chunk file
+            # Otherwise, we assume it is a chunk file
             h5_item = _get_h5_item(self.h5f, parent_key)
             if not isinstance(h5_item, h5py.Dataset):
                 raise Exception(f'Item {parent_key} is not a dataset')
+            # Get the chunk coords from the file name
             chunk_name_parts = last_part.split('.')
             if len(chunk_name_parts) != h5_item.ndim:
                 raise Exception(f'Chunk name {last_part} does not match dataset dimensions')
@@ -65,6 +86,9 @@ class LindiH5Store(Store):
             for i, c in enumerate(chunk_coords):
                 if c < 0 or c >= h5_item.shape[i]:
                     raise Exception(f'Chunk coordinates {chunk_coords} out of range for dataset {parent_key}')
+            # Get the byte range in the file for the chunk We do it this way
+            #   rather than reading from the h5py dataset Because we want to
+            #   ensure that we are reading the exact bytes
             byte_offset, byte_count = _get_chunk_byte_range(h5_item, chunk_coords)
             buf = _read_bytes(self.file, byte_offset, byte_count)
             return buf
@@ -98,8 +122,10 @@ class LindiH5Store(Store):
                     return False
             return True
 
+    # We use keys2 instead of keys because of linter complaining
     def keys2(self):
         # I think visititems is inefficient on h5py - not sure though
+        #   That's why I'm using this approach
         stack: List[str] = []
         stack.append('')
         while len(stack) > 0:
@@ -136,10 +162,12 @@ class LindiH5Store(Store):
 
 
 def _get_h5_item(h5f: h5py.File, key: str):
+    """Get an item from the h5 file, given its key."""
     return h5f['/' + key]
 
 
 def _attr_h5_to_zarr(attr):
+    """Convert an attribute from h5py to a format that zarr can accept."""
     if isinstance(attr, bytes):
         return attr.decode('utf-8')  # is this reversible?
     elif isinstance(attr, (int, float, str)):
@@ -153,6 +181,9 @@ def _attr_h5_to_zarr(attr):
 
 
 def _h5_dataset_to_zarr_info(h5_dataset: h5py.Dataset):
+    """Get the shape, chunks, dtype, and filters from an h5py dataset."""
+    # This function needs to be expanded a lot to handle all the possible
+    #   cases
     shape = h5_dataset.shape
     chunks = h5_dataset.chunks
     dtype = h5_dataset.dtype
@@ -161,7 +192,7 @@ def _h5_dataset_to_zarr_info(h5_dataset: h5py.Dataset):
 
 
 def _read_bytes(file: IO, offset: int, count: int):
-    # file is a file-like object
+    """Read a range of bytes from a file-like object."""
     file.seek(offset)
     return file.read(count)
 
@@ -171,6 +202,7 @@ def _read_bytes(file: IO, offset: int, count: int):
 # Copyright (c) 2020 Intake
 # MIT License
 def _decode_filters(h5obj: h5py.Dataset) -> Union[List[Codec], None]:
+    """Decode HDF5 filters to numcodecs filters."""
     if h5obj.scaleoffset:
         raise RuntimeError(
             f"{h5obj.name} uses HDF5 scaleoffset filter - not supported"
@@ -233,6 +265,7 @@ def _decode_filters(h5obj: h5py.Dataset) -> Union[List[Codec], None]:
 
 
 def _get_chunk_byte_range(h5_dataset: h5py.Dataset, chunk_coords: tuple) -> tuple:
+    """Get the byte range in the file for a chunk of an h5py dataset."""
     shape = h5_dataset.shape
     chunk_shape = h5_dataset.chunks
     assert chunk_shape is not None
@@ -251,6 +284,7 @@ def _get_chunk_byte_range(h5_dataset: h5py.Dataset, chunk_coords: tuple) -> tupl
 
 
 def test_lindi_h5_store():
+    """Test the LindiH5Store class."""
     import tempfile
     with tempfile.TemporaryDirectory() as tmpdir:
         test_h5_fname = f'{tmpdir}/test.h5'
