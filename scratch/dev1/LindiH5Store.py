@@ -1,4 +1,6 @@
-from typing import Union, List, IO
+import json
+import struct
+from typing import Union, List, IO, Any
 import numpy as np
 import zarr
 import numcodecs
@@ -18,9 +20,10 @@ class LindiH5Store(Store):
     file : file-like object
         The HDF5 file to read from (not h5py.File object, but a file-like object, e.g. a file opened with open()).
     """
-    def __init__(self, file: IO):
+    def __init__(self, file: Union[IO, Any]):
         self.file = file
         self.h5f = h5py.File(file, 'r')
+        self._inline_data_for_arrays = {}
 
     def __getitem__(self, key):
         """Get an item from the store (required by zarr.Store)"""
@@ -38,8 +41,17 @@ class LindiH5Store(Store):
             memory_store = MemoryStore()
             dummy_group = zarr.group(store=memory_store)
             for k, v in h5_item.attrs.items():
-                dummy_group.attrs[k] = _attr_h5_to_zarr(v)
-            return memory_store.get('.zattrs')
+                v2 = _attr_h5_to_zarr(v, label=f'{parent_key} {k}')
+                if v2 is not None:
+                    dummy_group.attrs[k] = v2
+            if isinstance(h5_item, h5py.Dataset):
+                dummy_group.attrs['_ARRAY_DIMENSIONS'] = h5_item.shape
+            zattrs_text = memory_store.get('.zattrs')
+            if zattrs_text is not None:
+                return zattrs_text
+            else:
+                # No attributes, so we return an empty JSON object
+                return '{}'.encode('utf-8')
         elif last_part == '.zgroup':
             """Get the .zgroup JSON text for a group"""
             h5_item = _get_h5_item(self.h5f, parent_key)
@@ -56,7 +68,9 @@ class LindiH5Store(Store):
             if not isinstance(h5_item, h5py.Dataset):
                 return ''
             # get the shape, chunks, dtype, and filters from the h5 dataset
-            shape, chunks, dtype, filters = _h5_dataset_to_zarr_info(h5_item)
+            shape, chunks, dtype, filters, fill_value, object_codec, inline_data = _h5_dataset_to_zarr_info(h5_item)
+            if inline_data is not None:
+                self._inline_data_for_arrays[parent_key] = inline_data
             # We create a dummy zarr dataset with the appropriate shape, chunks,
             #   dtype, and filters and then copy the .zarray JSON text from it
             memory_store = MemoryStore()
@@ -68,7 +82,9 @@ class LindiH5Store(Store):
                 dtype=dtype,
                 compressor=None,
                 order='C',
-                filters=filters
+                fill_value=fill_value,
+                filters=filters,
+                object_codec=object_codec
             )
             zarray_text = memory_store.get('dummy_array/.zarray')
             return zarray_text
@@ -77,6 +93,25 @@ class LindiH5Store(Store):
             h5_item = _get_h5_item(self.h5f, parent_key)
             if not isinstance(h5_item, h5py.Dataset):
                 raise Exception(f'Item {parent_key} is not a dataset')
+
+            # handle the case of ndim = 0
+            if h5_item.ndim == 0:
+                if h5_item.chunks is not None:
+                    raise Exception(f'Unable to handle case where chunks is not None but ndim is 0 for dataset {parent_key}')
+                if last_part != '0':
+                    raise Exception(f'Chunk name {last_part} does not match dataset dimensions')
+                if parent_key in self._inline_data_for_arrays:
+                    x = self._inline_data_for_arrays[parent_key]
+                    if isinstance(x, bytes):
+                        return x
+                    elif isinstance(x, str):
+                        return x.encode('utf-8')
+                    else:
+                        raise Exception(f'Inline data for dataset {parent_key} is not bytes or str. It is {type(x)}')
+                byte_offset, byte_count = _get_byte_range_for_contiguous_dataset(h5_item)
+                buf = _read_bytes(self.file, byte_offset, byte_count)
+                return buf
+
             # Get the chunk coords from the file name
             chunk_name_parts = last_part.split('.')
             if len(chunk_name_parts) != h5_item.ndim:
@@ -112,6 +147,8 @@ class LindiH5Store(Store):
             h5_item = _get_h5_item(self.h5f, parent_key)
             if not isinstance(h5_item, h5py.Dataset):
                 return False
+            if h5_item.ndim == 0:
+                return last_part == '0'
             chunk_name_parts = last_part.split('.')
             if len(chunk_name_parts) != h5_item.ndim:
                 return False
@@ -147,25 +184,13 @@ class LindiH5Store(Store):
     def __len__(self):
         return sum(1 for _ in self.keys2())
 
-    def getsize(self, path):
-        raise NotImplementedError()
-
-    def listdir(self, path=None):
-        item = _get_h5_item(self.h5f, path)
-        if not isinstance(item, h5py.Group):
-            raise Exception(f'Item {path} is not a group')
-        return list(item.keys())
-
-    def rmdir(self, path: str = "") -> None:
-        raise ReadOnlyError()
-
 
 def _get_h5_item(h5f: h5py.File, key: str):
     """Get an item from the h5 file, given its key."""
     return h5f['/' + key]
 
 
-def _attr_h5_to_zarr(attr):
+def _attr_h5_to_zarr(attr, *, label: str = ''):
     """Convert an attribute from h5py to a format that zarr can accept."""
     if isinstance(attr, bytes):
         return attr.decode('utf-8')  # is this reversible?
@@ -175,7 +200,11 @@ def _attr_h5_to_zarr(attr):
         return [_attr_h5_to_zarr(x) for x in attr]
     elif isinstance(attr, dict):
         return {k: _attr_h5_to_zarr(v) for k, v in attr.items()}
+    elif isinstance(attr, h5py.Reference):
+        print(f'Warning: attribute of type h5py.Reference not handled: {label}')
+        return None
     else:
+        print(f'Warning: attribute of type {type(attr)} not handled: {label}')
         raise NotImplementedError()
 
 
@@ -186,8 +215,91 @@ def _h5_dataset_to_zarr_info(h5_dataset: h5py.Dataset):
     shape = h5_dataset.shape
     chunks = h5_dataset.chunks
     dtype = h5_dataset.dtype
-    filters = _decode_filters(h5_dataset)
-    return shape, chunks, dtype, filters
+    filters = []
+    fill_value = None
+    object_codec = None
+    inline_data = None
+
+    if len(shape) == 0:
+        # scalar dataset
+        value = h5_dataset[()]
+        # zarr doesn't support scalar datasets, so we make an array of shape (1,)
+        shape = (1,)
+        chunks = (1,)
+        if dtype == np.int8:
+            inline_data = struct.pack('<b', value)
+            fill_value = 0
+        elif dtype == np.uint8:
+            inline_data = struct.pack('<B', value)
+            fill_value = 0
+        elif dtype == np.int16:
+            inline_data = struct.pack('<h', value)
+            fill_value = 0
+        elif dtype == np.uint16:
+            inline_data = struct.pack('<H', value)
+            fill_value = 0
+        elif dtype == np.int32:
+            inline_data = struct.pack('<i', value)
+            fill_value = 0
+        elif dtype == np.uint32:
+            inline_data = struct.pack('<I', value)
+            fill_value = 0
+        elif dtype == np.int64:
+            inline_data = struct.pack('<q', value)
+            fill_value = 0
+        elif dtype == np.uint64:
+            inline_data = struct.pack('<Q', value)
+            fill_value = 0
+        elif dtype == np.float32:
+            inline_data = struct.pack('<f', value)
+            fill_value = 0
+        elif dtype == np.float64:
+            inline_data = struct.pack('<d', value)
+            fill_value = 0
+        elif dtype == object:
+            if isinstance(value, str):
+                object_codec = numcodecs.JSON()
+                inline_data = json.dumps([value, '|O', [1]])
+                fill_value = ' '
+            elif isinstance(value, bytes):
+                object_codec = numcodecs.JSON()
+                inline_data = json.dumps([value.decode('utf-8'), '|O', [1]])
+                fill_value = ' '
+            else:
+                raise Exception(f'Cannot handle scalar dataset {h5_dataset.name} with dtype object and value {value} of type {type(value)}')
+        else:
+            raise Exception(f'Cannot handle scalar dataset {h5_dataset.name} with dtype {dtype}')
+    else:
+        filters = _decode_filters(h5_dataset)
+
+        if dtype.kind in 'SU':  # byte string or unicode string
+            fill_value = h5_dataset.fillvalue or ' '  # this is from kerchunk code
+        elif dtype.kind == 'O':
+            # This is the kerchunk "embed" case
+            object_codec = numcodecs.JSON()
+            if np.isscalar(h5_dataset):
+                data = str(h5_dataset)
+            elif h5_dataset.ndim == 0:
+                # data = np.array(h5_dataset).tolist().decode()  # this is from kerchunk, but I don't know what it's doing
+                a = np.array(h5_dataset).tolist()
+                if isinstance(a, bytes):
+                    data = a.decode()
+                else:
+                    raise Exception(f'Cannot handle dataset {h5_dataset.name} with dtype {dtype} and shape {shape}')
+            else:
+                data = h5_dataset[:]
+                data_vec_view = data.ravel()
+                for i, val in enumerate(data_vec_view):
+                    if isinstance(val, bytes):
+                        data_vec_view[i] = val.decode()
+                    elif isinstance(val, str):
+                        data_vec_view[i] = val
+                    elif isinstance(val, h5py.h5r.Reference):
+                        print(f'Warning: reference in dataset {h5_dataset.name} not handled')
+                        data_vec_view[i] = None
+                    else:
+                        raise Exception(f'Cannot handle dataset {h5_dataset.name} with dtype {dtype} and shape {shape}')
+    return shape, chunks, dtype, filters, fill_value, object_codec, inline_data
 
 
 def _read_bytes(file: IO, offset: int, count: int):
@@ -274,11 +386,24 @@ def _get_chunk_byte_range(h5_dataset: h5py.Dataset, chunk_coords: tuple) -> tupl
     chunk_index = 0
     for i in range(ndim):
         chunk_index += chunk_coords[i] * np.prod(chunk_coords_shape[i + 1:])
+    return _get_chunk_byte_range_for_chunk_index(h5_dataset, chunk_index)
+
+
+def _get_chunk_byte_range_for_chunk_index(h5_dataset: h5py.Dataset, chunk_index: int) -> tuple:
     # got hints from kerchunk source code
     dsid = h5_dataset.id
     chunk_info = dsid.get_chunk_info(chunk_index)
     byte_offset = chunk_info.byte_offset
     byte_count = chunk_info.size
+    return byte_offset, byte_count
+
+
+def _get_byte_range_for_contiguous_dataset(h5_dataset: h5py.Dataset) -> tuple:
+    """Get the byte range in the file for a contiguous dataset."""
+    # got hints from kerchunk source code
+    dsid = h5_dataset.id
+    byte_offset = dsid.get_offset()
+    byte_count = dsid.get_storage_size()
     return byte_offset, byte_count
 
 
