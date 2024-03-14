@@ -3,7 +3,16 @@ import h5py
 
 
 def _h5_attr_to_zarr_attr(attr: Any, *, label: str = '', h5f: h5py.File):
-    """Convert an attribute from h5py to a format that zarr can accept."""
+    """Convert an attribute from h5py to a format that zarr can accept.
+
+    bytes -> decoded utf-8 string
+    int, float, str -> unchanged
+    list -> recursively convert each element
+    dict -> recursively convert each value
+    h5py.Reference -> convert to a reference object, see _h5_ref_to_zarr_attr
+
+    Otherwise, raise NotImplementedError
+    """
     if isinstance(attr, bytes):
         return attr.decode('utf-8')  # is this reversible?
     elif isinstance(attr, (int, float, str)):
@@ -20,6 +29,26 @@ def _h5_attr_to_zarr_attr(attr: Any, *, label: str = '', h5f: h5py.File):
 
 
 def _h5_ref_to_zarr_attr(ref: h5py.Reference, *, label: str = '', h5f: h5py.File):
+    """Convert an h5py reference to a format that zarr can accept.
+
+    The format is a dictionary with a single key, '_REFERENCE', whose value is
+    another dictionary with the following keys:
+
+    'object_id', 'path', 'source', 'source_object_id'
+
+    * object_id is the object ID of the target object.
+    * path is the path of the target object.
+    * source is always '.', meaning that path is relative to the root of the
+      file (I think)
+    * source_object_id is the object ID of the source object.
+
+    See
+    https://hdmf-zarr.readthedocs.io/en/latest/storage.html#storing-object-references-in-attributes
+
+    Note that we will also need to handle "region" references. I would propose
+    another field in the value containing the region info. See
+    https://hdmf-zarr.readthedocs.io/en/latest/storage.html#sec-zarr-storage-references-region
+    """
     file_id = h5f.id
 
     # The get_name call can actually be quite slow. A possible way around this

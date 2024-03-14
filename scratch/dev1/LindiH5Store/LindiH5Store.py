@@ -16,7 +16,7 @@ class LindiH5Store(Store):
     file : file-like object
         The HDF5 file to read from (not h5py.File object, but a file-like
         object, e.g. a file opened with open()). The reason for this is that we
-        read chunks directly from the file rather than using h5py.
+        read chunks directly from the file rather than using h5py.        
     """
     def __init__(self, file: Union[IO, Any]):
         self.file = file

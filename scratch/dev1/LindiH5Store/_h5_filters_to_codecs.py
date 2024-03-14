@@ -4,7 +4,7 @@ import numcodecs
 from numcodecs.abc import Codec
 
 
-# This is adapted from _decode_filters from kerchunk source code
+# This is adapted from _decode_filters from kerchunk source
 # https://github.com/fsspec/kerchunk
 # Copyright (c) 2020 Intake
 # MIT License
