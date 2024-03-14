@@ -54,6 +54,28 @@ def test_numpy_array():
                 print(array)
 
 
+def test_numpy_array_of_strings():
+    print('Testing numpy array of strings')
+    with tempfile.TemporaryDirectory() as tmpdir:
+        filename = f'{tmpdir}/test.h5'
+        with h5py.File(filename, 'w') as f:
+            f.create_dataset('X', data=['abc', 'def', 'ghi'])
+        zarr_kerchunk = _get_kerchunk_zarr(filename)
+        array_kerchunk = zarr_kerchunk['X'][:]
+        assert isinstance(array_kerchunk, np.ndarray)
+        zarr_lindi = _get_lindi_zarr(filename)
+        array_lindi = zarr_lindi['X'][:]
+        assert isinstance(array_lindi, np.ndarray)
+        if not np.array_equal(array_kerchunk, ['abc', 'def', 'ghi']):
+            print('WARNING: array_kerchunk does not match array')
+            print(array_kerchunk)
+            print(['abc', 'def', 'ghi'])
+        if not np.array_equal(array_lindi, ['abc', 'def', 'ghi']):
+            print('WARNING: array_lindi does not match array')
+            print(array_lindi)
+            print(['abc', 'def', 'ghi'])
+
+
 def _get_lindi_zarr(filename):
     f = open(filename, 'rb')
     L = LindiH5Store(f)
@@ -78,5 +100,6 @@ def _get_kerchunk_zarr(filename):
 
 
 if __name__ == '__main__':
-    test_scalar_dataset()
-    test_numpy_array()
+    # test_scalar_dataset()
+    # test_numpy_array()
+    test_numpy_array_of_strings()

@@ -81,20 +81,6 @@ class LindiH5Store(Store):
                     return False
             return True
 
-    # We use keys2 instead of keys because of linter complaining
-    def keys2(self):
-        # I think visititems is inefficient on h5py - not sure though. That's
-        # why I'm using this approach
-        stack: List[str] = []
-        stack.append('')
-        while len(stack) > 0:
-            current_key = stack.pop()
-            item = _get_h5_item(self.h5f, current_key)
-            if isinstance(item, h5py.Group):
-                for k in item.keys():
-                    stack.append(f'{current_key}/{k}')
-            yield current_key
-
     def __delitem__(self, key):
         raise ReadOnlyError()
 
@@ -102,14 +88,10 @@ class LindiH5Store(Store):
         raise ReadOnlyError()
 
     def __iter__(self):
-        return self.keys2()
+        raise Exception('Not implemented')
 
     def __len__(self):
-        """Get the number of items in the store (used by zarr)."""
-        # Not sure why this is needed. It seems unfortunate because this could
-        # be time-consuming. However, it may only be called in certain
-        # circumstances.
-        return sum(1 for _ in self.keys2())
+        raise Exception('Not implemented')
 
     def _get_zattrs_bytes(self, parent_key: str):
         """Get the attributes of a group or dataset"""
@@ -120,7 +102,7 @@ class LindiH5Store(Store):
         memory_store = MemoryStore()
         dummy_group = zarr.group(store=memory_store)
         for k, v in h5_item.attrs.items():
-            v2 = _h5_attr_to_zarr_attr(v, label=f'{parent_key} {k}')
+            v2 = _h5_attr_to_zarr_attr(v, label=f'{parent_key} {k}', h5f=self.h5f)
             if v2 is not None:
                 dummy_group.attrs[k] = v2
         if isinstance(h5_item, h5py.Dataset):
@@ -178,22 +160,24 @@ class LindiH5Store(Store):
         if not isinstance(h5_item, h5py.Dataset):
             raise Exception(f'Item {key_parent} is not a dataset')
 
-        # handle the case of ndim = 0 (scalar dataset)
+        # For the case of a scalar dataset, we need to check a few things
         if h5_item.ndim == 0:
             if h5_item.chunks is not None:
                 raise Exception(f'Unable to handle case where chunks is not None but ndim is 0 for dataset {key_parent}')
             if key_name != '0':
                 raise Exception(f'Chunk name {key_name} does not match dataset dimensions')
-            if key_parent in self._inline_data_for_arrays:
-                x = self._inline_data_for_arrays[key_parent]
-                if isinstance(x, bytes):
-                    return x
-                elif isinstance(x, str):
-                    return x.encode('utf-8')
-                else:
-                    raise Exception(f'Inline data for dataset {key_parent} is not bytes or str. It is {type(x)}')
+
+        if key_parent in self._inline_data_for_arrays:
+            x = self._inline_data_for_arrays[key_parent]
+            if isinstance(x, bytes):
+                return x
+            elif isinstance(x, str):
+                return x.encode('utf-8')
             else:
-                raise Exception(f'No inline data for scalar dataset {key_parent}')
+                raise Exception(f'Inline data for dataset {key_parent} is not bytes or str. It is {type(x)}')
+
+        if h5_item.ndim == 0:
+            raise Exception(f'No inline data for scalar dataset {key_parent}')
 
         # Get the chunk coords from the file name
         chunk_name_parts = key_name.split('.')
@@ -218,5 +202,18 @@ class LindiH5Store(Store):
         buf = _read_bytes(self.file, byte_offset, byte_count)
         return buf
 
-
-
+    def listdir(self, path: str = "") -> List[str]:
+        try:
+            item = _get_h5_item(self.h5f, path)
+        except KeyError:
+            return []
+        if isinstance(item, h5py.Group):
+            ret = []
+            for k in item.keys():
+                ret.append(k)
+            return ret
+        elif isinstance(item, h5py.Dataset):
+            ret = []
+            return ret
+        else:
+            return []

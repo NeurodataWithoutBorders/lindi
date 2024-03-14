@@ -71,7 +71,7 @@ def _zarr_info_for_h5_dataset(h5_dataset: h5py.Dataset) -> ZarrInfoForH5Dataset:
             raise Exception(f'Not yet implemented (2): dataset {h5_dataset.name} with dtype {dtype} and shape {shape}')
         elif dtype.kind == 'O':
             # For type object, we are going to use the JSON codec
-            # which requires inline data of the form [[some, nested, array], '|O', [n1, n2, ...]]
+            # which requires inline data of the form [list, of, items, ..., '|O', [n1, n2, ...]]
             object_codec = numcodecs.JSON()
             data = h5_dataset[:]
             data_vec_view = data.ravel()
@@ -85,7 +85,7 @@ def _zarr_info_for_h5_dataset(h5_dataset: h5py.Dataset) -> ZarrInfoForH5Dataset:
                     data_vec_view[i] = None
                 else:
                     raise Exception(f'Cannot handle dataset {h5_dataset.name} with dtype {dtype} and shape {shape}')
-            inline_data = json.dumps([data.tolist(), '|O', list(shape)]).encode('utf-8')
+            inline_data = json.dumps(data.tolist() + ['|O', list(shape)]).encode('utf-8')
             return ZarrInfoForH5Dataset(
                 shape=shape,
                 chunks=None,
