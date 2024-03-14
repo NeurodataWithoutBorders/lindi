@@ -17,6 +17,8 @@ examples.append({
 
 # example 1
 # https://neurosift.app/?p=/nwb&dandisetId=000776&dandisetVersion=draft&url=https://api.dandiarchive.org/api/assets/54895119-f739-4544-973e-a9341a5c66ad/download/
+# Exception: Not yet implemented (3): dataset /processing/CalciumActivity/CalciumSeriesSegmentation/Aligned_neuron_coordinates/voxel_mask with
+# dtype [('x', '<u4'), ('y', '<u4'), ('z', '<u4'), ('weight', '<f4')] and shape (109,)
 examples.append({
     'h5_url': 'https://api.dandiarchive.org/api/assets/54895119-f739-4544-973e-a9341a5c66ad/download/'
 })
@@ -73,11 +75,11 @@ def _compare_groups(g1: zarr.Group, g2: h5py.Group):
 
 
 def _values_match(v1, v2):
-    if type(v1) == list and type(v2) == np.ndarray:
+    if type(v1) == list and type(v2) == np.ndarray:  # noqa: E721
         return _arrays_equal(np.array(v1, dtype=v2.dtype), v2)
-    if type(v1) == np.ndarray and type(v2) == list:
+    if type(v1) == np.ndarray and type(v2) == list:  # noqa: E721
         return _arrays_equal(v1, np.array(v2, dtype=v1.dtype))
-    if type(v1) != type(v2):
+    if type(v1) != type(v2):  # noqa: E721
         return False
     if isinstance(v1, list):
         if len(v1) != len(v2):
@@ -129,7 +131,15 @@ def _compare_arrays(a1: zarr.Array, a2: h5py.Dataset):
                 print(a1_data)
                 print(a2_data)
         else:
-            if a1.chunks and (np.prod(a1.chunks) < 50000):
+            # It's important to skip cases where there are a large number of chunks,
+            # because it takes way too long to get the chunk info.
+            # See demonstrate_slow_get_chunk_info.py
+            chunk_coord_shape = [
+                (a1_shape[i] + a1.chunks[i] - 1) // a1.chunks[i]
+                for i in range(len(a1_shape))
+            ] if a1.chunks else []
+            num_chunks = np.prod(chunk_coord_shape) if chunk_coord_shape else 0
+            if a1.chunks and (np.prod(a1.chunks) < 50000) and (num_chunks < 1000):
                 if a1.ndim == 1:
                     a1_data = a1[:a1.chunks[0]]
                     a2_data = a2[:a1.chunks[0]]
