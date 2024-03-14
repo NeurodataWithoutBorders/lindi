@@ -31,25 +31,27 @@ def test_scalar_dataset():
 
 def test_numpy_array():
     print('Testing numpy array')
-    array = np.arange(100).reshape(10, 10)
-    with tempfile.TemporaryDirectory() as tmpdir:
-        filename = f'{tmpdir}/test.h5'
-        with h5py.File(filename, 'w') as f:
-            f.create_dataset('X', data=array, chunks=(3, 4))
-        zarr_kerchunk = _get_kerchunk_zarr(filename)
-        array_kerchunk = zarr_kerchunk['X'][:]
-        assert isinstance(array_kerchunk, np.ndarray)
-        zarr_lindi = _get_lindi_zarr(filename)
-        array_lindi = zarr_lindi['X'][:]
-        assert isinstance(array_lindi, np.ndarray)
-        if not np.array_equal(array_kerchunk, array):
-            print('WARNING: array_kerchunk does not match array')
-            print(array_kerchunk)
-            print(array)
-        if not np.array_equal(array_lindi, array):
-            print('WARNING: array_lindi does not match array')
-            print(array_lindi)
-            print(array)
+    X1 = (np.arange(60).reshape(3, 20), (3, 7))
+    X2 = (np.arange(60).reshape(3, 20), None)
+    for array, chunks in [X1, X2]:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            filename = f'{tmpdir}/test.h5'
+            with h5py.File(filename, 'w') as f:
+                f.create_dataset('X', data=array, chunks=chunks)
+            zarr_kerchunk = _get_kerchunk_zarr(filename)
+            array_kerchunk = zarr_kerchunk['X'][:]
+            assert isinstance(array_kerchunk, np.ndarray)
+            zarr_lindi = _get_lindi_zarr(filename)
+            array_lindi = zarr_lindi['X'][:]
+            assert isinstance(array_lindi, np.ndarray)
+            if not np.array_equal(array_kerchunk, array):
+                print('WARNING: array_kerchunk does not match array')
+                print(array_kerchunk)
+                print(array)
+            if not np.array_equal(array_lindi, array):
+                print('WARNING: array_lindi does not match array')
+                print(array_lindi)
+                print(array)
 
 
 def _get_lindi_zarr(filename):
