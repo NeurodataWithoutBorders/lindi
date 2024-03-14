@@ -1,3 +1,4 @@
+import json
 from typing import Union, List, IO, Any, Dict
 import zarr
 from zarr.storage import Store, MemoryStore
@@ -16,7 +17,7 @@ class LindiH5Store(Store):
     file : file-like object
         The HDF5 file to read from (not h5py.File object, but a file-like
         object, e.g. a file opened with open()). The reason for this is that we
-        read chunks directly from the file rather than using h5py.        
+        read chunks directly from the file rather than using h5py.
     """
     def __init__(self, file: Union[IO, Any]):
         self.file = file
@@ -156,6 +157,16 @@ class LindiH5Store(Store):
         return zarray_text
 
     def _get_chunk_file_bytes(self, key_parent: str, key_name: str):
+        byte_offset, byte_count, inline_data = self._get_chunk_file_bytes_data(key_parent, key_name)
+        if inline_data is not None:
+            return inline_data
+        else:
+            assert byte_offset is not None
+            assert byte_count is not None
+            buf = _read_bytes(self.file, byte_offset, byte_count)
+            return buf
+
+    def _get_chunk_file_bytes_data(self, key_parent: str, key_name: str):
         h5_item = _get_h5_item(self.h5f, key_parent)
         if not isinstance(h5_item, h5py.Dataset):
             raise Exception(f'Item {key_parent} is not a dataset')
@@ -170,9 +181,9 @@ class LindiH5Store(Store):
         if key_parent in self._inline_data_for_arrays:
             x = self._inline_data_for_arrays[key_parent]
             if isinstance(x, bytes):
-                return x
+                return None, None, x
             elif isinstance(x, str):
-                return x.encode('utf-8')
+                return None, None, x.encode('utf-8')
             else:
                 raise Exception(f'Inline data for dataset {key_parent} is not bytes or str. It is {type(x)}')
 
@@ -199,8 +210,7 @@ class LindiH5Store(Store):
                 raise Exception(f'Chunk coordinates {chunk_coords} are not (0, 0, 0, ...) for contiguous dataset {key_parent}')
             # Get the byte range in the file for the contiguous dataset
             byte_offset, byte_count = _get_byte_range_for_contiguous_dataset(h5_item)
-        buf = _read_bytes(self.file, byte_offset, byte_count)
-        return buf
+        return byte_offset, byte_count, None
 
     def listdir(self, path: str = "") -> List[str]:
         try:
@@ -217,3 +227,73 @@ class LindiH5Store(Store):
             return ret
         else:
             return []
+
+    def create_reference_file_system(self, h5_url: str):
+        ret = {
+            'refs': {},
+            'version': 1
+        }
+
+        def _add_ref(key: str, content: Union[bytes, None]):
+            if content is None:
+                raise Exception(f'Unable to get content for key {key}')
+            try:
+                ret['refs'][key] = content.decode('ascii')
+            except UnicodeDecodeError:
+                import base64
+                # from kerchunk
+                ret['refs'][key] = (b"base64:" + base64.b64encode(content)).decode("ascii")
+
+        def _process_group(key, item: h5py.Group):
+            if isinstance(item, h5py.Group):
+                _add_ref(f'{key}/.zattrs', self.get(f'{key}/.zattrs'))
+                _add_ref(f'{key}/.zgroup', self.get(f'{key}/.zgroup'))
+                for k in item.keys():
+                    subitem = item[k]
+                    if isinstance(subitem, h5py.Group):
+                        _process_group(f'{key}/{k}', subitem)
+                    elif isinstance(subitem, h5py.Dataset):
+                        subkey = f'{key}/{k}'
+                        _add_ref(f'{subkey}/.zattrs', self.get(f'{subkey}/.zattrs'))
+                        zarray_bytes = self.get(f'{subkey}/.zarray')
+                        assert zarray_bytes is not None
+                        _add_ref(f'{subkey}/.zarray', zarray_bytes)
+                        zarray_dict = json.loads(zarray_bytes.decode('utf-8'))
+                        shape = zarray_dict['shape']
+                        chunks = zarray_dict.get('chunks', None)
+                        chunk_coords_shape = [
+                            (shape[i] + chunks[i] - 1) // chunks[i]
+                            for i in range(len(shape))
+                        ]
+                        chunk_names = _get_chunk_names_for_dataset(chunk_coords_shape)
+                        for chunk_name in chunk_names:
+                            byte_offset, byte_count, inline_data = self._get_chunk_file_bytes_data(subkey, chunk_name)
+                            if inline_data is not None:
+                                _add_ref(f'{subkey}/{chunk_name}', inline_data)
+                            else:
+                                assert byte_offset is not None
+                                assert byte_count is not None
+                                ret['refs'][f'{subkey}/{chunk_name}'] = [
+                                    h5_url,
+                                    byte_offset,
+                                    byte_count
+                                ]
+
+        _process_group('', self.h5f)
+        return ret
+
+
+def _get_chunk_names_for_dataset(chunk_coords_shape: List[int]) -> List[str]:
+    """Get the chunk names for a dataset with the given chunk coords shape."""
+    ndim = len(chunk_coords_shape)
+    if ndim == 0:
+        return ['0']
+    elif ndim == 1:
+        return [str(i) for i in range(chunk_coords_shape[0])]
+    else:
+        names0 = _get_chunk_names_for_dataset(chunk_coords_shape[1:])
+        names = []
+        for i in range(chunk_coords_shape[0]):
+            for name0 in names0:
+                names.append(f'{i}.{name0}')
+        return names

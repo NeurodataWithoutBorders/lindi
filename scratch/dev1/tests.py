@@ -14,9 +14,9 @@ def test_scalar_dataset():
             filename = f'{tmpdir}/test.h5'
             with h5py.File(filename, 'w') as f:
                 f.create_dataset('X', data=val)
-            zarr_kerchunk = _get_kerchunk_zarr(filename)
+            zarr_kerchunk, store_kerchunk = _get_kerchunk_zarr(filename)
             val_kerchunk = zarr_kerchunk['X'][0]
-            zarr_lindi = _get_lindi_zarr(filename)
+            zarr_lindi, store_lindi = _get_lindi_zarr(filename)
             val_lindi = zarr_lindi['X'][0]
             if val_kerchunk != val:
                 print(f'WARNING: val_kerchunk={val_kerchunk} != val={val}')
@@ -27,6 +27,7 @@ def test_scalar_dataset():
             if type(val_lindi) is not type(val):
                 print('WARNING: type mismatch for lindi:', type(val), type(val_lindi))
             print('')
+            x = store_lindi.create_reference_file_system('.')  # noqa: F841
 
 
 def test_numpy_array():
@@ -38,10 +39,10 @@ def test_numpy_array():
             filename = f'{tmpdir}/test.h5'
             with h5py.File(filename, 'w') as f:
                 f.create_dataset('X', data=array, chunks=chunks)
-            zarr_kerchunk = _get_kerchunk_zarr(filename)
+            zarr_kerchunk, store_kerchunk = _get_kerchunk_zarr(filename)
             array_kerchunk = zarr_kerchunk['X'][:]
             assert isinstance(array_kerchunk, np.ndarray)
-            zarr_lindi = _get_lindi_zarr(filename)
+            zarr_lindi, store_lindi = _get_lindi_zarr(filename)
             array_lindi = zarr_lindi['X'][:]
             assert isinstance(array_lindi, np.ndarray)
             if not np.array_equal(array_kerchunk, array):
@@ -52,6 +53,7 @@ def test_numpy_array():
                 print('WARNING: array_lindi does not match array')
                 print(array_lindi)
                 print(array)
+            x = store_lindi.create_reference_file_system('.')  # noqa: F841
 
 
 def test_numpy_array_of_strings():
@@ -60,10 +62,10 @@ def test_numpy_array_of_strings():
         filename = f'{tmpdir}/test.h5'
         with h5py.File(filename, 'w') as f:
             f.create_dataset('X', data=['abc', 'def', 'ghi'])
-        zarr_kerchunk = _get_kerchunk_zarr(filename)
+        zarr_kerchunk, store_kerchunk = _get_kerchunk_zarr(filename)
         array_kerchunk = zarr_kerchunk['X'][:]
         assert isinstance(array_kerchunk, np.ndarray)
-        zarr_lindi = _get_lindi_zarr(filename)
+        zarr_lindi, store_lindi = _get_lindi_zarr(filename)
         array_lindi = zarr_lindi['X'][:]
         assert isinstance(array_lindi, np.ndarray)
         if not np.array_equal(array_kerchunk, ['abc', 'def', 'ghi']):
@@ -74,13 +76,14 @@ def test_numpy_array_of_strings():
             print('WARNING: array_lindi does not match array')
             print(array_lindi)
             print(['abc', 'def', 'ghi'])
+        x = store_lindi.create_reference_file_system('.')  # noqa: F841
 
 
 def _get_lindi_zarr(filename):
     f = open(filename, 'rb')
-    L = LindiH5Store(f)
-    root = zarr.open(L)
-    return root
+    store = LindiH5Store(f)
+    root = zarr.open(store)
+    return root, store
 
 
 def _get_kerchunk_zarr(filename):
@@ -96,10 +99,10 @@ def _get_kerchunk_zarr(filename):
         fs = ReferenceFileSystem(a)
         store0 = fs.get_mapper(root='/', check=False)
         root = zarr.open(store0)
-        return root
+        return root, store0
 
 
 if __name__ == '__main__':
-    # test_scalar_dataset()
-    # test_numpy_array()
+    test_scalar_dataset()
+    test_numpy_array()
     test_numpy_array_of_strings()
