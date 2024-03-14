@@ -12,7 +12,7 @@ from ._h5_filters_to_codecs import _h5_filters_to_codecs
 @dataclass
 class ZarrInfoForH5Dataset:
     shape: Tuple[int]
-    chunks: Union[None, Tuple[int]]
+    chunks: Tuple[int]
     dtype: Any
     filters: Union[List[Codec], None]
     fill_value: Any
@@ -60,7 +60,7 @@ def _zarr_info_for_h5_dataset(h5_dataset: h5py.Dataset) -> ZarrInfoForH5Dataset:
             inline_data = struct.pack(numeric_format_str, value)
             return ZarrInfoForH5Dataset(
                 shape=(1,),
-                chunks=None,
+                chunks=(1,),  # be explicit about chunks
                 dtype=dtype,
                 filters=None,
                 fill_value=0,
@@ -75,7 +75,7 @@ def _zarr_info_for_h5_dataset(h5_dataset: h5py.Dataset) -> ZarrInfoForH5Dataset:
                     value = value.decode()
                 return ZarrInfoForH5Dataset(
                     shape=(1,),
-                    chunks=None,
+                    chunks=(1,),  # be explicit about chunks
                     dtype=dtype,
                     filters=None,
                     fill_value=' ',
@@ -91,9 +91,14 @@ def _zarr_info_for_h5_dataset(h5_dataset: h5py.Dataset) -> ZarrInfoForH5Dataset:
         if dtype.kind in ['i', 'u', 'f']:  # integer, unsigned integer, float
             # This is the normal case of a chunked dataset with a numeric dtype
             filters = _h5_filters_to_codecs(h5_dataset)
+            chunks = h5_dataset.chunks
+            if chunks is None:
+                # If the dataset is not chunked, we use the entire dataset as a single chunk
+                # It's important to be explicit about the chunks, because I think None means that zarr could decide otherwise
+                chunks = shape
             return ZarrInfoForH5Dataset(
                 shape=shape,
-                chunks=h5_dataset.chunks,
+                chunks=chunks,
                 dtype=dtype,
                 filters=filters,
                 fill_value=h5_dataset.fillvalue,
@@ -122,7 +127,7 @@ def _zarr_info_for_h5_dataset(h5_dataset: h5py.Dataset) -> ZarrInfoForH5Dataset:
             inline_data = json.dumps(data.tolist() + ['|O', list(shape)]).encode('utf-8')
             return ZarrInfoForH5Dataset(
                 shape=shape,
-                chunks=None,
+                chunks=shape,  # be explicit about chunks
                 dtype=dtype,
                 filters=None,
                 fill_value=' ',  # not sure what to put here

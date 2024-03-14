@@ -1,5 +1,6 @@
 import json
 from typing import Union, List, IO, Any, Dict
+import numpy as np
 import zarr
 from zarr.storage import Store, MemoryStore
 import h5py
@@ -19,9 +20,14 @@ class LindiH5Store(Store):
         object, e.g. a file opened with open()). The reason for this is that we
         read chunks directly from the file rather than using h5py.
     """
-    def __init__(self, file: Union[IO, Any]):
+    def __init__(self, *,
+                 file: Union[IO, Any],
+                 num_dataset_chunks_threshold: Union[int, None] = None,
+                 url: Union[str, None] = None,
+                 ):
         self.file = file
         self.h5f = h5py.File(file, 'r')
+        self._url = url
 
         # Some datasets do not correspond to traditional chunked datasets. For
         # those datasets, we need to store the inline data so that we can
@@ -29,6 +35,12 @@ class LindiH5Store(Store):
         # dictionary with the dataset name as the key. The values are of type
         # bytes.
         self._inline_data_for_arrays: Dict[str, bytes] = {}
+
+        self._num_dataset_chunks_threshold = num_dataset_chunks_threshold
+        self._external_array_links: Dict[str, Union[dict, None]] = {}
+        if num_dataset_chunks_threshold is not None:
+            if self._url is None:
+                raise Exception('You must specify a url if num_dataset_chunks_threshold is not None')
 
     def __getitem__(self, key):
         """Get an item from the store (required by base class)."""
@@ -68,8 +80,13 @@ class LindiH5Store(Store):
             h5_item = _get_h5_item(self.h5f, key_parent)
             return isinstance(h5_item, h5py.Dataset)
         else:
+            # a chunk file
             h5_item = _get_h5_item(self.h5f, key_parent)
             if not isinstance(h5_item, h5py.Dataset):
+                return False
+            external_array_link = self._get_external_array_link(key_parent, h5_item)
+            if external_array_link is not None:
+                # The chunk files do not exist for external array links
                 return False
             if h5_item.ndim == 0:
                 return key_name == '0'
@@ -108,6 +125,9 @@ class LindiH5Store(Store):
                 dummy_group.attrs[k] = v2
         if isinstance(h5_item, h5py.Dataset):
             dummy_group.attrs['_ARRAY_DIMENSIONS'] = h5_item.shape
+            external_array_link = self._get_external_array_link(parent_key, h5_item)
+            if external_array_link is not None:
+                dummy_group.attrs['_EXTERNAL_ARRAY_LINK'] = external_array_link
         zattrs_content = memory_store.get('.zattrs')
         if zattrs_content is not None:
             return zattrs_content
@@ -154,6 +174,7 @@ class LindiH5Store(Store):
             object_codec=info.object_codec
         )
         zarray_text = memory_store.get('dummy_array/.zarray')
+
         return zarray_text
 
     def _get_chunk_file_bytes(self, key_parent: str, key_name: str):
@@ -170,6 +191,10 @@ class LindiH5Store(Store):
         h5_item = _get_h5_item(self.h5f, key_parent)
         if not isinstance(h5_item, h5py.Dataset):
             raise Exception(f'Item {key_parent} is not a dataset')
+
+        external_array_link = self._get_external_array_link(key_parent, h5_item)
+        if external_array_link is not None:
+            raise Exception(f'Chunk file {key_parent}/{key_name} is not present because this is an external array link.')
 
         # For the case of a scalar dataset, we need to check a few things
         if h5_item.ndim == 0:
@@ -212,6 +237,26 @@ class LindiH5Store(Store):
             byte_offset, byte_count = _get_byte_range_for_contiguous_dataset(h5_item)
         return byte_offset, byte_count, None
 
+    def _get_external_array_link(self, parent_key: str, h5_item: h5py.Dataset):
+        if parent_key in self._external_array_links:
+            return self._external_array_links[parent_key]
+        self._external_array_links[parent_key] = None  # important to set to None so that we don't keep checking
+        if h5_item.chunks and self._num_dataset_chunks_threshold is not None:
+            shape = h5_item.shape
+            chunks = h5_item.chunks
+            chunk_coords_shape = [
+                (shape[i] + chunks[i] - 1) // chunks[i]
+                for i in range(len(shape))
+            ]
+            num_chunks = np.prod(chunk_coords_shape)
+            if num_chunks > self._num_dataset_chunks_threshold:
+                self._external_array_links[parent_key] = {
+                    'link_type': 'hdf5_object',
+                    'url': self._url,  # url is not going to be null based on the check in __init__
+                    'name': parent_key
+                }
+        return self._external_array_links[parent_key]
+
     def listdir(self, path: str = "") -> List[str]:
         try:
             item = _get_h5_item(self.h5f, path)
@@ -228,7 +273,9 @@ class LindiH5Store(Store):
         else:
             return []
 
-    def create_reference_file_system(self, h5_url: str):
+    def create_reference_file_system(self):
+        if self._url is None:
+            raise Exception('You must specify a url to create a reference file system')
         ret = {
             'refs': {},
             'version': 1
@@ -254,30 +301,35 @@ class LindiH5Store(Store):
                         _process_group(f'{key}/{k}', subitem)
                     elif isinstance(subitem, h5py.Dataset):
                         subkey = f'{key}/{k}'
-                        _add_ref(f'{subkey}/.zattrs', self.get(f'{subkey}/.zattrs'))
+                        zattrs_bytes = self.get(f'{subkey}/.zattrs')
+                        assert zattrs_bytes is not None
+                        _add_ref(f'{subkey}/.zattrs', zattrs_bytes)
+                        zattrs_dict = json.loads(zattrs_bytes.decode('utf-8'))
+                        external_array_link = zattrs_dict.get('_EXTERNAL_ARRAY_LINK', None)
                         zarray_bytes = self.get(f'{subkey}/.zarray')
                         assert zarray_bytes is not None
                         _add_ref(f'{subkey}/.zarray', zarray_bytes)
                         zarray_dict = json.loads(zarray_bytes.decode('utf-8'))
-                        shape = zarray_dict['shape']
-                        chunks = zarray_dict.get('chunks', None)
-                        chunk_coords_shape = [
-                            (shape[i] + chunks[i] - 1) // chunks[i]
-                            for i in range(len(shape))
-                        ]
-                        chunk_names = _get_chunk_names_for_dataset(chunk_coords_shape)
-                        for chunk_name in chunk_names:
-                            byte_offset, byte_count, inline_data = self._get_chunk_file_bytes_data(subkey, chunk_name)
-                            if inline_data is not None:
-                                _add_ref(f'{subkey}/{chunk_name}', inline_data)
-                            else:
-                                assert byte_offset is not None
-                                assert byte_count is not None
-                                ret['refs'][f'{subkey}/{chunk_name}'] = [
-                                    h5_url,
-                                    byte_offset,
-                                    byte_count
-                                ]
+                        if external_array_link is None:  # only process chunks for non-external array links
+                            shape = zarray_dict['shape']
+                            chunks = zarray_dict.get('chunks', None)
+                            chunk_coords_shape = [
+                                (shape[i] + chunks[i] - 1) // chunks[i]
+                                for i in range(len(shape))
+                            ]
+                            chunk_names = _get_chunk_names_for_dataset(chunk_coords_shape)
+                            for chunk_name in chunk_names:
+                                byte_offset, byte_count, inline_data = self._get_chunk_file_bytes_data(subkey, chunk_name)
+                                if inline_data is not None:
+                                    _add_ref(f'{subkey}/{chunk_name}', inline_data)
+                                else:
+                                    assert byte_offset is not None
+                                    assert byte_count is not None
+                                    ret['refs'][f'{subkey}/{chunk_name}'] = [
+                                        self._url,
+                                        byte_offset,
+                                        byte_count
+                                    ]
 
         _process_group('', self.h5f)
         return ret

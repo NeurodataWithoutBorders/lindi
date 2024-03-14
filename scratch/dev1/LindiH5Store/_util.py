@@ -51,7 +51,7 @@ def _get_chunk_byte_range_for_chunk_index(h5_dataset: h5py.Dataset, chunk_index:
 
 def _get_byte_range_for_contiguous_dataset(h5_dataset: h5py.Dataset) -> tuple:
     """Get the byte range in the file for a contiguous dataset.
-    
+
     This is the case where no chunking is used. Then all the data is stored
     contiguously in the file.
     """

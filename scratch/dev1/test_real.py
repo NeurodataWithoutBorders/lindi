@@ -1,3 +1,4 @@
+import json
 import sys
 import numpy as np
 import zarr
@@ -25,7 +26,6 @@ examples.append({
 
 # example 2
 # https://neurosift.app/?p=/nwb&dandisetId=000688&dandisetVersion=draft&url=https://api.dandiarchive.org/api/assets/9ac13aea-5d1c-4924-87b4-40ef0a3555d8/download/
-# Exception: Chunk coordinates (0, 1) are not (0, 0, 0, ...) for contiguous dataset processing/behavior/Acceleration/cursor_acc/data
 examples.append({
     'h5_url': 'https://api.dandiarchive.org/api/assets/9ac13aea-5d1c-4924-87b4-40ef0a3555d8/download/'
 })
@@ -37,12 +37,16 @@ def do_compare(example_num: int):
     print(f'Running comparison for {h5_url}')
     remf = remfile.File(h5_url, verbose=False)
     h5f = h5py.File(remf, 'r')
-    f = LindiH5Store(remf)
-    root = zarr.open(f)
+    store = LindiH5Store(file=remf, num_dataset_chunks_threshold=1, url=h5_url)
+    root = zarr.open(store)
     assert isinstance(root, zarr.Group)
 
     # visit the items in the h5py file and compare them to the zarr file
     _hdf5_visit_items(h5f, lambda key, item: _compare_item(item, root[key]))
+
+    a = store.create_reference_file_system()
+    with open(f'example_{example_num}.zarr.json', 'w') as store:
+        json.dump(a, store, indent=2)
 
 
 def _compare_item(item_h5, item_zarr):
@@ -131,15 +135,7 @@ def _compare_arrays(a1: zarr.Array, a2: h5py.Dataset):
                 print(a1_data)
                 print(a2_data)
         else:
-            # It's important to skip cases where there are a large number of chunks,
-            # because it takes way too long to get the chunk info.
-            # See demonstrate_slow_get_chunk_info.py
-            chunk_coord_shape = [
-                (a1_shape[i] + a1.chunks[i] - 1) // a1.chunks[i]
-                for i in range(len(a1_shape))
-            ] if a1.chunks else []
-            num_chunks = np.prod(chunk_coord_shape) if chunk_coord_shape else 0
-            if a1.chunks and (np.prod(a1.chunks) < 50000) and (num_chunks < 1000):
+            if a1.chunks and (np.prod(a1.chunks) < 10000000):
                 if a1.ndim == 1:
                     a1_data = a1[:a1.chunks[0]]
                     a2_data = a2[:a1.chunks[0]]
