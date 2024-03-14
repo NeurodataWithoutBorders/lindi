@@ -1,32 +1,40 @@
 import json
 import struct
-from typing import Union, List, IO, Any
+from typing import Union, List, IO, Any, Dict, Tuple
+from dataclasses import dataclass
 import numpy as np
 import zarr
 import numcodecs
-from numcodecs.abc import Codec
 from zarr.storage import Store, MemoryStore
 import h5py
 from zarr.errors import ReadOnlyError
+from numcodecs.abc import Codec
+from ._h5_filters_to_codecs import _h5_filters_to_codecs
 
 
 class LindiH5Store(Store):
-    """A zarr store that reads from an HDF5 file using h5py.
-
-    This store is read-only.
+    """A zarr store that provides a read-only view of an HDF5 file.
 
     Parameters
     ----------
     file : file-like object
-        The HDF5 file to read from (not h5py.File object, but a file-like object, e.g. a file opened with open()).
+        The HDF5 file to read from (not h5py.File object, but a file-like
+        object, e.g. a file opened with open()). The reason for this is that we
+        read chunks directly from the file rather than using h5py.
     """
     def __init__(self, file: Union[IO, Any]):
         self.file = file
         self.h5f = h5py.File(file, 'r')
-        self._inline_data_for_arrays = {}
+
+        # Some datasets do not correspond to traditional chunked datasets. For
+        # those datasets, we need to store the inline data so that we can
+        # return it when the chunk is requested. We store the inline data in a
+        # dictionary with the dataset name as the key. The values are of type
+        # bytes.
+        self._inline_data_for_arrays: Dict[str, bytes] = {}
 
     def __getitem__(self, key):
-        """Get an item from the store (required by zarr.Store)"""
+        """Get an item from the store (required by base class)."""
         parts = key.split('/')
         if len(parts) == 0:
             raise KeyError(key)
@@ -35,9 +43,9 @@ class LindiH5Store(Store):
         if last_part == '.zattrs':
             """Get the attributes of a group or dataset"""
             h5_item = _get_h5_item(self.h5f, parent_key)
-            # We create a dummy zarr group and copy the attributes to it That
-            #   way we know that zarr has accepted them and they are serialized
-            #   in the correct format
+            # We create a dummy zarr group and copy the attributes to it. That
+            # way we know that zarr has accepted them and they are serialized in
+            # the correct format.
             memory_store = MemoryStore()
             dummy_group = zarr.group(store=memory_store)
             for k, v in h5_item.attrs.items():
@@ -46,9 +54,9 @@ class LindiH5Store(Store):
                     dummy_group.attrs[k] = v2
             if isinstance(h5_item, h5py.Dataset):
                 dummy_group.attrs['_ARRAY_DIMENSIONS'] = h5_item.shape
-            zattrs_text = memory_store.get('.zattrs')
-            if zattrs_text is not None:
-                return zattrs_text
+            zattrs_content = memory_store.get('.zattrs')
+            if zattrs_content is not None:
+                return zattrs_content
             else:
                 # No attributes, so we return an empty JSON object
                 return '{}'.encode('utf-8')
@@ -58,7 +66,7 @@ class LindiH5Store(Store):
             if not isinstance(h5_item, h5py.Group):
                 raise Exception(f'Item {parent_key} is not a group')
             # We create a dummy zarr group and then get the .zgroup JSON text
-            #   from it
+            # from it.
             memory_store = MemoryStore()
             dummy_group = zarr.group(store=memory_store)
             return memory_store.get('.zgroup')
@@ -68,23 +76,26 @@ class LindiH5Store(Store):
             if not isinstance(h5_item, h5py.Dataset):
                 return ''
             # get the shape, chunks, dtype, and filters from the h5 dataset
-            shape, chunks, dtype, filters, fill_value, object_codec, inline_data = _h5_dataset_to_zarr_info(h5_item)
-            if inline_data is not None:
-                self._inline_data_for_arrays[parent_key] = inline_data
+            info = _h5_dataset_to_zarr_info(h5_item)
+            if info.inline_data is not None:
+                self._inline_data_for_arrays[parent_key] = info.inline_data
             # We create a dummy zarr dataset with the appropriate shape, chunks,
-            #   dtype, and filters and then copy the .zarray JSON text from it
+            # dtype, and filters and then copy the .zarray JSON text from it
             memory_store = MemoryStore()
             dummy_group = zarr.group(store=memory_store)
+            # Importantly, I'm pretty sure this doesn't actually create the
+            # chunks in the memory store. That's important because we just need
+            # to get the .zarray JSON text from the dummy group.
             dummy_group.create_dataset(
                 name='dummy_array',
-                shape=shape,
-                chunks=chunks,
-                dtype=dtype,
+                shape=info.shape,
+                chunks=info.chunks,
+                dtype=info.dtype,
                 compressor=None,
                 order='C',
-                fill_value=fill_value,
-                filters=filters,
-                object_codec=object_codec
+                fill_value=info.fill_value,
+                filters=info.filters,
+                object_codec=info.object_codec
             )
             zarray_text = memory_store.get('dummy_array/.zarray')
             return zarray_text
@@ -94,7 +105,7 @@ class LindiH5Store(Store):
             if not isinstance(h5_item, h5py.Dataset):
                 raise Exception(f'Item {parent_key} is not a dataset')
 
-            # handle the case of ndim = 0
+            # handle the case of ndim = 0 (scalar dataset)
             if h5_item.ndim == 0:
                 if h5_item.chunks is not None:
                     raise Exception(f'Unable to handle case where chunks is not None but ndim is 0 for dataset {parent_key}')
@@ -121,13 +132,15 @@ class LindiH5Store(Store):
                 if c < 0 or c >= h5_item.shape[i]:
                     raise Exception(f'Chunk coordinates {chunk_coords} out of range for dataset {parent_key}')
             # Get the byte range in the file for the chunk We do it this way
-            #   rather than reading from the h5py dataset Because we want to
-            #   ensure that we are reading the exact bytes
+            # rather than reading from the h5py dataset Because we want to
+            # ensure that we are reading the exact bytes
             byte_offset, byte_count = _get_chunk_byte_range(h5_item, chunk_coords)
+            print(f'For chunk {key}, byte_offset={byte_offset}, byte_count={byte_count}')
             buf = _read_bytes(self.file, byte_offset, byte_count)
             return buf
 
     def __contains__(self, key):
+        """Check if a key is in the store (used by zarr)."""
         # it would be nice if we didn't have to repeat the logic from __getitem__
         parts = key.split('/')
         if len(parts) == 0:
@@ -160,8 +173,8 @@ class LindiH5Store(Store):
 
     # We use keys2 instead of keys because of linter complaining
     def keys2(self):
-        # I think visititems is inefficient on h5py - not sure though
-        #   That's why I'm using this approach
+        # I think visititems is inefficient on h5py - not sure though. That's
+        # why I'm using this approach
         stack: List[str] = []
         stack.append('')
         while len(stack) > 0:
@@ -182,6 +195,10 @@ class LindiH5Store(Store):
         return self.keys2()
 
     def __len__(self):
+        """Get the number of items in the store (used by zarr)."""
+        # Not sure why this is needed. It seems unfortunate because this could
+        # be time-consuming. However, it may only be called in certain
+        # circumstances.
         return sum(1 for _ in self.keys2())
 
 
@@ -208,171 +225,138 @@ def _attr_h5_to_zarr(attr, *, label: str = ''):
         raise NotImplementedError()
 
 
-def _h5_dataset_to_zarr_info(h5_dataset: h5py.Dataset):
+@dataclass
+class DatasetZarrInfo:
+    shape: Tuple[int]
+    chunks: Union[None, Tuple[int]]
+    dtype: Any
+    filters: Union[List[Codec], None]
+    fill_value: Any
+    object_codec: Union[None, Codec]
+    inline_data: Union[bytes, None]
+
+
+def _h5_dataset_to_zarr_info(h5_dataset: h5py.Dataset) -> DatasetZarrInfo:
     """Get the shape, chunks, dtype, and filters from an h5py dataset."""
-    # This function needs to be expanded a lot to handle all the possible
-    #   cases
     shape = h5_dataset.shape
-    chunks = h5_dataset.chunks
     dtype = h5_dataset.dtype
-    filters = []
-    fill_value = None
-    object_codec = None
-    inline_data = None
 
     if len(shape) == 0:
         # scalar dataset
         value = h5_dataset[()]
         # zarr doesn't support scalar datasets, so we make an array of shape (1,)
-        shape = (1,)
-        chunks = (1,)
-        if dtype == np.int8:
-            inline_data = struct.pack('<b', value)
-            fill_value = 0
-        elif dtype == np.uint8:
-            inline_data = struct.pack('<B', value)
-            fill_value = 0
-        elif dtype == np.int16:
-            inline_data = struct.pack('<h', value)
-            fill_value = 0
-        elif dtype == np.uint16:
-            inline_data = struct.pack('<H', value)
-            fill_value = 0
-        elif dtype == np.int32:
-            inline_data = struct.pack('<i', value)
-            fill_value = 0
-        elif dtype == np.uint32:
-            inline_data = struct.pack('<I', value)
-            fill_value = 0
-        elif dtype == np.int64:
-            inline_data = struct.pack('<q', value)
-            fill_value = 0
-        elif dtype == np.uint64:
-            inline_data = struct.pack('<Q', value)
-            fill_value = 0
-        elif dtype == np.float32:
-            inline_data = struct.pack('<f', value)
-            fill_value = 0
-        elif dtype == np.float64:
-            inline_data = struct.pack('<d', value)
-            fill_value = 0
+        # and the _ARRAY_DIMENSIONS attribute will be set to [] to indicate that
+        # it is a scalar dataset
+
+        # Let's handle all the possible types explicitly
+        numeric_format_str = _get_numeric_format_str(dtype)
+        if numeric_format_str is not None:
+            # Handle the simple numeric types
+            inline_data = struct.pack(numeric_format_str, value)
+            return DatasetZarrInfo(
+                shape=(1,),
+                chunks=None,
+                dtype=dtype,
+                filters=None,
+                fill_value=0,
+                object_codec=None,
+                inline_data=inline_data
+            )
         elif dtype == object:
-            if isinstance(value, str):
-                object_codec = numcodecs.JSON()
-                inline_data = json.dumps([value, '|O', [1]])
-                fill_value = ' '
-            elif isinstance(value, bytes):
-                object_codec = numcodecs.JSON()
-                inline_data = json.dumps([value.decode('utf-8'), '|O', [1]])
-                fill_value = ' '
+            # For type object, we are going to use the JSON codec
+            # which requires inline data of the form [[val], '|O', [1]]
+            if isinstance(value, (bytes, str)):
+                if isinstance(value, bytes):
+                    value = value.decode()
+                return DatasetZarrInfo(
+                    shape=(1,),
+                    chunks=None,
+                    dtype=dtype,
+                    filters=None,
+                    fill_value=' ',
+                    object_codec=numcodecs.JSON(),
+                    inline_data=json.dumps([value, '|O', [1]]).encode('utf-8')
+                )
             else:
-                raise Exception(f'Cannot handle scalar dataset {h5_dataset.name} with dtype object and value {value} of type {type(value)}')
+                raise Exception(f'Not yet implemented (1): object scalar dataset with value {value} and dtype {dtype}')
         else:
             raise Exception(f'Cannot handle scalar dataset {h5_dataset.name} with dtype {dtype}')
     else:
-        filters = _decode_filters(h5_dataset)
-
+        # not a scalar dataset
         if dtype.kind in 'SU':  # byte string or unicode string
-            fill_value = h5_dataset.fillvalue or ' '  # this is from kerchunk code
+            raise Exception(f'Not yet implemented (2): dataset {h5_dataset.name} with dtype {dtype} and shape {shape}')
         elif dtype.kind == 'O':
-            # This is the kerchunk "embed" case
+            # For type object, we are going to use the JSON codec
+            # which requires inline data of the form [[some, nested, array], '|O', [n1, n2, ...]]
             object_codec = numcodecs.JSON()
-            if np.isscalar(h5_dataset):
-                data = str(h5_dataset)
-            elif h5_dataset.ndim == 0:
-                # data = np.array(h5_dataset).tolist().decode()  # this is from kerchunk, but I don't know what it's doing
-                a = np.array(h5_dataset).tolist()
-                if isinstance(a, bytes):
-                    data = a.decode()
+            data = h5_dataset[:]
+            data_vec_view = data.ravel()
+            for i, val in enumerate(data_vec_view):
+                if isinstance(val, bytes):
+                    data_vec_view[i] = val.decode()
+                elif isinstance(val, str):
+                    data_vec_view[i] = val
+                elif isinstance(val, h5py.h5r.Reference):
+                    print(f'Warning: reference in dataset {h5_dataset.name} not handled')
+                    data_vec_view[i] = None
                 else:
                     raise Exception(f'Cannot handle dataset {h5_dataset.name} with dtype {dtype} and shape {shape}')
-            else:
-                data = h5_dataset[:]
-                data_vec_view = data.ravel()
-                for i, val in enumerate(data_vec_view):
-                    if isinstance(val, bytes):
-                        data_vec_view[i] = val.decode()
-                    elif isinstance(val, str):
-                        data_vec_view[i] = val
-                    elif isinstance(val, h5py.h5r.Reference):
-                        print(f'Warning: reference in dataset {h5_dataset.name} not handled')
-                        data_vec_view[i] = None
-                    else:
-                        raise Exception(f'Cannot handle dataset {h5_dataset.name} with dtype {dtype} and shape {shape}')
-    return shape, chunks, dtype, filters, fill_value, object_codec, inline_data
+            inline_data = json.dumps([data.tolist(), '|O', list(shape)]).encode('utf-8')
+            return DatasetZarrInfo(
+                shape=shape,
+                chunks=None,
+                dtype=dtype,
+                filters=None,
+                fill_value=' ',  # not sure what to put here
+                object_codec=object_codec,
+                inline_data=inline_data
+            )
+        elif dtype.kind in ['i', 'u', 'f']:  # integer, unsigned integer, float
+            # This is the normal case of a chunked dataset with a numeric dtype
+            filters = _h5_filters_to_codecs(h5_dataset)
+            return DatasetZarrInfo(
+                shape=shape,
+                chunks=h5_dataset.chunks,
+                dtype=dtype,
+                filters=filters,
+                fill_value=h5_dataset.fillvalue,
+                object_codec=None,
+                inline_data=None
+            )
+        else:
+            raise Exception(f'Not yet implemented (3): dataset {h5_dataset.name} with dtype {dtype} and shape {shape}')
+
+
+def _get_numeric_format_str(dtype: Any) -> Union[str, None]:
+    """Get the format string for a numeric dtype."""
+    if dtype == np.int8:
+        return '<b'
+    elif dtype == np.uint8:
+        return '<B'
+    elif dtype == np.int16:
+        return '<h'
+    elif dtype == np.uint16:
+        return '<H'
+    elif dtype == np.int32:
+        return '<i'
+    elif dtype == np.uint32:
+        return '<I'
+    elif dtype == np.int64:
+        return '<q'
+    elif dtype == np.uint64:
+        return '<Q'
+    elif dtype == np.float32:
+        return '<f'
+    elif dtype == np.float64:
+        return '<d'
+    else:
+        return None
 
 
 def _read_bytes(file: IO, offset: int, count: int):
     """Read a range of bytes from a file-like object."""
     file.seek(offset)
     return file.read(count)
-
-
-# This _decode_filters adapted from kerchunk source code
-# https://github.com/fsspec/kerchunk
-# Copyright (c) 2020 Intake
-# MIT License
-def _decode_filters(h5obj: h5py.Dataset) -> Union[List[Codec], None]:
-    """Decode HDF5 filters to numcodecs filters."""
-    if h5obj.scaleoffset:
-        raise RuntimeError(
-            f"{h5obj.name} uses HDF5 scaleoffset filter - not supported"
-        )
-    if h5obj.compression in ("szip", "lzf"):
-        raise RuntimeError(
-            f"{h5obj.name} uses szip or lzf compression - not supported"
-        )
-    filters = []
-    if h5obj.shuffle and h5obj.dtype.kind != "O":
-        # cannot use shuffle if we materialised objects
-        filters.append(numcodecs.Shuffle(elementsize=h5obj.dtype.itemsize))
-    for filter_id, properties in h5obj._filters.items():
-        if str(filter_id) == "32001":
-            blosc_compressors = (
-                "blosclz",
-                "lz4",
-                "lz4hc",
-                "snappy",
-                "zlib",
-                "zstd",
-            )
-            (
-                _1,
-                _2,
-                bytes_per_num,
-                total_bytes,
-                clevel,
-                shuffle,
-                compressor,
-            ) = properties
-            pars = dict(
-                blocksize=total_bytes,
-                clevel=clevel,
-                shuffle=shuffle,
-                cname=blosc_compressors[compressor],
-            )
-            filters.append(numcodecs.Blosc(**pars))
-        elif str(filter_id) == "32015":
-            filters.append(numcodecs.Zstd(level=properties[0]))
-        elif str(filter_id) == "gzip":
-            filters.append(numcodecs.Zlib(level=properties))
-        elif str(filter_id) == "32004":
-            raise RuntimeError(
-                f"{h5obj.name} uses lz4 compression - not supported"
-            )
-        elif str(filter_id) == "32008":
-            raise RuntimeError(
-                f"{h5obj.name} uses bitshuffle compression - not supported"
-            )
-        elif str(filter_id) == "shuffle":
-            # already handled before this loop
-            pass
-        else:
-            raise RuntimeError(
-                f"{h5obj.name} uses filter id {filter_id} with properties {properties},"
-                f" not supported."
-            )
-    return filters
 
 
 def _get_chunk_byte_range(h5_dataset: h5py.Dataset, chunk_coords: tuple) -> tuple:
@@ -405,27 +389,3 @@ def _get_byte_range_for_contiguous_dataset(h5_dataset: h5py.Dataset) -> tuple:
     byte_offset = dsid.get_offset()
     byte_count = dsid.get_storage_size()
     return byte_offset, byte_count
-
-
-def test_lindi_h5_store():
-    """Test the LindiH5Store class."""
-    import tempfile
-    with tempfile.TemporaryDirectory() as tmpdir:
-        test_h5_fname = f'{tmpdir}/test.h5'
-        with h5py.File(test_h5_fname, 'w') as h5f:
-            h5f.create_dataset('data', data=np.arange(100).reshape(10, 10), chunks=(5, 5))
-        with open(test_h5_fname, 'rb') as f:
-            h5f = h5py.File(f, 'r')
-            store = LindiH5Store(f)
-            root = zarr.open_group(store)
-            data = root['data']
-            A1x = h5f['data']
-            assert isinstance(A1x, h5py.Dataset)
-            A1 = A1x[:]
-            A2 = data[:]
-            assert isinstance(A2, np.ndarray)
-            assert np.array_equal(A1, A2)
-
-
-if __name__ == '__main__':
-    test_lindi_h5_store()
