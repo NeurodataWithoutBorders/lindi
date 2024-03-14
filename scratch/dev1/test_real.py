@@ -1,29 +1,49 @@
+import sys
 import numpy as np
 import zarr
 import h5py
 import remfile
 from LindiH5Store import LindiH5Store
 
+examples = []
 
+# example 0
 # This one seems to load properly
 # https://neurosift.app/?p=/nwb&dandisetId=000717&dandisetVersion=draft&url=https://api.dandiarchive.org/api/assets/3d12a902-139a-4c1a-8fd0-0a7faf2fb223/download/
-h5_url = 'https://api.dandiarchive.org/api/assets/3d12a902-139a-4c1a-8fd0-0a7faf2fb223/download/'
-json_url = 'https://kerchunk.neurosift.org/dandi/dandisets/000717/assets/3d12a902-139a-4c1a-8fd0-0a7faf2fb223/zarr.json'
+examples.append({
+    'h5_url': 'https://api.dandiarchive.org/api/assets/3d12a902-139a-4c1a-8fd0-0a7faf2fb223/download/',
+    'json_url': 'https://kerchunk.neurosift.org/dandi/dandisets/000717/assets/3d12a902-139a-4c1a-8fd0-0a7faf2fb223/zarr.json'
+})
+
+# example 1
+# https://neurosift.app/?p=/nwb&dandisetId=000776&dandisetVersion=draft&url=https://api.dandiarchive.org/api/assets/54895119-f739-4544-973e-a9341a5c66ad/download/
+examples.append({
+    'h5_url': 'https://api.dandiarchive.org/api/assets/54895119-f739-4544-973e-a9341a5c66ad/download/'
+})
+
+# example 2
+# https://neurosift.app/?p=/nwb&dandisetId=000688&dandisetVersion=draft&url=https://api.dandiarchive.org/api/assets/9ac13aea-5d1c-4924-87b4-40ef0a3555d8/download/
+# Exception: Chunk coordinates (0, 1) are not (0, 0, 0, ...) for contiguous dataset processing/behavior/Acceleration/cursor_acc/data
+examples.append({
+    'h5_url': 'https://api.dandiarchive.org/api/assets/9ac13aea-5d1c-4924-87b4-40ef0a3555d8/download/'
+})
 
 
-def main():
-    remf = remfile.File(h5_url)
+def do_compare(example_num: int):
+    example = examples[example_num]
+    h5_url = example['h5_url']
+    print(f'Running comparison for {h5_url}')
+    remf = remfile.File(h5_url, verbose=False)
     h5f = h5py.File(remf, 'r')
     f = LindiH5Store(remf)
     root = zarr.open(f)
     assert isinstance(root, zarr.Group)
 
     # visit the items in the h5py file and compare them to the zarr file
-    _compare_groups(root, h5f)
-    h5f.visititems(lambda key, item: _compare_item(key, item, root[key]))
+    _hdf5_visit_items(h5f, lambda key, item: _compare_item(item, root[key]))
 
 
-def _compare_item(key: str, item_h5, item_zarr):
+def _compare_item(item_h5, item_zarr):
     if isinstance(item_h5, h5py.Group):
         assert isinstance(item_zarr, zarr.Group)
         _compare_groups(item_zarr, item_h5)
@@ -41,15 +61,42 @@ def _compare_groups(g1: zarr.Group, g2: h5py.Group):
     for k, v in g1.attrs.items():
         if k not in g2.attrs:
             print(f'WARNING: Attribute {k} not found in h5 group {g2.name}')
-        elif g2.attrs[k] != v:
+        elif not _values_match(v, g2.attrs[k]):
             print(f'WARNING: Attribute {k} value mismatch in h5 group {g2.name}')
             print(f'  h5: {g2.attrs[k]}')
             print(f'  zarr: {v}')
     for k, v in g2.attrs.items():
         if k not in g1.attrs:
             print(f'WARNING: Attribute {k} not found in zarr group {g1.name}')
-        elif g1.attrs[k] != v:
+        elif not _values_match(v, g1.attrs[k]):
             print(f'WARNING: Attribute {k} value mismatch in zarr group {g1.name}')
+
+
+def _values_match(v1, v2):
+    if type(v1) == list and type(v2) == np.ndarray:
+        return _arrays_equal(np.array(v1, dtype=v2.dtype), v2)
+    if type(v1) == np.ndarray and type(v2) == list:
+        return _arrays_equal(v1, np.array(v2, dtype=v1.dtype))
+    if type(v1) != type(v2):
+        return False
+    if isinstance(v1, list):
+        if len(v1) != len(v2):
+            return False
+        for i in range(len(v1)):
+            if not _values_match(v1[i], v2[i]):
+                return False
+        return True
+    elif isinstance(v1, dict):
+        if len(v1) != len(v2):
+            return False
+        for k in v1:
+            if k not in v2:
+                return False
+            if not _values_match(v1[k], v2[k]):
+                return False
+        return True
+    else:
+        return v1 == v2
 
 
 def _compare_arrays(a1: zarr.Array, a2: h5py.Dataset):
@@ -78,29 +125,67 @@ def _compare_arrays(a1: zarr.Array, a2: h5py.Dataset):
                 print(f'WARNING: shape mismatch for {a1.name}: {a1_data.shape} != {a2_data.shape}')
             if not a1_data.dtype == a2_data.dtype:
                 print(f'WARNING: dtype mismatch for {a1.name}: {a1_data.dtype} != {a2_data.dtype}')
-            if not np.array_equal(a1_data, a2_data):
-                print(f'WARNING: data mismatch for {a1.name}')
+            if not _arrays_equal(a1_data, a2_data):
                 print(a1_data)
                 print(a2_data)
         else:
-            if a1.ndim == 1:
-                a1_data = a1[:20]
-                a2_data = a2[:20]
-            elif a1.ndim == 2:
-                a1_data = a1[:20, :2]
-                a2_data = a2[:20, :2]
-            elif a1.ndim == 3:
-                a1_data = a1[:2, :2, :2]
-                a2_data = a2[:2, :2, :2]
+            if a1.chunks and (np.prod(a1.chunks) < 50000):
+                if a1.ndim == 1:
+                    a1_data = a1[:a1.chunks[0]]
+                    a2_data = a2[:a1.chunks[0]]
+                elif a1.ndim == 2:
+                    a1_data = a1[:a1.chunks[0], :a1.chunks[1]]
+                    a2_data = a2[:a1.chunks[0], :a1.chunks[1]]
+                elif a1.ndim == 3:
+                    a1_data = a1[:a1.chunks[0], :a1.chunks[1], :a1.chunks[2]]
+                    a2_data = a2[:a1.chunks[0], :a1.chunks[1], :a1.chunks[2]]
+                elif a1.ndim == 4:
+                    a1_data = a1[:a1.chunks[0], :a1.chunks[1], :a1.chunks[2], :a1.chunks[3]]
+                    a2_data = a2[:a1.chunks[0], :a1.chunks[1], :a1.chunks[2], :a1.chunks[3]]
+                elif a1.ndim == 5:
+                    a1_data = a1[:a1.chunks[0], :a1.chunks[1], :a1.chunks[2], :a1.chunks[3], :a1.chunks[4]]
+                    a2_data = a2[:a1.chunks[0], :a1.chunks[1], :a1.chunks[2], :a1.chunks[3], :a1.chunks[4]]
+                else:
+                    raise NotImplementedError()
+                if not a1_data.dtype == a2_data.dtype:
+                    print(f'WARNING: dtype mismatch for {a1.name}: {a1_data.dtype} != {a2_data.dtype}')
+                if not _arrays_equal(a1_data, a2_data):
+                    print(f'WARNING: data mismatch for {a1.name}')
+                    print(a1_data)
+                    print(a2_data)
             else:
-                raise NotImplementedError()
-            if not a1_data.dtype == a2_data.dtype:
-                print(f'WARNING: dtype mismatch for {a1.name}: {a1_data.dtype} != {a2_data.dtype}')
-            if not np.array_equal(a1_data, a2_data):
-                print(f'WARNING: data mismatch for {a1.name}')
-                print(a1_data)
-                print(a2_data)
+                print(f'Skipping large array value comparison. Chunk shape is {a1.chunks}')
+
+
+def _arrays_equal(a: np.ndarray, b: np.ndarray):
+    # If it's an array of strings, we convert to an array of bytes
+    if a.dtype == object:
+        # need to modify all the entries
+        a = np.array([x.encode() if type(x) is str else x for x in a.ravel()]).reshape(a.shape)
+    if b.dtype == object:
+        b = np.array([x.encode() if type(x) is str else x for x in b.ravel()]).reshape(b.shape)
+    # if this is numeric data we need to use allclose so that we can handle NaNs
+    if np.issubdtype(a.dtype, np.number):
+        return np.allclose(a, b, equal_nan=True)
+    else:
+        return np.array_equal(a, b)
+
+
+def _hdf5_visit_items(item, callback):
+    # For some reason, this is much faster than using h5f.visititems(translator)
+    if isinstance(item, h5py.File):
+        for k, v in item.items():
+            _hdf5_visit_items(v, callback)
+    elif isinstance(item, h5py.Group):
+        callback(item.name, item)
+        for k, v in item.items():
+            _hdf5_visit_items(v, callback)
+    else:
+        callback(item.name, item)
+        return
 
 
 if __name__ == '__main__':
-    main()
+    # get the example number from the command line, with the default being 0
+    example_num = int(sys.argv[1]) if len(sys.argv) > 1 else 0
+    do_compare(example_num)

@@ -106,13 +106,16 @@ def _zarr_info_for_h5_dataset(h5_dataset: h5py.Dataset) -> ZarrInfoForH5Dataset:
             object_codec = numcodecs.JSON()
             data = h5_dataset[:]
             data_vec_view = data.ravel()
+            _warning_reference_in_dataset_printed = False
             for i, val in enumerate(data_vec_view):
                 if isinstance(val, bytes):
                     data_vec_view[i] = val.decode()
                 elif isinstance(val, str):
                     data_vec_view[i] = val
                 elif isinstance(val, h5py.h5r.Reference):
-                    print(f'Warning: reference in dataset {h5_dataset.name} not handled')
+                    if not _warning_reference_in_dataset_printed:
+                        print(f'Warning: reference in dataset {h5_dataset.name} not handled')
+                        _warning_reference_in_dataset_printed = True
                     data_vec_view[i] = None
                 else:
                     raise Exception(f'Cannot handle dataset {h5_dataset.name} with dtype {dtype} and shape {shape}')

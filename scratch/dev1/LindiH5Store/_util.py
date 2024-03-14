@@ -32,13 +32,13 @@ def _get_chunk_byte_range(h5_dataset: h5py.Dataset, chunk_coords: tuple) -> tupl
     assert len(chunk_coords) == ndim
     chunk_index = 0
     for i in range(ndim):
-        chunk_index += chunk_coords[i] * np.prod(chunk_coords_shape[i + 1:])
+        chunk_index += int(chunk_coords[i] * np.prod(chunk_coords_shape[i + 1:]))
     return _get_chunk_byte_range_for_chunk_index(h5_dataset, chunk_index)
 
 
 def _get_chunk_byte_range_for_chunk_index(h5_dataset: h5py.Dataset, chunk_index: int) -> tuple:
     """Get the byte range in the file for a chunk of an h5py dataset.
-    
+
     This involves some low-level functions from the h5py library.
     """
     # got hints from kerchunk source code

@@ -1,4 +1,5 @@
 from typing import Any
+import numpy as np
 import h5py
 
 
@@ -23,6 +24,12 @@ def _h5_attr_to_zarr_attr(attr: Any, *, label: str = '', h5f: h5py.File):
         return {k: _h5_attr_to_zarr_attr(v, label=label, h5f=h5f) for k, v in attr.items()}
     elif isinstance(attr, h5py.Reference):
         return _h5_ref_to_zarr_attr(attr, label=label, h5f=h5f)
+    elif np.issubdtype(type(attr), np.integer):
+        return int(attr)  # possible loss of precision?
+    elif np.issubdtype(type(attr), np.floating):
+        return float(attr)  # possible loss of precision?
+    elif isinstance(attr, np.ndarray):
+        return _h5_attr_to_zarr_attr(attr.tolist(), label=label, h5f=h5f)
     else:
         print(f'Warning: attribute of type {type(attr)} not handled: {label}')
         raise NotImplementedError()
