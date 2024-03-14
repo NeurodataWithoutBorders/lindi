@@ -1,2 +1,2 @@
 # lindi
-Linked Neurophysiology Data Interface (LINDI) - cloud-friendly access to NWB data
+Linked Neurodata Interface (LINDI) - cloud-friendly access to NWB data
