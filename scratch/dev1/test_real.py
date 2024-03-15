@@ -1,52 +1,54 @@
-import json
 import sys
 import numpy as np
 import zarr
 import h5py
 import remfile
-from LindiH5Store import LindiH5Store
+from lindi import LindiH5Store
 
 examples = []
 
 # example 0
 # This one seems to load properly
 # https://neurosift.app/?p=/nwb&dandisetId=000717&dandisetVersion=draft&url=https://api.dandiarchive.org/api/assets/3d12a902-139a-4c1a-8fd0-0a7faf2fb223/download/
-examples.append({
-    'h5_url': 'https://api.dandiarchive.org/api/assets/3d12a902-139a-4c1a-8fd0-0a7faf2fb223/download/',
-    'json_url': 'https://kerchunk.neurosift.org/dandi/dandisets/000717/assets/3d12a902-139a-4c1a-8fd0-0a7faf2fb223/zarr.json'
-})
+examples.append(
+    {
+        "h5_url": "https://api.dandiarchive.org/api/assets/3d12a902-139a-4c1a-8fd0-0a7faf2fb223/download/",
+        "json_url": "https://kerchunk.neurosift.org/dandi/dandisets/000717/assets/3d12a902-139a-4c1a-8fd0-0a7faf2fb223/zarr.json",
+    }
+)
 
 # example 1
 # https://neurosift.app/?p=/nwb&dandisetId=000776&dandisetVersion=draft&url=https://api.dandiarchive.org/api/assets/54895119-f739-4544-973e-a9341a5c66ad/download/
 # Exception: Not yet implemented (3): dataset /processing/CalciumActivity/CalciumSeriesSegmentation/Aligned_neuron_coordinates/voxel_mask with
 # dtype [('x', '<u4'), ('y', '<u4'), ('z', '<u4'), ('weight', '<f4')] and shape (109,)
-examples.append({
-    'h5_url': 'https://api.dandiarchive.org/api/assets/54895119-f739-4544-973e-a9341a5c66ad/download/'
-})
+examples.append(
+    {
+        "h5_url": "https://api.dandiarchive.org/api/assets/54895119-f739-4544-973e-a9341a5c66ad/download/"
+    }
+)
 
 # example 2
 # https://neurosift.app/?p=/nwb&dandisetId=000688&dandisetVersion=draft&url=https://api.dandiarchive.org/api/assets/9ac13aea-5d1c-4924-87b4-40ef0a3555d8/download/
-examples.append({
-    'h5_url': 'https://api.dandiarchive.org/api/assets/9ac13aea-5d1c-4924-87b4-40ef0a3555d8/download/'
-})
+examples.append(
+    {
+        "h5_url": "https://api.dandiarchive.org/api/assets/9ac13aea-5d1c-4924-87b4-40ef0a3555d8/download/"
+    }
+)
 
 
 def do_compare(example_num: int):
     example = examples[example_num]
-    h5_url = example['h5_url']
-    print(f'Running comparison for {h5_url}')
-    remf = remfile.File(h5_url, verbose=False)
-    h5f = h5py.File(remf, 'r')
-    store = LindiH5Store(file=remf, num_dataset_chunks_threshold=1, url=h5_url)
-    root = zarr.open(store)
-    assert isinstance(root, zarr.Group)
+    h5_url = example["h5_url"]
+    print(f"Running comparison for {h5_url}")
+    h5f = h5py.File(remfile.File(h5_url), "r")
+    with LindiH5Store.from_file(h5_url) as store:
+        root = zarr.open(store)
+        assert isinstance(root, zarr.Group)
 
-    # visit the items in the h5py file and compare them to the zarr file
-    _hdf5_visit_items(h5f, lambda key, item: _compare_item(item, root[key]))
+        # visit the items in the h5py file and compare them to the zarr file
+        _hdf5_visit_items(h5f, lambda key, item: _compare_item(item, root[key]))
 
-    a = store.create_reference_file_system()
-    with open(f'example_{example_num}.zarr.json', 'w') as store:
-        json.dump(a, store, indent=2)
+        store.to_file(f"example_{example_num}.zarr.json")
 
 
 def _compare_item(item_h5, item_zarr):
@@ -62,20 +64,20 @@ def _compare_item(item_h5, item_zarr):
 
 
 def _compare_groups(g1: zarr.Group, g2: h5py.Group):
-    print(f'__________ {g1.name} (GROUP)')
+    print(f"__________ {g1.name} (GROUP)")
     assert g1.name == g2.name
     for k, v in g1.attrs.items():
         if k not in g2.attrs:
-            print(f'WARNING: Attribute {k} not found in h5 group {g2.name}')
+            print(f"WARNING: Attribute {k} not found in h5 group {g2.name}")
         elif not _values_match(v, g2.attrs[k]):
-            print(f'WARNING: Attribute {k} value mismatch in h5 group {g2.name}')
-            print(f'  h5: {g2.attrs[k]}')
-            print(f'  zarr: {v}')
+            print(f"WARNING: Attribute {k} value mismatch in h5 group {g2.name}")
+            print(f"  h5: {g2.attrs[k]}")
+            print(f"  zarr: {v}")
     for k, v in g2.attrs.items():
         if k not in g1.attrs:
-            print(f'WARNING: Attribute {k} not found in zarr group {g1.name}')
+            print(f"WARNING: Attribute {k} not found in zarr group {g1.name}")
         elif not _values_match(v, g1.attrs[k]):
-            print(f'WARNING: Attribute {k} value mismatch in zarr group {g1.name}')
+            print(f"WARNING: Attribute {k} value mismatch in zarr group {g1.name}")
 
 
 def _values_match(v1, v2):
@@ -106,14 +108,14 @@ def _values_match(v1, v2):
 
 
 def _compare_arrays(a1: zarr.Array, a2: h5py.Dataset):
-    print(f'__________ {a1.name} (ARRAY)')
+    print(f"__________ {a1.name} (ARRAY)")
     if a1.dtype != a2.dtype:
-        print(f'WARNING: dtype mismatch for {a1.name}: {a1.dtype} != {a2.dtype}')
+        print(f"WARNING: dtype mismatch for {a1.name}: {a1.dtype} != {a2.dtype}")
     a1_shape = a1.shape
-    if a1.attrs['_ARRAY_DIMENSIONS'] == []:
+    if a1.attrs.get("_SCALAR") is True:
         a1_shape = ()
     if a1_shape != a2.shape:
-        print(f'WARNING: shape mismatch for {a1.name}: {a1.shape} != {a2.shape}')
+        print(f"WARNING: shape mismatch for {a1.name}: {a1.shape} != {a2.shape}")
     if len(a1_shape) == 0:
         a1_val = a1[0]
         a2_val = a2[()]
@@ -122,54 +124,82 @@ def _compare_arrays(a1: zarr.Array, a2: h5py.Dataset):
         if isinstance(a2_val, bytes):
             a2_val = a2_val.decode()
         if a1_val != a2_val:
-            print(f'WARNING: value mismatch for {a1.name}: {a1_val} != {a2_val}')
+            print(f"WARNING: value mismatch for {a1.name}: {a1_val} != {a2_val}")
     else:
         if np.prod(a1_shape) < 1000:
             a1_data = a1[:]
             a2_data = a2[:]
             if not a1_data.shape == a2_data.shape:
-                print(f'WARNING: shape mismatch for {a1.name}: {a1_data.shape} != {a2_data.shape}')
+                print(
+                    f"WARNING: shape mismatch for {a1.name}: {a1_data.shape} != {a2_data.shape}"
+                )
             if not a1_data.dtype == a2_data.dtype:
-                print(f'WARNING: dtype mismatch for {a1.name}: {a1_data.dtype} != {a2_data.dtype}')
+                print(
+                    f"WARNING: dtype mismatch for {a1.name}: {a1_data.dtype} != {a2_data.dtype}"
+                )
             if not _arrays_equal(a1_data, a2_data):
                 print(a1_data)
                 print(a2_data)
         else:
             if a1.chunks and (np.prod(a1.chunks) < 10000000):
                 if a1.ndim == 1:
-                    a1_data = a1[:a1.chunks[0]]
-                    a2_data = a2[:a1.chunks[0]]
+                    a1_data = a1[: a1.chunks[0]]
+                    a2_data = a2[: a1.chunks[0]]
                 elif a1.ndim == 2:
-                    a1_data = a1[:a1.chunks[0], :a1.chunks[1]]
-                    a2_data = a2[:a1.chunks[0], :a1.chunks[1]]
+                    a1_data = a1[: a1.chunks[0], : a1.chunks[1]]
+                    a2_data = a2[: a1.chunks[0], : a1.chunks[1]]
                 elif a1.ndim == 3:
-                    a1_data = a1[:a1.chunks[0], :a1.chunks[1], :a1.chunks[2]]
-                    a2_data = a2[:a1.chunks[0], :a1.chunks[1], :a1.chunks[2]]
+                    a1_data = a1[: a1.chunks[0], : a1.chunks[1], : a1.chunks[2]]
+                    a2_data = a2[: a1.chunks[0], : a1.chunks[1], : a1.chunks[2]]
                 elif a1.ndim == 4:
-                    a1_data = a1[:a1.chunks[0], :a1.chunks[1], :a1.chunks[2], :a1.chunks[3]]
-                    a2_data = a2[:a1.chunks[0], :a1.chunks[1], :a1.chunks[2], :a1.chunks[3]]
+                    a1_data = a1[
+                        : a1.chunks[0], : a1.chunks[1], : a1.chunks[2], : a1.chunks[3]
+                    ]
+                    a2_data = a2[
+                        : a1.chunks[0], : a1.chunks[1], : a1.chunks[2], : a1.chunks[3]
+                    ]
                 elif a1.ndim == 5:
-                    a1_data = a1[:a1.chunks[0], :a1.chunks[1], :a1.chunks[2], :a1.chunks[3], :a1.chunks[4]]
-                    a2_data = a2[:a1.chunks[0], :a1.chunks[1], :a1.chunks[2], :a1.chunks[3], :a1.chunks[4]]
+                    a1_data = a1[
+                        : a1.chunks[0],
+                        : a1.chunks[1],
+                        : a1.chunks[2],
+                        : a1.chunks[3],
+                        : a1.chunks[4],
+                    ]
+                    a2_data = a2[
+                        : a1.chunks[0],
+                        : a1.chunks[1],
+                        : a1.chunks[2],
+                        : a1.chunks[3],
+                        : a1.chunks[4],
+                    ]
                 else:
                     raise NotImplementedError()
                 if not a1_data.dtype == a2_data.dtype:
-                    print(f'WARNING: dtype mismatch for {a1.name}: {a1_data.dtype} != {a2_data.dtype}')
+                    print(
+                        f"WARNING: dtype mismatch for {a1.name}: {a1_data.dtype} != {a2_data.dtype}"
+                    )
                 if not _arrays_equal(a1_data, a2_data):
-                    print(f'WARNING: data mismatch for {a1.name}')
+                    print(f"WARNING: data mismatch for {a1.name}")
                     print(a1_data)
                     print(a2_data)
             else:
-                print(f'Skipping large array value comparison. Chunk shape is {a1.chunks}')
+                print(
+                    f"Skipping large array value comparison. Chunk shape is {a1.chunks}"
+                )
 
 
 def _arrays_equal(a: np.ndarray, b: np.ndarray):
     # If it's an array of strings, we convert to an array of bytes
     if a.dtype == object:
         # need to modify all the entries
-        a = np.array([x.encode() if type(x) is str else x for x in a.ravel()]).reshape(a.shape)
+        a = np.array([x.encode() if type(x) is str else x for x in a.ravel()]).reshape(
+            a.shape
+        )
     if b.dtype == object:
-        b = np.array([x.encode() if type(x) is str else x for x in b.ravel()]).reshape(b.shape)
+        b = np.array([x.encode() if type(x) is str else x for x in b.ravel()]).reshape(
+            b.shape
+        )
     # if this is numeric data we need to use allclose so that we can handle NaNs
     if np.issubdtype(a.dtype, np.number):
         return np.allclose(a, b, equal_nan=True)
@@ -191,7 +221,7 @@ def _hdf5_visit_items(item, callback):
         return
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     # get the example number from the command line, with the default being 0
     example_num = int(sys.argv[1]) if len(sys.argv) > 1 else 0
     do_compare(example_num)

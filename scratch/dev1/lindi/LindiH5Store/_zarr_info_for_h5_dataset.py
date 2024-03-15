@@ -50,7 +50,7 @@ def _zarr_info_for_h5_dataset(h5_dataset: h5py.Dataset) -> ZarrInfoForH5Dataset:
         # scalar dataset
         value = h5_dataset[()]
         # zarr doesn't support scalar datasets, so we make an array of shape (1,)
-        # and the _ARRAY_DIMENSIONS attribute will be set to [] to indicate that
+        # and the _SCALAR attribute will be set to True elsewhere to indicate that
         # it is a scalar dataset
 
         # Let's handle all the possible types explicitly
