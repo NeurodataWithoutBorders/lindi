@@ -1,7 +1,7 @@
 from typing import Union
 import json
 import tempfile
-from altair import Literal
+from typing import Literal
 from fsspec import FSMap
 import zarr
 import urllib.request
