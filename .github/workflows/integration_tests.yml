@@ -1,0 +1,23 @@
+name: integration tests
+
+on: [push, pull_request]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    name: Test
+    steps:
+    - uses: actions/checkout@v1
+    - name: Install
+      run: pip install -e .
+    - name: Install packages needed for tests
+      # pyright 1.1.336 can produce annoying errors
+      run: pip install pytest pytest-cov pyright==1.1.335
+    - name: Run tests and collect coverage
+      run: pyright && pytest --cov lindi --cov-report=xml --cov-report=term tests/
+    # - uses: codecov/codecov-action@v3
+    #   with:
+    #     token: ${{ secrets.CODECOV_TOKEN }}
+    #     fail_ci_if_error: true
+    #     file: ./coverage.xml
+    #     flags: unittests
