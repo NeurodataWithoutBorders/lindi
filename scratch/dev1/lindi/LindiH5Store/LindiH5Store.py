@@ -196,7 +196,7 @@ class LindiH5Store(Store):
             external_array_link = self._get_external_array_link(parent_key, h5_item)
             if external_array_link is not None:
                 dummy_group.attrs["_EXTERNAL_ARRAY_LINK"] = external_array_link
-        zattrs_content = memory_store.get(".zattrs")
+        zattrs_content = _reformat_json(memory_store.get(".zattrs"))
         if zattrs_content is not None:
             return zattrs_content
         else:
@@ -214,7 +214,7 @@ class LindiH5Store(Store):
         # from it.
         memory_store = MemoryStore()
         zarr.group(store=memory_store)
-        return memory_store.get(".zgroup")
+        return _reformat_json(memory_store.get(".zgroup"))
 
     def _get_zarray_bytes(self, parent_key: str):
         """Get the .zarray JSON text for a dataset"""
@@ -245,7 +245,7 @@ class LindiH5Store(Store):
             filters=info.filters,
             object_codec=info.object_codec,
         )
-        zarray_text = memory_store.get("dummy_array/.zarray")
+        zarray_text = _reformat_json(memory_store.get("dummy_array/.zarray"))
 
         return zarray_text
 
@@ -479,3 +479,9 @@ def _get_chunk_names_for_dataset(chunk_coords_shape: List[int]) -> List[str]:
             for name0 in names0:
                 names.append(f"{i}.{name0}")
         return names
+
+
+def _reformat_json(x: bytes):
+    if x is None:
+        return None
+    return json.dumps(json.loads(x.decode("utf-8"))).encode("utf-8")
