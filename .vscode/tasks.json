@@ -5,13 +5,22 @@
     "version": "2.0.0",
     "tasks": [
         {
-            "label": "Test",
+            "label": "Run tests",
             "type": "shell",
             "command": "bash -ic .vscode/tasks/test.sh",
             "presentation": {
                 "clear": true
             },
             "detail": "Run tests"
+        },
+        {
+            "label": "Run quck tests",
+            "type": "shell",
+            "command": "bash -ic .vscode/tasks/quick_test.sh",
+            "presentation": {
+                "clear": true
+            },
+            "detail": "Run quick tests"
         }
     ]
 }

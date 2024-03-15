@@ -154,6 +154,30 @@ def test_attributes():
                     raise ValueError("Attribute mismatch")
 
 
+def test_nan_inf_attr():
+    print("Testing NaN, Inf, and -Inf attributes")
+    with tempfile.TemporaryDirectory() as tmpdir:
+        filename = f"{tmpdir}/test.h5"
+        with h5py.File(filename, "w") as f:
+            f.create_dataset("X", data=[1, 2, 3])
+            f["X"].attrs["nan"] = np.nan
+            f["X"].attrs["inf"] = np.inf
+            f["X"].attrs["ninf"] = -np.inf
+        h5f = h5py.File(filename, "r")
+        with LindiH5Store.from_file(filename, url=filename) as store:
+            rfs = store.to_reference_file_system()
+            client = LindiClient.from_reference_file_system(rfs)
+
+            X1 = h5f["X"]
+            assert isinstance(X1, h5py.Dataset)
+            X2 = client["X"]
+            assert isinstance(X2, LindiDataset)
+
+            assert X2.attrs["nan"] == 'NaN'
+            assert X2.attrs["inf"] == 'Infinity'
+            assert X2.attrs["ninf"] == '-Infinity'
+
+
 def _check_equal(a, b):
     # allow comparison of bytes and strings
     if isinstance(a, str):
@@ -183,6 +207,11 @@ def _check_equal(a, b):
     if isinstance(a, np.ndarray):
         assert isinstance(b, np.ndarray)
         return _check_arrays_equal(a, b)
+
+    # test for NaNs (we need to use np.isnan because NaN != NaN in python)
+    if isinstance(a, float) and isinstance(b, float):
+        if np.isnan(a) and np.isnan(b):
+            return True
 
     return a == b
 

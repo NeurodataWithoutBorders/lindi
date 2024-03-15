@@ -5,6 +5,7 @@ import h5py
 import remfile
 from lindi import LindiH5Store, LindiClient
 import lindi
+import pytest
 
 examples = []
 
@@ -272,6 +273,8 @@ def _hdf5_visit_items(item, callback):
         return
 
 
+@pytest.mark.network
+@pytest.mark.slow
 def test_with_real_data():
     example_num = 0
     example = examples[example_num]
