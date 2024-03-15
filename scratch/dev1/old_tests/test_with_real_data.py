@@ -13,7 +13,6 @@ examples = []
 examples.append(
     {
         "h5_url": "https://api.dandiarchive.org/api/assets/3d12a902-139a-4c1a-8fd0-0a7faf2fb223/download/",
-        "json_url": "https://kerchunk.neurosift.org/dandi/dandisets/000717/assets/3d12a902-139a-4c1a-8fd0-0a7faf2fb223/zarr.json",
     }
 )
 

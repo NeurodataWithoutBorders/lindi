@@ -31,6 +31,8 @@ def example1():
         h5f = h5py.File(filename, "r")
 
         print("Creating a LindiH5Store from the hdf5 file")
+        # We set url to filename so that the references can point to a local file
+        # but normally, this would be a remote URL
         with LindiH5Store.from_file(filename, url=filename) as store:
             print("Creating a reference file system from the LindiH5Store")
             rfs_fname = f"{tmpdir}/example.zarr.json"
