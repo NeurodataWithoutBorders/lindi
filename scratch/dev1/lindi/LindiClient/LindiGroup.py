@@ -16,7 +16,7 @@ class LindiGroup:
         return self._zarr_group.keys()
 
     def __getitem__(self, key):
-        if key in self._zarr_group:
+        if key in self._zarr_group.keys():
             x = self._zarr_group[key]
             if isinstance(x, zarr.Group):
                 return LindiGroup(_zarr_group=x)

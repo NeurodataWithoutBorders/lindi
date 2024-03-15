@@ -1,11 +1,7 @@
-import json
 import tempfile
 import numpy as np
 import h5py
-import zarr
-import kerchunk.hdf  # type: ignore
-from lindi import LindiH5Store
-from fsspec.implementations.reference import ReferenceFileSystem
+from lindi import LindiH5Store, LindiClient, LindiGroup, LindiDataset
 
 
 def test_scalar_dataset():
@@ -15,53 +11,78 @@ def test_scalar_dataset():
             filename = f"{tmpdir}/test.h5"
             with h5py.File(filename, "w") as f:
                 f.create_dataset("X", data=val)
-            zarr_kerchunk, store_kerchunk = _get_kerchunk_zarr(filename)
-            val_kerchunk = zarr_kerchunk["X"][0]
-            zarr_lindi, store_lindi = _get_lindi_zarr(filename)
-            try:
-                val_lindi = zarr_lindi["X"][0]
-                if val_kerchunk != val:
-                    print(f"WARNING: val_kerchunk={val_kerchunk} != val={val}")
-                if val_lindi != val:
-                    print(f"WARNING: val_lindi={val_lindi} != val={val}")
-                if type(val_kerchunk) is not type(val):
-                    print(
-                        "WARNING: type mismatch for kerchunk:",
-                        type(val),
-                        type(val_kerchunk),
-                    )
-                if type(val_lindi) is not type(val):
-                    print("WARNING: type mismatch for lindi:", type(val), type(val_lindi))
-                print("")
-                x = store_lindi.to_reference_file_system()  # noqa: F841
-            finally:
-                store_lindi.close()
+            with LindiH5Store.from_file(
+                filename, url=filename
+            ) as store:  # set url so that a reference file system can be created
+                rfs = store.to_reference_file_system()
+                client = LindiClient.from_reference_file_system(rfs)
+                h5f = h5py.File(filename, "r")
+                X1 = h5f["X"]
+                assert isinstance(X1, h5py.Dataset)
+                X2 = client["X"]
+                assert isinstance(X2, LindiDataset)
+                if not _check_equal(X1[()], X2[()]):
+                    print(f"WARNING: {X1} ({type(X1)}) != {X2} ({type(X2)})")
+
+
+def _check_equal(a, b):
+    # allow comparison of bytes and strings
+    if isinstance(a, str):
+        a = a.encode()
+    if isinstance(b, str):
+        b = b.encode()
+
+    if type(a) != type(b):  # noqa: E721
+        return False
+
+    if isinstance(a, np.ndarray):
+        assert isinstance(b, np.ndarray)
+        return _check_arrays_equal(a, b)
+
+    return a == b
+
+
+def _check_arrays_equal(a: np.ndarray, b: np.ndarray):
+    # If it's an array of strings, we convert to an array of bytes
+    if a.dtype == object:
+        # need to modify all the entries
+        a = np.array([x.encode() if type(x) is str else x for x in a.ravel()]).reshape(
+            a.shape
+        )
+    if b.dtype == object:
+        b = np.array([x.encode() if type(x) is str else x for x in b.ravel()]).reshape(
+            b.shape
+        )
+    # if this is numeric data we need to use allclose so that we can handle NaNs
+    if np.issubdtype(a.dtype, np.number):
+        return np.allclose(a, b, equal_nan=True)
+    else:
+        return np.array_equal(a, b)
 
 
 def test_numpy_array():
-    print("Testing numpy array")
-    X1 = (np.arange(60).reshape(3, 20), (3, 7))
-    X2 = (np.arange(60).reshape(3, 20), None)
-    for array, chunks in [X1, X2]:
+    X1 = ("1", np.arange(60).reshape(3, 20), (3, 7))
+    X2 = ("2", np.arange(60).reshape(3, 20), None)
+    for label, array, chunks in [X1, X2]:
+        print(f"Testing numpy array {label}")
         with tempfile.TemporaryDirectory() as tmpdir:
             filename = f"{tmpdir}/test.h5"
             with h5py.File(filename, "w") as f:
                 f.create_dataset("X", data=array, chunks=chunks)
-            zarr_kerchunk, store_kerchunk = _get_kerchunk_zarr(filename)
-            array_kerchunk = zarr_kerchunk["X"][:]
-            assert isinstance(array_kerchunk, np.ndarray)
-            zarr_lindi, store_lindi = _get_lindi_zarr(filename)
-            array_lindi = zarr_lindi["X"][:]
-            assert isinstance(array_lindi, np.ndarray)
-            if not np.array_equal(array_kerchunk, array):
-                print("WARNING: array_kerchunk does not match array")
-                print(array_kerchunk)
-                print(array)
-            if not np.array_equal(array_lindi, array):
-                print("WARNING: array_lindi does not match array")
-                print(array_lindi)
-                print(array)
-            x = store_lindi.to_reference_file_system()  # noqa: F841
+            with LindiH5Store.from_file(
+                filename, url=filename
+            ) as store:  # set url so that a reference file system can be created
+                rfs = store.to_reference_file_system()
+                client = LindiClient.from_reference_file_system(rfs)
+                h5f = h5py.File(filename, "r")
+                X1 = h5f["X"]
+                assert isinstance(X1, h5py.Dataset)
+                X2 = client["X"]
+                assert isinstance(X2, LindiDataset)
+                if not _check_equal(X1[:], X2[:]):
+                    print("WARNING. Arrays are not equal")
+                    print(X1[:])
+                    print(X2[:])
 
 
 def test_numpy_array_of_strings():
@@ -70,48 +91,63 @@ def test_numpy_array_of_strings():
         filename = f"{tmpdir}/test.h5"
         with h5py.File(filename, "w") as f:
             f.create_dataset("X", data=["abc", "def", "ghi"])
-        zarr_kerchunk, store_kerchunk = _get_kerchunk_zarr(filename)
-        array_kerchunk = zarr_kerchunk["X"][:]
-        assert isinstance(array_kerchunk, np.ndarray)
-        zarr_lindi, store_lindi = _get_lindi_zarr(filename)
-        array_lindi = zarr_lindi["X"][:]
-        assert isinstance(array_lindi, np.ndarray)
-        if not np.array_equal(array_kerchunk, ["abc", "def", "ghi"]):
-            print("WARNING: array_kerchunk does not match array")
-            print(array_kerchunk)
-            print(["abc", "def", "ghi"])
-        if not np.array_equal(array_lindi, ["abc", "def", "ghi"]):
-            print("WARNING: array_lindi does not match array")
-            print(array_lindi)
-            print(["abc", "def", "ghi"])
-        x = store_lindi.to_reference_file_system()  # noqa: F841
+        h5f = h5py.File(filename, "r")
+        with LindiH5Store.from_file(filename, url=filename) as store:
+            rfs = store.to_reference_file_system()
+            client = LindiClient.from_reference_file_system(rfs)
+            X1 = h5f["X"]
+            assert isinstance(X1, h5py.Dataset)
+            X2 = client["X"]
+            assert isinstance(X2, LindiDataset)
+            if not _check_equal(X1[:], X2[:]):
+                print("WARNING. Arrays are not equal")
+                print(X1[:])
+                print(X2[:])
 
 
-def _get_lindi_zarr(filename):
-    store = LindiH5Store.from_file(filename, url='.')  # use url='.' so that a reference file system can be created
-    root = zarr.open(store)
-    return root, store
-
-
-def _get_kerchunk_zarr(filename):
-    with h5py.File(filename, "r") as f:
-        h5chunks = kerchunk.hdf.SingleHdf5ToZarr(
-            f,
-            url=filename,
-            hdmf_mode=True,
-            num_chunks_per_dataset_threshold=1000,
-            max_num_items=1000,
-        )
-        a = h5chunks.translate()
-        with open("test_example.zarr.json", "w") as store:
-            json.dump(a, store, indent=2)
-        fs = ReferenceFileSystem(a)
-        store0 = fs.get_mapper(root="/", check=False)
-        root = zarr.open(store0)
-        return root, store0
+def test_attributes():
+    print("Testing attributes")
+    with tempfile.TemporaryDirectory() as tmpdir:
+        filename = f"{tmpdir}/test.h5"
+        with h5py.File(filename, "w") as f:
+            f.create_dataset("X", data=[1, 2, 3])
+            f["X"].attrs["foo"] = "bar"
+            f["X"].attrs["baz"] = 3.14
+            f.create_group("group")
+            f["group"].attrs["foo"] = "bar2"
+            f["group"].attrs["baz"] = 3.15
+        h5f = h5py.File(filename, "r")
+        with LindiH5Store.from_file(filename, url=filename) as store:
+            rfs = store.to_reference_file_system()
+            client = LindiClient.from_reference_file_system(rfs)
+            X1 = h5f["X"]
+            assert isinstance(X1, h5py.Dataset)
+            X2 = client["X"]
+            assert isinstance(X2, LindiDataset)
+            if X1.attrs["foo"] != X2.attrs["foo"]:
+                print("WARNING. Attributes are not equal")
+                print(X1.attrs["foo"])
+                print(X2.attrs["foo"])
+            if X1.attrs["baz"] != X2.attrs["baz"]:
+                print("WARNING. Attributes are not equal")
+                print(X1.attrs["baz"])
+                print(X2.attrs["baz"])
+            group1 = h5f["group"]
+            assert isinstance(group1, h5py.Group)
+            group2 = client["group"]
+            assert isinstance(group2, LindiGroup)
+            if group1.attrs["foo"] != group2.attrs["foo"]:
+                print("WARNING. Attributes are not equal")
+                print(group1.attrs["foo"])
+                print(group2.attrs["foo"])
+            if group1.attrs["baz"] != group2.attrs["baz"]:
+                print("WARNING. Attributes are not equal")
+                print(group1.attrs["baz"])
+                print(group2.attrs["baz"])
 
 
 if __name__ == "__main__":
     test_scalar_dataset()
     test_numpy_array()
     test_numpy_array_of_strings()
+    test_attributes()

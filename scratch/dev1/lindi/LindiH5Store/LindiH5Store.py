@@ -415,7 +415,7 @@ class LindiH5Store(Store):
                     if isinstance(subitem, h5py.Group):
                         _process_group(_join(key, k), subitem)
                     elif isinstance(subitem, h5py.Dataset):
-                        subkey = f"{key}/{k}"
+                        subkey = _join(key, k)
                         zattrs_bytes = self.get(f"{subkey}/.zattrs")
                         assert zattrs_bytes is not None
                         _add_ref(f"{subkey}/.zattrs", zattrs_bytes)
