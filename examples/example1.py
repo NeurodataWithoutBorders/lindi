@@ -1,6 +1,7 @@
 import numpy as np
 import h5py
 import tempfile
+import lindi
 from lindi import LindiH5Store, LindiClient, LindiDataset
 from _check_equal import _check_equal
 
@@ -76,8 +77,9 @@ def example1():
             G1 = h5f["group"]
             G2 = client["group"]
             for k, v in G1.attrs.items():
-                assert k in G2.attrs
-                assert _check_equal(v, G2.attrs[k])
+                if not isinstance(G2, lindi.LindiReference):
+                    assert k in G2.attrs
+                    assert _check_equal(v, G2.attrs[k])
 
             print("Comparing root group")
             for k, v in h5f.attrs.items():

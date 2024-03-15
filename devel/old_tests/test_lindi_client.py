@@ -15,7 +15,9 @@ def test_lindi_client():
     for k in acquisition.keys():
         print(k)
 
-    x = client["acquisition/ElectricalSeriesAp"]["data"]
+    aa = client["acquisition/ElectricalSeriesAp"]
+    assert isinstance(aa, LindiGroup)
+    x = aa["data"]
     assert isinstance(x, LindiDataset)
 
     print(x.shape)

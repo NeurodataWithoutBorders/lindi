@@ -5,7 +5,7 @@ import zarr
 class LindiAttributes:
     def __init__(self, *, _object: Union[zarr.Group, zarr.Array]):
         self._object = _object
-    
+
     def get(self, key, default=None):
         return self._object.attrs.get(key, default)
 

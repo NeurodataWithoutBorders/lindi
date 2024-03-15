@@ -481,7 +481,7 @@ def _get_chunk_names_for_dataset(chunk_coords_shape: List[int]) -> List[str]:
         return names
 
 
-def _reformat_json(x: bytes):
+def _reformat_json(x: Union[bytes, None]) -> Union[bytes, None]:
     if x is None:
         return None
     return json.dumps(json.loads(x.decode("utf-8"))).encode("utf-8")

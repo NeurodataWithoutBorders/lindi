@@ -11,6 +11,7 @@ numcodecs = "^0.12.1"
 zarr = "^2.16.1"
 h5py = "^3.10.0"
 remfile = "^0.1.9"
+fsspec = "^2023.12.2"
 
 [tool.poetry.dev-dependencies]
 pytest = "^7.4.4"
