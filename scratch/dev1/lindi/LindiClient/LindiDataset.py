@@ -13,6 +13,10 @@ class LindiDataset:
         self._external_hdf5_clients: Dict[str, h5py.File] = {}
 
     @property
+    def name(self):
+        return self._zarr_array.name
+
+    @property
     def attrs(self):
         """Attributes attached to this object"""
         return LindiAttributes(_object=self._zarr_array)
@@ -74,7 +78,7 @@ class LindiDataset:
         if self.ndim == 0:
             # make sure selection is ()
             if selection != ():
-                raise TypeError("Scalar dataset")
+                raise TypeError(f'Cannot slice a scalar dataset with {selection}')
             return self._zarr_array[0]
         return self._zarr_array[selection]
 

@@ -16,7 +16,7 @@ def _read_bytes(file: IO, offset: int, count: int):
 
 def _get_chunk_byte_range(h5_dataset: h5py.Dataset, chunk_coords: tuple) -> tuple:
     """Get the byte range in the file for a chunk of an h5py dataset.
-    
+
     This involves some low-level functions from the h5py library. First we need
     to get the chunk index. Then we call _get_chunk_byte_range_for_chunk_index.
     """

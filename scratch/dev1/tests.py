@@ -113,6 +113,9 @@ def test_attributes():
             f.create_dataset("X", data=[1, 2, 3])
             f["X"].attrs["foo"] = "bar"
             f["X"].attrs["baz"] = 3.14
+            f["X"].attrs["qux"] = [1, 2, 3]
+            f["X"].attrs["quux"] = {"a": 1, "b": 2, "c": 3}
+            f["X"].attrs["corge"] = np.int32(5)
             f.create_group("group")
             f["group"].attrs["foo"] = "bar2"
             f["group"].attrs["baz"] = 3.15

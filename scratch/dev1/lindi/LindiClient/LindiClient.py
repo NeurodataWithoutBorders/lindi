@@ -1,6 +1,8 @@
+from typing import Union
 import json
 import tempfile
 from altair import Literal
+from fsspec import FSMap
 import zarr
 import urllib.request
 from fsspec.implementations.reference import ReferenceFileSystem
@@ -18,10 +20,10 @@ class LindiClient(LindiGroup):
         super().__init__(_zarr_group=self._zarr_group)
 
     @staticmethod
-    def from_zarr_store(zarr_store: Store) -> "LindiClient":
+    def from_zarr_store(zarr_store: Union[Store, FSMap]) -> "LindiClient":
         zarr_group = zarr.open(store=zarr_store, mode="r")
         assert isinstance(zarr_group, zarr.Group)
-        return LindiClient(_zarr_group=zarr_group)
+        return LindiClient.from_zarr_group(zarr_group)
 
     @staticmethod
     def from_file(
@@ -49,9 +51,7 @@ class LindiClient(LindiGroup):
     @staticmethod
     def from_reference_file_system(data: dict) -> "LindiClient":
         fs = ReferenceFileSystem(data).get_mapper(root="/")
-        zarr_group = zarr.open(store=fs, mode="r")
-        assert isinstance(zarr_group, zarr.Group)
-        return LindiClient.from_zarr_group(zarr_group)
+        return LindiClient.from_zarr_store(fs)
 
 
 def _download_file(url: str, filename: str) -> None:

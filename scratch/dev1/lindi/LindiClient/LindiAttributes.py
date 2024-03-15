@@ -5,15 +5,18 @@ import zarr
 class LindiAttributes:
     def __init__(self, *, _object: Union[zarr.Group, zarr.Array]):
         self._object = _object
+    
+    def get(self, key, default=None):
+        return self._object.attrs.get(key, default)
 
     def __getitem__(self, key):
         return self._object.attrs[key]
 
     def __setitem__(self, key, value):
-        raise Exception("Read-only")
+        raise KeyError("Cannot set attributes on read-only object")
 
     def __delitem__(self, key):
-        raise Exception("Read-only")
+        raise KeyError("Cannot delete attributes on read-only object")
 
     def __iter__(self):
         return iter(self._object.attrs)

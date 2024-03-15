@@ -15,6 +15,10 @@ class LindiGroup:
     def keys(self):
         return self._zarr_group.keys()
 
+    @property
+    def name(self):
+        return self._zarr_group.name
+
     def __getitem__(self, key):
         if key in self._zarr_group.keys():
             x = self._zarr_group[key]
