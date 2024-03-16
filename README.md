@@ -56,7 +56,7 @@ with pynwb.NWBHDF5IO(file=client, mode="r") as io:
     print(nwbfile)
 ```
 
-The idea is that you would then be able to augment, mix, and merge the reference file system JSON files, create NWB files that can involve chunk data from multiple sources.
+The idea is that you would then be able to augment, mix, and merge the reference file system JSON files, creating NWB files that can involve chunk data from multiple sources.
 
 ## License
 
