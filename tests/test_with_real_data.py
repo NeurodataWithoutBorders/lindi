@@ -298,5 +298,5 @@ def test_with_real_data():
         for k in top_level_keys:
             assert k in top_level_keys_2
 
-        root = zarr.open(store)
+        root = zarr.open(store, mode="r")
         _hdf5_visit_items(h5f, lambda key, item: _compare_item_2(item, root[key]))

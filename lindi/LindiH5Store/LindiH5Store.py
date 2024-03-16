@@ -54,10 +54,9 @@ class LindiH5Store(Store):
         self._opts = _opts
 
         # Some datasets do not correspond to traditional chunked datasets. For
-        # those datasets, we need to store the inline data so that we can
-        # return it when the chunk is requested. We store the inline data in a
-        # dictionary with the dataset name as the key. The values are of type
-        # bytes.
+        # those datasets, we need to store the inline data so that we can return
+        # it when the chunk is requested. We store the inline data in a
+        # dictionary with the dataset name as the key. The values are the bytes.
         self._inline_data_for_arrays: Dict[str, bytes] = {}
 
         self._external_array_links: Dict[str, Union[dict, None]] = {}
@@ -114,7 +113,9 @@ class LindiH5Store(Store):
         key_name = parts[-1]
         key_parent = "/".join(parts[:-1])
         if key_name == ".zattrs":
-            # Get the attributes of a group or dataset
+            # Get the attributes of a group or dataset. We return this even if
+            # it is empty, but we exclude it when writing out the reference file
+            # system.
             return self._get_zattrs_bytes(key_parent)
         elif key_name == ".zgroup":
             # Get the .zgroup JSON text for a group
@@ -138,16 +139,27 @@ class LindiH5Store(Store):
         key_parent = "/".join(parts[:-1])
         if key_name == ".zattrs":
             h5_item = _get_h5_item(self._h5f, key_parent)
-            return isinstance(h5_item, h5py.Group)
+            if not h5_item:
+                return False
+            # We always return True here even if the attributes are going to be
+            # empty, because it's not worth including the logic. But when we
+            # write out the ref file system, we exclude it there.
+            return isinstance(h5_item, h5py.Group) or isinstance(h5_item, h5py.Dataset)
         elif key_name == ".zgroup":
             h5_item = _get_h5_item(self._h5f, key_parent)
+            if not h5_item:
+                return False
             return isinstance(h5_item, h5py.Group)
         elif key_name == ".zarray":
             h5_item = _get_h5_item(self._h5f, key_parent)
+            if not h5_item:
+                return False
             return isinstance(h5_item, h5py.Dataset)
         else:
             # a chunk file
             h5_item = _get_h5_item(self._h5f, key_parent)
+            if not h5_item:
+                return False
             if not isinstance(h5_item, h5py.Dataset):
                 return False
             external_array_link = self._get_external_array_link(key_parent, h5_item)
@@ -182,6 +194,9 @@ class LindiH5Store(Store):
         if self._h5f is None:
             raise Exception("Store is closed")
         h5_item = _get_h5_item(self._h5f, parent_key)
+        assert isinstance(h5_item, h5py.Group) or isinstance(h5_item, h5py.Dataset), (
+            f"Item {parent_key} is not a group or dataset in _get_zattrs_bytes"
+        )
         # We create a dummy zarr group and copy the attributes to it. That way
         # we know that zarr has accepted them and they are serialized in the
         # correct format.
@@ -411,7 +426,9 @@ class LindiH5Store(Store):
 
         def _process_group(key, item: h5py.Group):
             if isinstance(item, h5py.Group):
-                _add_ref(_join(key, ".zattrs"), self.get(_join(key, ".zattrs")))
+                zattrs_bytes = self.get(_join(key, ".zattrs"))
+                if zattrs_bytes != b"{}":  # don't include empty zattrs
+                    _add_ref(_join(key, ".zattrs"), self.get(_join(key, ".zattrs")))
                 _add_ref(_join(key, ".zgroup"), self.get(_join(key, ".zgroup")))
                 for k in item.keys():
                     subitem = item[k]
@@ -485,6 +502,7 @@ def _get_chunk_names_for_dataset(chunk_coords_shape: List[int]) -> List[str]:
 
 
 def _reformat_json(x: Union[bytes, None]) -> Union[bytes, None]:
+    """Reformat to not include whitespace and to encode NaN, Inf, and -Inf as strings."""
     if x is None:
         return None
     a = json.loads(x.decode("utf-8"))
