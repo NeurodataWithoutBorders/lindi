@@ -46,7 +46,7 @@ rfs = store.to_reference_file_system()
 with open("example.zarr.json", "w") as f:
     json.dump(rfs, f, indent=2)
 
-# Create the client from the reference file system
+# Create the h5py-like client from the reference file system
 client = lindi.LindiClient.from_reference_file_system(rfs)
 
 # Try to read using pynwb
