@@ -6,7 +6,7 @@ LINDI is a Python library that facilitates handling NWB (Neurodata Without Borde
 
 Key features include:
 
-- A read-only [Zarr store](https://zarr.readthedocs.io/en/stable/) for HDF5 files, including NWB. In other words, a Zarr wrapper for HDF5. *(in progress)*
+- A read-only [Zarr storage backend](https://zarr.readthedocs.io/en/stable/) for HDF5 files, including NWB. In other words, a Zarr wrapper for HDF5. *(in progress)*
 - Generation of a relatively small JSON file representing the NWB Zarr store, inspired by [kerchunk](https://github.com/fsspec/kerchunk).
 - An [h5py](https://www.h5py.org/)-like interface for accessing NWB Zarr stores that can be used with [pynwb](https://pynwb.readthedocs.io/en/stable/). In other words an h5py-like wrapper for Zarr. This feature is only partially functional.
 - The ability to assemble composite NWB files that draw from multiple sources. Also not yet functional.
