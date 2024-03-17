@@ -113,8 +113,8 @@ class LindiH5Store(Store):
         key_name = parts[-1]
         key_parent = "/".join(parts[:-1])
         if key_name == ".zattrs":
-            # Get the attributes of a group or dataset. We return this even if
-            # it is empty, but we exclude it when writing out the reference file
+            # Get the attributes of a group or dataset. If it is empty, we still
+            # return it, but we exclude it when writing out the reference file
             # system.
             return self._get_zattrs_bytes(key_parent)
         elif key_name == ".zgroup":
