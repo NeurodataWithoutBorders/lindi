@@ -11,7 +11,8 @@ def test_scalar_datasets():
         with tempfile.TemporaryDirectory() as tmpdir:
             filename = f"{tmpdir}/test.h5"
             with h5py.File(filename, "w") as f:
-                f.create_dataset("X", data=val)
+                ds = f.create_dataset("X", data=val)
+                ds.attrs["foo"] = "bar"
             with LindiH5Store.from_file(
                 filename, url=filename
             ) as store:  # set url so that a reference file system can be created
@@ -25,6 +26,16 @@ def test_scalar_datasets():
                 if not _check_equal(X1[()], X2[()]):
                     print(f"WARNING: {X1} ({type(X1)}) != {X2} ({type(X2)})")
                     raise ValueError("Scalar datasets are not equal")
+                assert '.zgroup' in store
+                assert '.zarray' not in rfs['refs']
+                assert '.zarray' not in store
+                assert '.zattrs' in store  # it's in the store but not in the ref file system -- see notes in LindiH5Store source code
+                assert '.zattrs' not in rfs['refs']
+                assert 'X/.zgroup' not in store
+                assert 'X/.zattrs' in store  # foo is set to bar
+                assert store['X/.zattrs'] == rfs['refs']['X/.zattrs'].encode()
+                assert 'X/.zarray' in rfs['refs']
+                assert store['X/.zarray'] == rfs['refs']['X/.zarray'].encode()
 
 
 def test_numpy_arrays():

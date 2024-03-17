@@ -5,7 +5,7 @@ import h5py
 
 def _get_h5_item(h5f: h5py.File, key: str):
     """Get an item from the h5 file, given its key."""
-    return h5f['/' + key]
+    return h5f.get('/' + key, None)
 
 
 def _read_bytes(file: IO, offset: int, count: int):
