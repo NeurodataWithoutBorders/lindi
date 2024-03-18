@@ -39,9 +39,10 @@ def test_scalar_datasets():
 
 
 def test_numpy_arrays():
-    X1 = ("1", np.arange(60).reshape(3, 20), (3, 7))
-    X2 = ("2", np.arange(60).reshape(3, 20), None)
-    for label, array, chunks in [X1, X2]:
+    array_1 = ("1", np.arange(60).reshape(3, 20), (3, 7))
+    array_2 = ("2", np.arange(60).reshape(3, 20), None)
+    array_boolean = ("3", np.array([[True, False, True], [False, True, False]]), None)
+    for label, array, chunks in [array_1, array_2, array_boolean]:
         print(f"Testing numpy array {label}")
         with tempfile.TemporaryDirectory() as tmpdir:
             filename = f"{tmpdir}/test.h5"
