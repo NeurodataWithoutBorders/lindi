@@ -8,6 +8,7 @@ import urllib.request
 from fsspec.implementations.reference import ReferenceFileSystem
 from zarr.storage import Store
 from .LindiGroup import LindiGroup
+from .LindiReference import LindiReference
 
 
 class LindiClient(LindiGroup):
@@ -52,6 +53,32 @@ class LindiClient(LindiGroup):
     def from_reference_file_system(data: dict) -> "LindiClient":
         fs = ReferenceFileSystem(data).get_mapper(root="/")
         return LindiClient.from_zarr_store(fs)
+
+    def __getitem__(self, key):  # type: ignore
+        if isinstance(key, str):
+            if key.startswith('/'):
+                key = key[1:]
+            parts = key.split("/")
+            if len(parts) == 1:
+                return super().__getitem__(key)
+            else:
+                g = self
+                for part in parts:
+                    g = g[part]
+                return g
+        elif isinstance(key, LindiReference):
+            if key._source != '.':
+                raise Exception(f'For now, source of reference must be ".", got "{key._source}"')
+            if key._source_object_id is not None:
+                if key._source_object_id != self._zarr_group.attrs.get("object_id"):
+                    raise Exception(f'Mismatch in source object_id: "{key._source_object_id}" and "{self._zarr_group.attrs.get("object_id")}"')
+            target = self[key._path]
+            if key._object_id is not None:
+                if key._object_id != target.attrs.get("object_id"):
+                    raise Exception(f'Mismatch in object_id: "{key._object_id}" and "{target.attrs.get("object_id")}"')
+            return target
+        else:
+            raise Exception(f'Cannot use key "{key}" of type "{type(key)}" to index into a LindiClient')
 
 
 def _download_file(url: str, filename: str) -> None:

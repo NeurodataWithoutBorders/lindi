@@ -26,12 +26,10 @@ class LindiGroup:
             return default
 
     def __getitem__(self, key):
-        if isinstance(key, dict):
-            # might be a reference
-            if "_REFERENCE" in key:
-                return LindiReference(key['_REFERENCE'])
         if not isinstance(key, str):
-            raise Exception(f'Cannot use key "{key}" of type "{type(key)}" to index into a LindiGroup, at path "{self._zarr_group.name}"')
+            raise Exception(
+                f'Cannot use key "{key}" of type "{type(key)}" to index into a LindiGroup, at path "{self._zarr_group.name}"'
+            )
         if key in self._zarr_group.keys():
             x = self._zarr_group[key]
             if isinstance(x, zarr.Group):
@@ -46,21 +44,3 @@ class LindiGroup:
     def __iter__(self):
         for k in self.keys():
             yield k
-
-
-class LindiReference:
-    def __init__(self, obj: dict):
-        self._object_id = obj["object_id"]
-        self._path = obj["path"]
-        self._source = obj["source"]
-        self._source_object_id = obj["source_object_id"]
-
-    @property
-    def name(self):
-        return self._path
-
-    def __repr__(self):
-        return f"LindiReference({self._source}, {self._path})"
-
-    def __str__(self):
-        return f"LindiReference({self._source}, {self._path})"

@@ -1,5 +1,6 @@
 from typing import Union
 import zarr
+from .LindiReference import LindiReference
 
 
 class LindiAttributes:
@@ -10,6 +11,9 @@ class LindiAttributes:
         return self._object.attrs.get(key, default)
 
     def __getitem__(self, key):
+        val = self._object.attrs[key]
+        if isinstance(val, dict) and "_REFERENCE" in val:
+            return LindiReference(val["_REFERENCE"])
         return self._object.attrs[key]
 
     def __setitem__(self, key, value):

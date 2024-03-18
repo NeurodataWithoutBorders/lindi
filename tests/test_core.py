@@ -1,7 +1,7 @@
 import numpy as np
 import h5py
 import tempfile
-from lindi import LindiH5Store, LindiClient, LindiDataset, LindiGroup
+from lindi import LindiH5Store, LindiClient, LindiDataset, LindiGroup, LindiReference
 import pytest
 
 
@@ -221,6 +221,69 @@ def test_nan_inf_attr():
             assert X2.attrs["nan"] == 'NaN'
             assert X2.attrs["inf"] == 'Infinity'
             assert X2.attrs["ninf"] == '-Infinity'
+
+
+def test_reference_attributes():
+    print("Testing reference attributes")
+    with tempfile.TemporaryDirectory() as tmpdir:
+        filename = f"{tmpdir}/test.h5"
+        with h5py.File(filename, "w") as f:
+            X_ds = f.create_dataset("X", data=[1, 2, 3])
+            Y_ds = f.create_dataset("Y", data=[4, 5, 6])
+            X_ds.attrs["ref"] = Y_ds.ref
+        h5f = h5py.File(filename, "r")
+        with LindiH5Store.from_file(filename, url=filename) as store:
+            rfs = store.to_reference_file_system()
+            client = LindiClient.from_reference_file_system(rfs)
+
+            X1 = h5f["X"]
+            assert isinstance(X1, h5py.Dataset)
+            X2 = client["X"]
+            assert isinstance(X2, LindiDataset)
+
+            ref1 = X1.attrs["ref"]
+            assert isinstance(ref1, h5py.Reference)
+            ref2 = X2.attrs["ref"]
+            assert isinstance(ref2, LindiReference)
+
+            target1 = h5f[ref1]
+            assert isinstance(target1, h5py.Dataset)
+            target2 = client[ref2]
+            assert isinstance(target2, LindiDataset)
+
+            assert _check_equal(target1[:], target2[:])
+
+
+def test_reference_in_compound_dtype():
+    print("Testing reference in dataset with compound dtype")
+    with tempfile.TemporaryDirectory() as tmpdir:
+        filename = f"{tmpdir}/test.h5"
+        with h5py.File(filename, "w") as f:
+            compound_dtype = np.dtype([("x", "i4"), ("y", h5py.special_dtype(ref=h5py.Reference))])
+            Y_ds = f.create_dataset("Y", data=[1, 2, 3])
+            f.create_dataset("X", data=[(1, Y_ds.ref), (2, Y_ds.ref)], dtype=compound_dtype)
+        h5f = h5py.File(filename, "r")
+        with LindiH5Store.from_file(filename, url=filename) as store:
+            rfs = store.to_reference_file_system()
+            client = LindiClient.from_reference_file_system(rfs)
+
+            X1 = h5f["X"]
+            assert isinstance(X1, h5py.Dataset)
+            X2 = client["X"]
+            assert isinstance(X2, LindiDataset)
+
+            assert _check_equal(X1["x"][:], X2["x"][:])
+            ref1 = X1["y"][0]
+            assert isinstance(ref1, h5py.Reference)
+            ref2 = X2["y"][0]
+            assert isinstance(ref2, LindiReference)
+
+            target1 = h5f[ref1]
+            assert isinstance(target1, h5py.Dataset)
+            target2 = client[ref2]
+            assert isinstance(target2, LindiDataset)
+
+            assert _check_equal(target1[:], target2[:])
 
 
 def _check_equal(a, b):

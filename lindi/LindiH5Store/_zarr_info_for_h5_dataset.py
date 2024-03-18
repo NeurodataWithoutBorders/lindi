@@ -7,6 +7,7 @@ import numcodecs
 import h5py
 from numcodecs.abc import Codec
 from ._h5_filters_to_codecs import _h5_filters_to_codecs
+from ._h5_attr_to_zarr_attr import _h5_ref_to_zarr_attr
 
 
 @dataclass
@@ -111,17 +112,13 @@ def _zarr_info_for_h5_dataset(h5_dataset: h5py.Dataset) -> ZarrInfoForH5Dataset:
             object_codec = numcodecs.JSON()
             data = h5_dataset[:]
             data_vec_view = data.ravel()
-            _warning_reference_in_dataset_printed = False
             for i, val in enumerate(data_vec_view):
                 if isinstance(val, bytes):
                     data_vec_view[i] = val.decode()
                 elif isinstance(val, str):
                     data_vec_view[i] = val
-                elif isinstance(val, h5py.h5r.Reference):
-                    if not _warning_reference_in_dataset_printed:
-                        print(f'Warning: reference in dataset {h5_dataset.name} not handled')
-                        _warning_reference_in_dataset_printed = True
-                    data_vec_view[i] = None
+                elif isinstance(val, h5py.Reference):
+                    data_vec_view[i] = _h5_ref_to_zarr_attr(val, label=f'{h5_dataset.name}[{i}]', h5f=h5_dataset.file)
                 else:
                     raise Exception(f'Cannot handle dataset {h5_dataset.name} with dtype {dtype} and shape {shape}')
             inline_data = json.dumps(data.tolist() + ['|O', list(shape)], separators=(',', ':')).encode('utf-8')
@@ -137,25 +134,20 @@ def _zarr_info_for_h5_dataset(h5_dataset: h5py.Dataset) -> ZarrInfoForH5Dataset:
         elif dtype.kind in 'SU':  # byte string or unicode string
             raise Exception(f'Not yet implemented (2): dataset {h5_dataset.name} with dtype {dtype} and shape {shape}')
         elif dtype.kind == 'V':  # void (i.e. compound)
-            # This is an array representing the compound type
-            # For example: [['x', 'uint32'], ['y', 'uint32'], ['weight', 'float32']]
-            compound_dtype = [
-                [name, str(dtype[name])]
-                for name in dtype.names
-            ]
             if h5_dataset.ndim == 1:
                 # for now we only handle the case of a 1D compound dataset
                 data = h5_dataset[:]
                 # Create an array that would be for example like this
-                # [[3, 4, 5.3], [2, 1, 7.1], ...]
+                # dtype = np.dtype([('x', np.float64), ('y', np.int32), ('weight', np.float64)])
+                # array_list = [[3, 4, 5.3], [2, 1, 7.1], ...]
                 # where the first entry corresponds to x in the example above, the second to y, and the third to weight
                 # This is a more compact representation than [{'x': ...}]
                 # The _COMPOUND_DTYPE attribute will be set on the dataset in the zarr store
                 # which will be used to interpret the data
                 array_list = [
                     [
-                        _json_serialize(data[name][i], type_str)
-                        for name, type_str in compound_dtype
+                        _json_serialize(data[name][i], dtype[name], h5_dataset)
+                        for name in dtype.names
                     ]
                     for i in range(h5_dataset.shape[0])
                 ]
@@ -177,15 +169,21 @@ def _zarr_info_for_h5_dataset(h5_dataset: h5py.Dataset) -> ZarrInfoForH5Dataset:
             raise Exception(f'Not yet implemented (3): dataset {h5_dataset.name} with dtype {dtype} and shape {shape}')
 
 
-def _json_serialize(val: Any, type_str: str) -> Any:
-    if type_str.startswith('uint'):
+def _json_serialize(val: Any, dtype: np.dtype, h5_dataset: h5py.Dataset) -> Any:
+    if dtype.kind in ['i', 'u']:  # integer, unsigned integer
         return int(val)
-    elif type_str.startswith('int'):
-        return int(val)
-    elif type_str.startswith('float'):
+    elif dtype.kind == 'f':  # float
         return float(val)
+    elif dtype.kind == 'b':  # boolean
+        return bool(val)
+    elif dtype.kind == 'S':  # byte string
+        return val.decode()
+    elif dtype.kind == 'U':  # unicode string
+        return val
+    elif dtype == h5py.Reference:
+        return _h5_ref_to_zarr_attr(val, label=f'{h5_dataset.name}', h5f=h5_dataset.file)
     else:
-        raise Exception(f'Unable to serialize {val} with type {type_str}')
+        raise Exception(f'Cannot serialize item {val} with dtype {dtype} when serializing dataset {h5_dataset.name} with compound dtype.')
 
 
 def _get_numeric_format_str(dtype: Any) -> Union[str, None]:

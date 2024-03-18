@@ -8,7 +8,7 @@ from numcodecs.abc import Codec
 # https://github.com/fsspec/kerchunk
 # Copyright (c) 2020 Intake
 # MIT License
-def _h5_filters_to_codecs(h5obj: h5py.Dataset) -> Union[List[Codec], None]:
+def _h5_filters_to_codecs_kerchunk(h5obj: h5py.Dataset) -> Union[List[Codec], None]:
     """Decode HDF5 filters to numcodecs filters."""
     if h5obj.scaleoffset:
         raise RuntimeError(

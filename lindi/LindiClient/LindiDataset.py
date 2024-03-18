@@ -4,6 +4,7 @@ import zarr
 import h5py
 import remfile
 from .LindiAttributes import LindiAttributes
+from .LindiReference import LindiReference
 
 
 class LindiDataset:
@@ -98,7 +99,11 @@ class LindiDataset:
                 # Find the index of this field in the compound dtype
                 ind = self._compound_dtype.names.index(selection)
                 # Get the dtype of this field
-                dtype = np.dtype(self._compound_dtype[ind])
+                dt = self._compound_dtype[ind]
+                if dt == 'object':
+                    dtype = h5py.Reference
+                else:
+                    dtype = np.dtype(dt)
                 # Return a new object that can be sliced further
                 # It's important that the return type is Any here, because otherwise we get linter problems
                 ret: Any = LindiDatasetCompoundFieldSelection(
@@ -144,6 +149,9 @@ class LindiDatasetCompoundFieldSelection:
         # Prepare the data in memory
         za = self._dataset._zarr_array
         d = [za[i][self._ind] for i in range(len(za))]
+        if self._dtype == h5py.Reference:
+            # Convert to LindiReference
+            d = [LindiReference(x['_REFERENCE']) for x in d]
         self._data = np.array(d, dtype=self._dtype)
 
     def __len__(self):
