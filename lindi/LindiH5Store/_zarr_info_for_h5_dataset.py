@@ -6,8 +6,8 @@ import numpy as np
 import numcodecs
 import h5py
 from numcodecs.abc import Codec
-from ._h5_filters_to_codecs import _h5_filters_to_codecs
 from ._h5_attr_to_zarr_attr import _h5_ref_to_zarr_attr
+from ._h5_filters_to_codecs import _h5_filters_to_codecs
 
 
 @dataclass
