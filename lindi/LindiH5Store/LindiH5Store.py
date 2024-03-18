@@ -209,6 +209,13 @@ class LindiH5Store(Store):
         if isinstance(h5_item, h5py.Dataset):
             if h5_item.ndim == 0:
                 dummy_group.attrs["_SCALAR"] = True
+            if h5_item.dtype.kind == "V":  # compound type
+                compound_dtype = [
+                    [name, str(h5_item.dtype[name])]
+                    for name in h5_item.dtype.names
+                ]
+                # For example: [['x', 'uint32'], ['y', 'uint32'], ['weight', 'float32']]
+                dummy_group.attrs["_COMPOUND_DTYPE"] = compound_dtype
             external_array_link = self._get_external_array_link(parent_key, h5_item)
             if external_array_link is not None:
                 dummy_group.attrs["_EXTERNAL_ARRAY_LINK"] = external_array_link
@@ -506,7 +513,7 @@ def _reformat_json(x: Union[bytes, None]) -> Union[bytes, None]:
     if x is None:
         return None
     a = json.loads(x.decode("utf-8"))
-    return json.dumps(a, cls=FloatJSONEncoder).encode("utf-8")
+    return json.dumps(a, cls=FloatJSONEncoder, separators=(",", ":")).encode("utf-8")
 
 
 # From https://github.com/rly/h5tojson/blob/b162ff7f61160a48f1dc0026acb09adafdb422fa/h5tojson/h5tojson.py#L121-L156

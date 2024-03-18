@@ -99,6 +99,39 @@ def test_numpy_array_of_strings():
                 raise ValueError("Arrays are not equal")
 
 
+def test_compound_dtype():
+    print("Testing compound dtype")
+    with tempfile.TemporaryDirectory() as tmpdir:
+        filename = f"{tmpdir}/test.h5"
+        with h5py.File(filename, "w") as f:
+            dt = np.dtype([("x", "i4"), ("y", "f8")])
+            f.create_dataset("X", data=[(1, 3.14), (2, 6.28)], dtype=dt)
+        h5f = h5py.File(filename, "r")
+        store = LindiH5Store.from_file(filename, url=filename)
+        rfs = store.to_reference_file_system()
+        client = LindiClient.from_reference_file_system(rfs)
+        X1 = h5f["X"]
+        assert isinstance(X1, h5py.Dataset)
+        X2 = client["X"]
+        assert isinstance(X2, LindiDataset)
+        assert X1.shape == X2.shape
+        assert X1.dtype == X2.dtype
+        assert X1.size == X2.size
+        # assert X1.nbytes == X2.nbytes  # nbytes are not going to match because the internal representation is different
+        assert len(X1) == len(X2)
+        if not _check_equal(X1['x'][:], X2['x'][:]):
+            print("WARNING. Arrays for x are not equal")
+            print(X1['x'][:])
+            print(X2['x'][:])
+            raise ValueError("Arrays are not equal")
+        if not _check_equal(X1['y'][:], X2['y'][:]):
+            print("WARNING. Arrays for y are not equal")
+            print(X1['y'][:])
+            print(X2['y'][:])
+            raise ValueError("Arrays are not equal")
+        store.close()
+
+
 def test_attributes():
     print("Testing attributes")
     with tempfile.TemporaryDirectory() as tmpdir:

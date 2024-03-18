@@ -1,4 +1,5 @@
-from typing import Dict
+from typing import Dict, Any
+import numpy as np
 import zarr
 import h5py
 import remfile
@@ -9,6 +10,17 @@ class LindiDataset:
     def __init__(self, *, _zarr_array: zarr.Array):
         self._zarr_array = _zarr_array
         self._is_scalar = self._zarr_array.attrs.get("_SCALAR", False)
+
+        # See if we have the _COMPOUND_DTYPE attribute, which signifies that
+        # this is a compound dtype
+        compound_dtype_obj = self._zarr_array.attrs.get("_COMPOUND_DTYPE", None)
+        if compound_dtype_obj is not None:
+            # If we have a compound dtype, then create the numpy dtype
+            self._compound_dtype = np.dtype(
+                [(compound_dtype_obj[i][0], compound_dtype_obj[i][1]) for i in range(len(compound_dtype_obj))]
+            )
+        else:
+            self._compound_dtype = None
 
         self._external_hdf5_clients: Dict[str, h5py.File] = {}
 
@@ -35,6 +47,8 @@ class LindiDataset:
 
     @property
     def dtype(self):
+        if self._compound_dtype is not None:
+            return self._compound_dtype
         return self._zarr_array.dtype
 
     @property
@@ -74,6 +88,28 @@ class LindiDataset:
                     dataset = client[name]
                     assert isinstance(dataset, h5py.Dataset)
                     return dataset[selection]
+        if self._compound_dtype is not None:
+            # Compound dtype
+            # In this case we index into the compound dtype using the name of the field
+            # For example, if the dtype is [('x', 'f4'), ('y', 'f4')], then we can do
+            # dataset['x'][0] to get the first x value
+            assert self._compound_dtype.names is not None
+            if isinstance(selection, str):
+                # Find the index of this field in the compound dtype
+                ind = self._compound_dtype.names.index(selection)
+                # Get the dtype of this field
+                dtype = np.dtype(self._compound_dtype[ind])
+                # Return a new object that can be sliced further
+                # It's important that the return type is Any here, because otherwise we get linter problems
+                ret: Any = LindiDatasetCompoundFieldSelection(
+                    dataset=self, ind=ind, dtype=dtype
+                )
+                return ret
+            else:
+                raise TypeError(
+                    f"Compound dataset {self.name} does not support selection with {selection}"
+                )
+
         # We use zarr's slicing, except in the case of a scalar dataset
         if self.ndim == 0:
             # make sure selection is ()
@@ -85,5 +121,53 @@ class LindiDataset:
     def _get_external_hdf5_client(self, url: str) -> h5py.File:
         if url not in self._external_hdf5_clients:
             remf = remfile.File(url)
-            self._external_hdf5_clients[url] = h5py.File(remf, 'r')
+            self._external_hdf5_clients[url] = h5py.File(remf, "r")
         return self._external_hdf5_clients[url]
+
+
+class LindiDatasetCompoundFieldSelection:
+    """
+    This class is returned when a compound dataset is indexed with a field name.
+    For example, if the dataset has dtype [('x', 'f4'), ('y', 'f4')], then we
+    can do dataset['x'][0] to get the first x value. The dataset['x'] returns an
+    object of this class.
+    """
+    def __init__(self, *, dataset: LindiDataset, ind: int, dtype: np.dtype):
+        self._dataset = dataset  # The parent dataset
+        self._ind = ind  # The index of the field in the compound dtype
+        self._dtype = dtype  # The dtype of the field
+        if self._dataset.ndim != 1:
+            # For now we only support 1D datasets
+            raise TypeError(
+                f"Compound field selection only implemented for 1D datasets, not {self._dataset.ndim}D"
+            )
+        # Prepare the data in memory
+        za = self._dataset._zarr_array
+        d = [za[i][self._ind] for i in range(len(za))]
+        self._data = np.array(d, dtype=self._dtype)
+
+    def __len__(self):
+        return self._dataset._zarr_array.shape[0]
+
+    def __iter__(self):
+        for i in range(len(self)):
+            yield self[i]
+
+    @property
+    def ndim(self):
+        return self._dataset._zarr_array.ndim
+
+    @property
+    def shape(self):
+        return self._dataset._zarr_array.shape
+
+    @property
+    def dtype(self):
+        self._dtype
+
+    @property
+    def size(self):
+        return self._data.size
+
+    def __getitem__(self, selection):
+        return self._data[selection]

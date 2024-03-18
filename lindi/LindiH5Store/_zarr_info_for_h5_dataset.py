@@ -80,7 +80,7 @@ def _zarr_info_for_h5_dataset(h5_dataset: h5py.Dataset) -> ZarrInfoForH5Dataset:
                     filters=None,
                     fill_value=' ',
                     object_codec=numcodecs.JSON(),
-                    inline_data=json.dumps([value, '|O', [1]]).encode('utf-8')
+                    inline_data=json.dumps([value, '|O', [1]], separators=(',', ':')).encode('utf-8')
                 )
             else:
                 raise Exception(f'Not yet implemented (1): object scalar dataset with value {value} and dtype {dtype}')
@@ -124,7 +124,7 @@ def _zarr_info_for_h5_dataset(h5_dataset: h5py.Dataset) -> ZarrInfoForH5Dataset:
                     data_vec_view[i] = None
                 else:
                     raise Exception(f'Cannot handle dataset {h5_dataset.name} with dtype {dtype} and shape {shape}')
-            inline_data = json.dumps(data.tolist() + ['|O', list(shape)]).encode('utf-8')
+            inline_data = json.dumps(data.tolist() + ['|O', list(shape)], separators=(',', ':')).encode('utf-8')
             return ZarrInfoForH5Dataset(
                 shape=shape,
                 chunks=shape,  # be explicit about chunks
@@ -136,8 +136,56 @@ def _zarr_info_for_h5_dataset(h5_dataset: h5py.Dataset) -> ZarrInfoForH5Dataset:
             )
         elif dtype.kind in 'SU':  # byte string or unicode string
             raise Exception(f'Not yet implemented (2): dataset {h5_dataset.name} with dtype {dtype} and shape {shape}')
+        elif dtype.kind == 'V':  # void (i.e. compound)
+            # This is an array representing the compound type
+            # For example: [['x', 'uint32'], ['y', 'uint32'], ['weight', 'float32']]
+            compound_dtype = [
+                [name, str(dtype[name])]
+                for name in dtype.names
+            ]
+            if h5_dataset.ndim == 1:
+                # for now we only handle the case of a 1D compound dataset
+                data = h5_dataset[:]
+                # Create an array that would be for example like this
+                # [[3, 4, 5.3], [2, 1, 7.1], ...]
+                # where the first entry corresponds to x in the example above, the second to y, and the third to weight
+                # This is a more compact representation than [{'x': ...}]
+                # The _COMPOUND_DTYPE attribute will be set on the dataset in the zarr store
+                # which will be used to interpret the data
+                array_list = [
+                    [
+                        _json_serialize(data[name][i], type_str)
+                        for name, type_str in compound_dtype
+                    ]
+                    for i in range(h5_dataset.shape[0])
+                ]
+                object_codec = numcodecs.JSON()
+                inline_data = array_list + ['|O', list(shape)]
+                return ZarrInfoForH5Dataset(
+                    shape=shape,
+                    chunks=shape,  # be explicit about chunks
+                    dtype='object',
+                    filters=None,
+                    fill_value=' ',  # not sure what to put here
+                    object_codec=object_codec,
+                    inline_data=json.dumps(inline_data, separators=(',', ':')).encode('utf-8')
+                )
+            else:
+                raise Exception(f'More than one dimension not supported for compound dataset {h5_dataset.name} with dtype {dtype} and shape {shape}')
         else:
+            print(dtype.kind)
             raise Exception(f'Not yet implemented (3): dataset {h5_dataset.name} with dtype {dtype} and shape {shape}')
+
+
+def _json_serialize(val: Any, type_str: str) -> Any:
+    if type_str.startswith('uint'):
+        return int(val)
+    elif type_str.startswith('int'):
+        return int(val)
+    elif type_str.startswith('float'):
+        return float(val)
+    else:
+        raise Exception(f'Unable to serialize {val} with type {type_str}')
 
 
 def _get_numeric_format_str(dtype: Any) -> Union[str, None]:
