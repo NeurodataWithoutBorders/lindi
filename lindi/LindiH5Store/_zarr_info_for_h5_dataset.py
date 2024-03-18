@@ -88,8 +88,8 @@ def _zarr_info_for_h5_dataset(h5_dataset: h5py.Dataset) -> ZarrInfoForH5Dataset:
             raise Exception(f'Cannot handle scalar dataset {h5_dataset.name} with dtype {dtype}')
     else:
         # not a scalar dataset
-        if dtype.kind in ['i', 'u', 'f']:  # integer, unsigned integer, float
-            # This is the normal case of a chunked dataset with a numeric dtype
+        if dtype.kind in ['i', 'u', 'f', 'b']:  # integer, unsigned integer, float, boolean
+            # This is the normal case of a chunked dataset with a numeric (or boolean) dtype
             filters = _h5_filters_to_codecs(h5_dataset)
             chunks = h5_dataset.chunks
             if chunks is None:
