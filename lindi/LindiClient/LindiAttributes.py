@@ -8,7 +8,10 @@ class LindiAttributes:
         self._object = _object
 
     def get(self, key, default=None):
-        return self._object.attrs.get(key, default)
+        try:
+            return self[key]
+        except KeyError:
+            return default
 
     def __getitem__(self, key):
         val = self._object.attrs[key]

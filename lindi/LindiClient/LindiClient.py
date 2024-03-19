@@ -18,7 +18,11 @@ class LindiClient(LindiGroup):
         _zarr_group: zarr.Group,
     ) -> None:
         self._zarr_group = _zarr_group
-        super().__init__(_zarr_group=self._zarr_group)
+        super().__init__(_zarr_group=self._zarr_group, _client=self)
+
+    @property
+    def filename(self):
+        return ''
 
     @staticmethod
     def from_zarr_store(zarr_store: Union[Store, FSMap]) -> "LindiClient":
@@ -51,8 +55,21 @@ class LindiClient(LindiGroup):
 
     @staticmethod
     def from_reference_file_system(data: dict) -> "LindiClient":
-        fs = ReferenceFileSystem(data).get_mapper(root="/")
+        fs = ReferenceFileSystem(data).get_mapper(root="")
         return LindiClient.from_zarr_store(fs)
+
+    def get(self, key, default=None, getlink: bool = False):
+        try:
+            ret = self[key]
+        except KeyError:
+            ret = default
+        if getlink:
+            return ret
+        else:
+            if isinstance(ret, LindiReference):
+                return self[ret]
+            else:
+                return ret
 
     def __getitem__(self, key):  # type: ignore
         if isinstance(key, str):

@@ -4,8 +4,17 @@ from .LindiDataset import LindiDataset
 
 
 class LindiGroup:
-    def __init__(self, *, _zarr_group: zarr.Group):
+    def __init__(self, *, _zarr_group: zarr.Group, _client):
         self._zarr_group = _zarr_group
+        self._client = _client
+
+    @property
+    def file(self):
+        return self._client
+
+    @property
+    def id(self):
+        return None
 
     @property
     def attrs(self):
@@ -33,9 +42,9 @@ class LindiGroup:
         if key in self._zarr_group.keys():
             x = self._zarr_group[key]
             if isinstance(x, zarr.Group):
-                return LindiGroup(_zarr_group=x)
+                return LindiGroup(_zarr_group=x, _client=self._client)
             elif isinstance(x, zarr.Array):
-                return LindiDataset(_zarr_array=x)
+                return LindiDataset(_zarr_array=x, _client=self._client)
             else:
                 raise Exception(f"Unknown type: {type(x)}")
         else:

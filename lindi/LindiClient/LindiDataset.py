@@ -8,9 +8,10 @@ from .LindiReference import LindiReference
 
 
 class LindiDataset:
-    def __init__(self, *, _zarr_array: zarr.Array):
+    def __init__(self, *, _zarr_array: zarr.Array, _client):
         self._zarr_array = _zarr_array
         self._is_scalar = self._zarr_array.attrs.get("_SCALAR", False)
+        self._client = _client
 
         # See if we have the _COMPOUND_DTYPE attribute, which signifies that
         # this is a compound dtype
@@ -24,6 +25,14 @@ class LindiDataset:
             self._compound_dtype = None
 
         self._external_hdf5_clients: Dict[str, h5py.File] = {}
+
+    @property
+    def file(self):
+        return self._client
+
+    @property
+    def id(self):
+        return None
 
     @property
     def name(self):
