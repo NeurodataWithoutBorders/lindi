@@ -3,11 +3,11 @@ import numpy as np
 import zarr
 import h5py
 import remfile
-from .LindiAttributes import LindiAttributes
-from .LindiReference import LindiReference
+from .LindiZarrWrapperAttributes import LindiZarrWrapperAttributes
+from .LindiZarrWrapperReference import LindiZarrWrapperReference
 
 
-class LindiDataset:
+class LindiZarrWrapperDataset:
     def __init__(self, *, _zarr_array: zarr.Array, _client):
         self._zarr_array = _zarr_array
         self._is_scalar = self._zarr_array.attrs.get("_SCALAR", False)
@@ -41,7 +41,7 @@ class LindiDataset:
     @property
     def attrs(self):
         """Attributes attached to this object"""
-        return LindiAttributes(_object=self._zarr_array)
+        return LindiZarrWrapperAttributes(_object=self._zarr_array)
 
     @property
     def ndim(self):
@@ -115,7 +115,7 @@ class LindiDataset:
                     dtype = np.dtype(dt)
                 # Return a new object that can be sliced further
                 # It's important that the return type is Any here, because otherwise we get linter problems
-                ret: Any = LindiDatasetCompoundFieldSelection(
+                ret: Any = LindiZarrWrapperDatasetCompoundFieldSelection(
                     dataset=self, ind=ind, dtype=dtype
                 )
                 return ret
@@ -139,14 +139,14 @@ class LindiDataset:
         return self._external_hdf5_clients[url]
 
 
-class LindiDatasetCompoundFieldSelection:
+class LindiZarrWrapperDatasetCompoundFieldSelection:
     """
     This class is returned when a compound dataset is indexed with a field name.
     For example, if the dataset has dtype [('x', 'f4'), ('y', 'f4')], then we
     can do dataset['x'][0] to get the first x value. The dataset['x'] returns an
     object of this class.
     """
-    def __init__(self, *, dataset: LindiDataset, ind: int, dtype: np.dtype):
+    def __init__(self, *, dataset: LindiZarrWrapperDataset, ind: int, dtype: np.dtype):
         self._dataset = dataset  # The parent dataset
         self._ind = ind  # The index of the field in the compound dtype
         self._dtype = dtype  # The dtype of the field
@@ -159,8 +159,8 @@ class LindiDatasetCompoundFieldSelection:
         za = self._dataset._zarr_array
         d = [za[i][self._ind] for i in range(len(za))]
         if self._dtype == h5py.Reference:
-            # Convert to LindiReference
-            d = [LindiReference(x['_REFERENCE']) for x in d]
+            # Convert to LindiZarrWrapperReference
+            d = [LindiZarrWrapperReference(x['_REFERENCE']) for x in d]
         self._data = np.array(d, dtype=self._dtype)
 
     def __len__(self):

@@ -19,7 +19,7 @@ def try_pynwb():
         json.dump(rfs, f, indent=2)
 
     # Create the client from the reference file system
-    client = lindi.LindiH5pyFile.from_reference_file_system(rfs)
+    client = lindi.LindiZarrWrapper.from_reference_file_system(rfs)
 
     # Try to read using pynwb
     with pynwb.NWBHDF5IO(file=client, mode="r") as io:

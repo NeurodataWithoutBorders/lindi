@@ -2,7 +2,7 @@ import numpy as np
 import h5py
 import tempfile
 import lindi
-from lindi import LindiH5ZarrStore, LindiH5pyFile, LindiDataset
+from lindi import LindiH5ZarrStore, LindiZarrWrapper, LindiZarrWrapperDataset
 from _check_equal import _check_equal
 
 
@@ -11,9 +11,9 @@ def example1():
     # datasets, groups, and attributes. We then load that file using
     # LindiH5ZarrStore which is a zarr storage backend providing read-only view of
     # that hdf5 file. We then create a reference file system and use that to
-    # create a LindiH5pyFile, which mimics the h5py API. We then compare the
+    # create a LindiZarrWrapper, which mimics the h5py API. We then compare the
     # datasets, groups, and attributes of the original hdf5 file with those of
-    # the LindiH5pyFile.
+    # the LindiZarrWrapper.
 
     with tempfile.TemporaryDirectory() as tmpdir:
         print("Creating an example hdf5 file")
@@ -39,14 +39,14 @@ def example1():
             rfs_fname = f"{tmpdir}/example.zarr.json"
             store.to_file(rfs_fname)
 
-            print("Creating a LindiH5pyFile from the reference file system")
-            client = LindiH5pyFile.from_file(rfs_fname)
+            print("Creating a LindiZarrWrapper from the reference file system")
+            client = LindiZarrWrapper.from_file(rfs_fname)
 
             print("Comparing dataset: X")
             X1 = h5f["X"]
             assert isinstance(X1, h5py.Dataset)
             X2 = client["X"]
-            assert isinstance(X2, LindiDataset)
+            assert isinstance(X2, LindiZarrWrapperDataset)
             assert len(X1) == len(X2)
             assert X1.shape == X2.shape
             assert X1.dtype == X2.dtype
@@ -70,14 +70,14 @@ def example1():
             scalar_dataset1 = h5f["scalar_dataset"]
             assert isinstance(scalar_dataset1, h5py.Dataset)
             scalar_dataset2 = client["scalar_dataset"]
-            assert isinstance(scalar_dataset2, LindiDataset)
+            assert isinstance(scalar_dataset2, LindiZarrWrapperDataset)
             assert scalar_dataset1[()] == scalar_dataset2[()]
 
             print("Comparing group: group")
             G1 = h5f["group"]
             G2 = client["group"]
             for k, v in G1.attrs.items():
-                if not isinstance(G2, lindi.LindiReference):
+                if not isinstance(G2, lindi.LindiZarrWrapperReference):
                     assert k in G2.attrs
                     assert _check_equal(v, G2.attrs[k])
 

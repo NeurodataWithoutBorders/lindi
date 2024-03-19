@@ -1,8 +1,8 @@
-from lindi import LindiH5pyFile, LindiGroup, LindiDataset
+from lindi import LindiZarrWrapper, LindiZarrWrapperGroup, LindiZarrWrapperDataset
 
 
 def test_lindi_client():
-    client = LindiH5pyFile.from_file("example_0.zarr.json")
+    client = LindiZarrWrapper.from_file("example_0.zarr.json")
 
     for k, v in client.attrs.items():
         print(f"{k}: {v}")
@@ -11,23 +11,23 @@ def test_lindi_client():
         print(k)
 
     acquisition = client["acquisition"]
-    assert isinstance(acquisition, LindiGroup)
+    assert isinstance(acquisition, LindiZarrWrapperGroup)
     for k in acquisition.keys():
         print(k)
 
     aa = client["acquisition/ElectricalSeriesAp"]
-    assert isinstance(aa, LindiGroup)
+    assert isinstance(aa, LindiZarrWrapperGroup)
     x = aa["data"]
-    assert isinstance(x, LindiDataset)
+    assert isinstance(x, LindiZarrWrapperDataset)
 
     print(x.shape)
     print(x[:5])
 
     general = client["general"]
-    assert isinstance(general, LindiGroup)
+    assert isinstance(general, LindiZarrWrapperGroup)
     for k in general.keys():
         a = general[k]
-        if isinstance(a, LindiDataset):
+        if isinstance(a, LindiZarrWrapperDataset):
             print(f"{k}: {a.shape}")
             print(a[()])
 

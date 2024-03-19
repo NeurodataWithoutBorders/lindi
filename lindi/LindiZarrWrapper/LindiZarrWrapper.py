@@ -7,11 +7,11 @@ import zarr
 import urllib.request
 from fsspec.implementations.reference import ReferenceFileSystem
 from zarr.storage import Store
-from .LindiGroup import LindiGroup
-from .LindiReference import LindiReference
+from .LindiZarrWrapperGroup import LindiZarrWrapperGroup
+from .LindiZarrWrapperReference import LindiZarrWrapperReference
 
 
-class LindiH5pyFile(LindiGroup):
+class LindiZarrWrapper(LindiZarrWrapperGroup):
     def __init__(
         self,
         *,
@@ -25,15 +25,15 @@ class LindiH5pyFile(LindiGroup):
         return ''
 
     @staticmethod
-    def from_zarr_store(zarr_store: Union[Store, FSMap]) -> "LindiH5pyFile":
+    def from_zarr_store(zarr_store: Union[Store, FSMap]) -> "LindiZarrWrapper":
         zarr_group = zarr.open(store=zarr_store, mode="r")
         assert isinstance(zarr_group, zarr.Group)
-        return LindiH5pyFile.from_zarr_group(zarr_group)
+        return LindiZarrWrapper.from_zarr_group(zarr_group)
 
     @staticmethod
     def from_file(
         json_file: str, file_type: Literal["zarr.json"] = "zarr.json"
-    ) -> "LindiH5pyFile":
+    ) -> "LindiZarrWrapper":
         if file_type == "zarr.json":
             if json_file.startswith("http") or json_file.startswith("https"):
                 with tempfile.TemporaryDirectory() as tmpdir:
@@ -41,22 +41,22 @@ class LindiH5pyFile(LindiGroup):
                     _download_file(json_file, filename)
                     with open(filename, "r") as f:
                         data = json.load(f)
-                    return LindiH5pyFile.from_reference_file_system(data)
+                    return LindiZarrWrapper.from_reference_file_system(data)
             else:
                 with open(json_file, "r") as f:
                     data = json.load(f)
-                return LindiH5pyFile.from_reference_file_system(data)
+                return LindiZarrWrapper.from_reference_file_system(data)
         else:
             raise ValueError(f"Unknown file_type: {file_type}")
 
     @staticmethod
-    def from_zarr_group(zarr_group: zarr.Group) -> "LindiH5pyFile":
-        return LindiH5pyFile(_zarr_group=zarr_group)
+    def from_zarr_group(zarr_group: zarr.Group) -> "LindiZarrWrapper":
+        return LindiZarrWrapper(_zarr_group=zarr_group)
 
     @staticmethod
-    def from_reference_file_system(data: dict) -> "LindiH5pyFile":
+    def from_reference_file_system(data: dict) -> "LindiZarrWrapper":
         fs = ReferenceFileSystem(data).get_mapper(root="")
-        return LindiH5pyFile.from_zarr_store(fs)
+        return LindiZarrWrapper.from_zarr_store(fs)
 
     def get(self, key, default=None, getlink: bool = False):
         try:
@@ -66,7 +66,7 @@ class LindiH5pyFile(LindiGroup):
         if getlink:
             return ret
         else:
-            if isinstance(ret, LindiReference):
+            if isinstance(ret, LindiZarrWrapperReference):
                 return self[ret]
             else:
                 return ret
@@ -83,7 +83,7 @@ class LindiH5pyFile(LindiGroup):
                 for part in parts:
                     g = g[part]
                 return g
-        elif isinstance(key, LindiReference):
+        elif isinstance(key, LindiZarrWrapperReference):
             if key._source != '.':
                 raise Exception(f'For now, source of reference must be ".", got "{key._source}"')
             if key._source_object_id is not None:
@@ -95,7 +95,7 @@ class LindiH5pyFile(LindiGroup):
                     raise Exception(f'Mismatch in object_id: "{key._object_id}" and "{target.attrs.get("object_id")}"')
             return target
         else:
-            raise Exception(f'Cannot use key "{key}" of type "{type(key)}" to index into a LindiH5pyFile')
+            raise Exception(f'Cannot use key "{key}" of type "{type(key)}" to index into a LindiZarrWrapper')
 
 
 def _download_file(url: str, filename: str) -> None:

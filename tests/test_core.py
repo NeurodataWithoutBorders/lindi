@@ -1,7 +1,7 @@
 import numpy as np
 import h5py
 import tempfile
-from lindi import LindiH5ZarrStore, LindiH5pyFile, LindiDataset, LindiGroup, LindiReference
+from lindi import LindiH5ZarrStore, LindiZarrWrapper, LindiZarrWrapperDataset, LindiZarrWrapperGroup, LindiZarrWrapperReference
 import pytest
 
 
@@ -17,12 +17,12 @@ def test_scalar_datasets():
                 filename, url=filename
             ) as store:  # set url so that a reference file system can be created
                 rfs = store.to_reference_file_system()
-                client = LindiH5pyFile.from_reference_file_system(rfs)
+                client = LindiZarrWrapper.from_reference_file_system(rfs)
                 h5f = h5py.File(filename, "r")
                 X1 = h5f["X"]
                 assert isinstance(X1, h5py.Dataset)
                 X2 = client["X"]
-                assert isinstance(X2, LindiDataset)
+                assert isinstance(X2, LindiZarrWrapperDataset)
                 if not _check_equal(X1[()], X2[()]):
                     print(f"WARNING: {X1} ({type(X1)}) != {X2} ({type(X2)})")
                     raise ValueError("Scalar datasets are not equal")
@@ -52,12 +52,12 @@ def test_numpy_arrays():
                 filename, url=filename
             ) as store:  # set url so that a reference file system can be created
                 rfs = store.to_reference_file_system()
-                client = LindiH5pyFile.from_reference_file_system(rfs)
+                client = LindiZarrWrapper.from_reference_file_system(rfs)
                 h5f = h5py.File(filename, "r")
                 X1 = h5f["X"]
                 assert isinstance(X1, h5py.Dataset)
                 X2 = client["X"]
-                assert isinstance(X2, LindiDataset)
+                assert isinstance(X2, LindiZarrWrapperDataset)
 
                 assert X1.shape == X2.shape
                 assert X1.dtype == X2.dtype
@@ -87,11 +87,11 @@ def test_numpy_array_of_strings():
         h5f = h5py.File(filename, "r")
         with LindiH5ZarrStore.from_file(filename, url=filename) as store:
             rfs = store.to_reference_file_system()
-            client = LindiH5pyFile.from_reference_file_system(rfs)
+            client = LindiZarrWrapper.from_reference_file_system(rfs)
             X1 = h5f["X"]
             assert isinstance(X1, h5py.Dataset)
             X2 = client["X"]
-            assert isinstance(X2, LindiDataset)
+            assert isinstance(X2, LindiZarrWrapperDataset)
             if not _check_equal(X1[:], X2[:]):
                 print("WARNING. Arrays are not equal")
                 print(X1[:])
@@ -109,11 +109,11 @@ def test_compound_dtype():
         h5f = h5py.File(filename, "r")
         store = LindiH5ZarrStore.from_file(filename, url=filename)
         rfs = store.to_reference_file_system()
-        client = LindiH5pyFile.from_reference_file_system(rfs)
+        client = LindiZarrWrapper.from_reference_file_system(rfs)
         X1 = h5f["X"]
         assert isinstance(X1, h5py.Dataset)
         X2 = client["X"]
-        assert isinstance(X2, LindiDataset)
+        assert isinstance(X2, LindiZarrWrapperDataset)
         assert X1.shape == X2.shape
         assert X1.dtype == X2.dtype
         assert X1.size == X2.size
@@ -148,12 +148,12 @@ def test_attributes():
         h5f = h5py.File(filename, "r")
         with LindiH5ZarrStore.from_file(filename, url=filename) as store:
             rfs = store.to_reference_file_system()
-            client = LindiH5pyFile.from_reference_file_system(rfs)
+            client = LindiZarrWrapper.from_reference_file_system(rfs)
 
             X1 = h5f["X"]
             assert isinstance(X1, h5py.Dataset)
             X2 = client["X"]
-            assert isinstance(X2, LindiDataset)
+            assert isinstance(X2, LindiZarrWrapperDataset)
 
             with pytest.raises(KeyError):
                 X2.attrs["a"] = 1  # cannot set attributes on read-only object
@@ -183,7 +183,7 @@ def test_attributes():
             group1 = h5f["group"]
             assert isinstance(group1, h5py.Group)
             group2 = client["group"]
-            assert isinstance(group2, LindiGroup)
+            assert isinstance(group2, LindiZarrWrapperGroup)
 
             for k, v in group2.attrs.items():
                 if not _check_equal(v, group1.attrs[k]):
@@ -211,12 +211,12 @@ def test_nan_inf_attr():
         h5f = h5py.File(filename, "r")
         with LindiH5ZarrStore.from_file(filename, url=filename) as store:
             rfs = store.to_reference_file_system()
-            client = LindiH5pyFile.from_reference_file_system(rfs)
+            client = LindiZarrWrapper.from_reference_file_system(rfs)
 
             X1 = h5f["X"]
             assert isinstance(X1, h5py.Dataset)
             X2 = client["X"]
-            assert isinstance(X2, LindiDataset)
+            assert isinstance(X2, LindiZarrWrapperDataset)
 
             assert X2.attrs["nan"] == 'NaN'
             assert X2.attrs["inf"] == 'Infinity'
@@ -234,22 +234,22 @@ def test_reference_attributes():
         h5f = h5py.File(filename, "r")
         with LindiH5ZarrStore.from_file(filename, url=filename) as store:
             rfs = store.to_reference_file_system()
-            client = LindiH5pyFile.from_reference_file_system(rfs)
+            client = LindiZarrWrapper.from_reference_file_system(rfs)
 
             X1 = h5f["X"]
             assert isinstance(X1, h5py.Dataset)
             X2 = client["X"]
-            assert isinstance(X2, LindiDataset)
+            assert isinstance(X2, LindiZarrWrapperDataset)
 
             ref1 = X1.attrs["ref"]
             assert isinstance(ref1, h5py.Reference)
             ref2 = X2.attrs["ref"]
-            assert isinstance(ref2, LindiReference)
+            assert isinstance(ref2, LindiZarrWrapperReference)
 
             target1 = h5f[ref1]
             assert isinstance(target1, h5py.Dataset)
             target2 = client[ref2]
-            assert isinstance(target2, LindiDataset)
+            assert isinstance(target2, LindiZarrWrapperDataset)
 
             assert _check_equal(target1[:], target2[:])
 
@@ -265,23 +265,23 @@ def test_reference_in_compound_dtype():
         h5f = h5py.File(filename, "r")
         with LindiH5ZarrStore.from_file(filename, url=filename) as store:
             rfs = store.to_reference_file_system()
-            client = LindiH5pyFile.from_reference_file_system(rfs)
+            client = LindiZarrWrapper.from_reference_file_system(rfs)
 
             X1 = h5f["X"]
             assert isinstance(X1, h5py.Dataset)
             X2 = client["X"]
-            assert isinstance(X2, LindiDataset)
+            assert isinstance(X2, LindiZarrWrapperDataset)
 
             assert _check_equal(X1["x"][:], X2["x"][:])
             ref1 = X1["y"][0]
             assert isinstance(ref1, h5py.Reference)
             ref2 = X2["y"][0]
-            assert isinstance(ref2, LindiReference)
+            assert isinstance(ref2, LindiZarrWrapperReference)
 
             target1 = h5f[ref1]
             assert isinstance(target1, h5py.Dataset)
             target2 = client[ref2]
-            assert isinstance(target2, LindiDataset)
+            assert isinstance(target2, LindiZarrWrapperDataset)
 
             assert _check_equal(target1[:], target2[:])
 

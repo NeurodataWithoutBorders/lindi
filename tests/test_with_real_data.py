@@ -3,7 +3,7 @@ import numpy as np
 import zarr
 import h5py
 import remfile
-from lindi import LindiH5ZarrStore, LindiH5pyFile
+from lindi import LindiH5ZarrStore, LindiZarrWrapper
 import lindi
 import pytest
 
@@ -39,10 +39,10 @@ examples.append(
 
 def _compare_item(item_h5, item_lindi):
     if isinstance(item_h5, h5py.Group):
-        assert isinstance(item_lindi, lindi.LindiGroup)
+        assert isinstance(item_lindi, lindi.LindiZarrWrapperGroup)
         _compare_groups(item_lindi, item_h5)
     elif isinstance(item_h5, h5py.Dataset):
-        assert isinstance(item_lindi, lindi.LindiDataset)
+        assert isinstance(item_lindi, lindi.LindiZarrWrapperDataset)
         _compare_datasets(item_lindi, item_h5)
     else:
         print(item_h5)
@@ -61,7 +61,7 @@ def _compare_item_2(item_h5, item_zarr):
         raise NotImplementedError()
 
 
-def _compare_groups(g1: lindi.LindiGroup, g2: h5py.Group):
+def _compare_groups(g1: lindi.LindiZarrWrapperGroup, g2: h5py.Group):
     print(f"__________ {g1.name} (GROUP)")
     assert g1.name == g2.name
     for k, v in g1.attrs.items():
@@ -122,7 +122,7 @@ def _values_match(v1, v2):
         return v1 == v2
 
 
-def _compare_datasets(a1: lindi.LindiDataset, a2: h5py.Dataset):
+def _compare_datasets(a1: lindi.LindiZarrWrapperDataset, a2: h5py.Dataset):
     print(f"__________ {a1.name} (ARRAY)")
     if a1.dtype != a2.dtype:
         print(f"WARNING: dtype mismatch for {a1.name}: {a1.dtype} != {a2.dtype}")
@@ -283,14 +283,14 @@ def test_with_real_data():
     h5f = h5py.File(remfile.File(h5_url), "r")
     with LindiH5ZarrStore.from_file(h5_url) as store:
         rfs = store.to_reference_file_system()
-        client = LindiH5pyFile.from_reference_file_system(rfs)
+        client = LindiZarrWrapper.from_reference_file_system(rfs)
 
         # visit the items in the h5py file and compare them to the zarr file
         _hdf5_visit_items(h5f, lambda key, item: _compare_item(item, client[key]))
 
         with tempfile.TemporaryDirectory() as tmpdir:
             store.to_file(f"{tmpdir}/example.zarr.json")
-            LindiH5pyFile.from_file(f"{tmpdir}/example.zarr.json")
+            LindiZarrWrapper.from_file(f"{tmpdir}/example.zarr.json")
 
         top_level_keys = [k for k in h5f.keys()]
         top_level_keys_2 = store.listdir()

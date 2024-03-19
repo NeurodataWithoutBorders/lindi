@@ -1,9 +1,9 @@
 from typing import Union
 import zarr
-from .LindiReference import LindiReference
+from .LindiZarrWrapperReference import LindiZarrWrapperReference
 
 
-class LindiAttributes:
+class LindiZarrWrapperAttributes:
     def __init__(self, *, _object: Union[zarr.Group, zarr.Array]):
         self._object = _object
 
@@ -16,7 +16,7 @@ class LindiAttributes:
     def __getitem__(self, key):
         val = self._object.attrs[key]
         if isinstance(val, dict) and "_REFERENCE" in val:
-            return LindiReference(val["_REFERENCE"])
+            return LindiZarrWrapperReference(val["_REFERENCE"])
         return self._object.attrs[key]
 
     def __setitem__(self, key, value):

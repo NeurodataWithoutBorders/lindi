@@ -397,7 +397,7 @@ class LindiH5ZarrStore(Store):
     def to_file(self, file_name: str, *, file_type: Literal["zarr.json"] = "zarr.json"):
         """Write a reference file system cooresponding to this store to a file.
 
-        This can then be loaded using LindiH5pyFile.from_file(fname)
+        This can then be loaded using LindiZarrWrapper.from_file(fname)
         """
         if file_type != "zarr.json":
             raise Exception(f"Unsupported file type: {file_type}")
@@ -410,7 +410,7 @@ class LindiH5ZarrStore(Store):
         """Create a reference file system cooresponding to this store.
 
         This can then be loaded using
-        LindiH5pyFile.from_reference_file_system(obj)
+        LindiZarrWrapper.from_reference_file_system(obj)
         """
         if self._h5f is None:
             raise Exception("Store is closed")

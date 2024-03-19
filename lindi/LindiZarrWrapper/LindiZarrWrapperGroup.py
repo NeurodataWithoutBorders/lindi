@@ -1,9 +1,9 @@
 import zarr
-from .LindiAttributes import LindiAttributes
-from .LindiDataset import LindiDataset
+from .LindiZarrWrapperAttributes import LindiZarrWrapperAttributes
+from .LindiZarrWrapperDataset import LindiZarrWrapperDataset
 
 
-class LindiGroup:
+class LindiZarrWrapperGroup:
     def __init__(self, *, _zarr_group: zarr.Group, _client):
         self._zarr_group = _zarr_group
         self._client = _client
@@ -19,7 +19,7 @@ class LindiGroup:
     @property
     def attrs(self):
         """Attributes attached to this object"""
-        return LindiAttributes(_object=self._zarr_group)
+        return LindiZarrWrapperAttributes(_object=self._zarr_group)
 
     def keys(self):
         return self._zarr_group.keys()
@@ -37,14 +37,14 @@ class LindiGroup:
     def __getitem__(self, key):
         if not isinstance(key, str):
             raise Exception(
-                f'Cannot use key "{key}" of type "{type(key)}" to index into a LindiGroup, at path "{self._zarr_group.name}"'
+                f'Cannot use key "{key}" of type "{type(key)}" to index into a LindiZarrWrapperGroup, at path "{self._zarr_group.name}"'
             )
         if key in self._zarr_group.keys():
             x = self._zarr_group[key]
             if isinstance(x, zarr.Group):
-                return LindiGroup(_zarr_group=x, _client=self._client)
+                return LindiZarrWrapperGroup(_zarr_group=x, _client=self._client)
             elif isinstance(x, zarr.Array):
-                return LindiDataset(_zarr_array=x, _client=self._client)
+                return LindiZarrWrapperDataset(_zarr_array=x, _client=self._client)
             else:
                 raise Exception(f"Unknown type: {type(x)}")
         else:

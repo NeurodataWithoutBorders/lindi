@@ -1,7 +1,7 @@
 import tempfile
 import numpy as np
 import h5py
-from lindi import LindiH5ZarrStore, LindiH5pyFile, LindiGroup, LindiDataset
+from lindi import LindiH5ZarrStore, LindiZarrWrapper, LindiZarrWrapperGroup, LindiZarrWrapperDataset
 
 
 def test_scalar_dataset():
@@ -15,12 +15,12 @@ def test_scalar_dataset():
                 filename, url=filename
             ) as store:  # set url so that a reference file system can be created
                 rfs = store.to_reference_file_system()
-                client = LindiH5pyFile.from_reference_file_system(rfs)
+                client = LindiZarrWrapper.from_reference_file_system(rfs)
                 h5f = h5py.File(filename, "r")
                 X1 = h5f["X"]
                 assert isinstance(X1, h5py.Dataset)
                 X2 = client["X"]
-                assert isinstance(X2, LindiDataset)
+                assert isinstance(X2, LindiZarrWrapperDataset)
                 if not _check_equal(X1[()], X2[()]):
                     print(f"WARNING: {X1} ({type(X1)}) != {X2} ({type(X2)})")
 
@@ -73,12 +73,12 @@ def test_numpy_array():
                 filename, url=filename
             ) as store:  # set url so that a reference file system can be created
                 rfs = store.to_reference_file_system()
-                client = LindiH5pyFile.from_reference_file_system(rfs)
+                client = LindiZarrWrapper.from_reference_file_system(rfs)
                 h5f = h5py.File(filename, "r")
                 X1 = h5f["X"]
                 assert isinstance(X1, h5py.Dataset)
                 X2 = client["X"]
-                assert isinstance(X2, LindiDataset)
+                assert isinstance(X2, LindiZarrWrapperDataset)
                 if not _check_equal(X1[:], X2[:]):
                     print("WARNING. Arrays are not equal")
                     print(X1[:])
@@ -94,11 +94,11 @@ def test_numpy_array_of_strings():
         h5f = h5py.File(filename, "r")
         with LindiH5ZarrStore.from_file(filename, url=filename) as store:
             rfs = store.to_reference_file_system()
-            client = LindiH5pyFile.from_reference_file_system(rfs)
+            client = LindiZarrWrapper.from_reference_file_system(rfs)
             X1 = h5f["X"]
             assert isinstance(X1, h5py.Dataset)
             X2 = client["X"]
-            assert isinstance(X2, LindiDataset)
+            assert isinstance(X2, LindiZarrWrapperDataset)
             if not _check_equal(X1[:], X2[:]):
                 print("WARNING. Arrays are not equal")
                 print(X1[:])
@@ -122,11 +122,11 @@ def test_attributes():
         h5f = h5py.File(filename, "r")
         with LindiH5ZarrStore.from_file(filename, url=filename) as store:
             rfs = store.to_reference_file_system()
-            client = LindiH5pyFile.from_reference_file_system(rfs)
+            client = LindiZarrWrapper.from_reference_file_system(rfs)
             X1 = h5f["X"]
             assert isinstance(X1, h5py.Dataset)
             X2 = client["X"]
-            assert isinstance(X2, LindiDataset)
+            assert isinstance(X2, LindiZarrWrapperDataset)
             if X1.attrs["foo"] != X2.attrs["foo"]:
                 print("WARNING. Attributes are not equal")
                 print(X1.attrs["foo"])
@@ -138,7 +138,7 @@ def test_attributes():
             group1 = h5f["group"]
             assert isinstance(group1, h5py.Group)
             group2 = client["group"]
-            assert isinstance(group2, LindiGroup)
+            assert isinstance(group2, LindiZarrWrapperGroup)
             if group1.attrs["foo"] != group2.attrs["foo"]:
                 print("WARNING. Attributes are not equal")
                 print(group1.attrs["foo"])
