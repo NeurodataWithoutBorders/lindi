@@ -1,5 +1,6 @@
-from typing import TYPE_CHECKING, Union
+from typing import TYPE_CHECKING, Union, Any
 import h5py
+import numpy as np
 
 from .LindiH5pyAttributes import LindiH5pyAttributes
 from .LindiH5pyReference import LindiH5pyReference
@@ -66,7 +67,23 @@ class LindiH5pyDataset(h5py.Dataset):
     def __getitem__(self, args, new_dtype=None):
         ret = self._dataset_object.__getitem__(args, new_dtype)
         if isinstance(self._dataset_object, LindiZarrWrapperDataset):
-            if isinstance(ret, dict):
-                if '_REFERENCE' in ret:
-                    ret = LindiH5pyReference(LindiZarrWrapperReference(ret['_REFERENCE']))
+            ret = _resolve_references(ret)
         return ret
+
+
+def _resolve_references(x: Any):
+    if isinstance(x, dict):
+        if '_REFERENCE' in x:
+            return LindiH5pyReference(LindiZarrWrapperReference(x['_REFERENCE']))
+        else:
+            for k, v in x.items():
+                x[k] = _resolve_references(v)
+    elif isinstance(x, list):
+        for i, v in enumerate(x):
+            x[i] = _resolve_references(v)
+    elif isinstance(x, np.ndarray):
+        if x.dtype == object:
+            view_1d = x.reshape(-1)
+            for i in range(len(view_1d)):
+                view_1d[i] = _resolve_references(view_1d[i])
+    return x

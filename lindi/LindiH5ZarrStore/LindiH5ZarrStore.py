@@ -198,6 +198,21 @@ class LindiH5ZarrStore(Store):
         if not isinstance(h5_item, h5py.Group) and not isinstance(h5_item, h5py.Dataset):
             raise Exception(f"Item {parent_key} is not a group or dataset. It is {type(h5_item)}")
 
+        # Check whether this is a soft link
+        if isinstance(h5_item, h5py.Group) and parent_key != '':
+            link = self._h5f.get('/' + parent_key, getlink=True)
+            if isinstance(link, h5py.ExternalLink):
+                print(f'WARNING: External links not supported: {parent_key}')
+            elif isinstance(link, h5py.SoftLink):
+                # if it's a soft link, we return a special attribute and ignore
+                # the rest of the attributes because they should be stored in
+                # the target of the soft link
+                return _reformat_json(json.dumps({
+                    "_SOFT_LINK": {
+                        "path": link.path
+                    }
+                }).encode("utf-8"))
+
         # We create a dummy zarr group and copy the attributes to it. That way
         # we know that zarr has accepted them and they are serialized in the
         # correct format.
@@ -220,14 +235,6 @@ class LindiH5ZarrStore(Store):
             external_array_link = self._get_external_array_link(parent_key, h5_item)
             if external_array_link is not None:
                 dummy_group.attrs["_EXTERNAL_ARRAY_LINK"] = external_array_link
-        elif isinstance(h5_item, h5py.Group) and parent_key != '':
-            link = self._h5f.get('/' + parent_key, getlink=True)
-            if isinstance(link, h5py.ExternalLink):
-                print(f'WARNING: External links not supported: {parent_key}')
-            elif isinstance(link, h5py.SoftLink):
-                dummy_group.attrs["_SOFT_LINK"] = {
-                    "path": link.path
-                }
         zattrs_content = _reformat_json(memory_store.get(".zattrs"))
         if zattrs_content is not None:
             return zattrs_content
@@ -393,6 +400,12 @@ class LindiH5ZarrStore(Store):
         except KeyError:
             return []
         if isinstance(item, h5py.Group):
+            # check whether it's a soft link
+            link = self._h5f.get('/' + path, getlink=True) if path != '' else None
+            if isinstance(link, h5py.SoftLink):
+                # in this case we don't return any keys because the keys should
+                # be in the target of the soft link
+                return []
             ret = []
             for k in item.keys():
                 ret.append(k)
@@ -446,6 +459,12 @@ class LindiH5ZarrStore(Store):
                 if zattrs_bytes != b"{}":  # don't include empty zattrs
                     _add_ref(_join(key, ".zattrs"), self.get(_join(key, ".zattrs")))
                 _add_ref(_join(key, ".zgroup"), self.get(_join(key, ".zgroup")))
+                # check if this is a soft link
+                link = item.file.get('/' + key, getlink=True) if key != '' else None
+                if isinstance(link, h5py.SoftLink):
+                    # if it's a soft link, we don't include the keys because
+                    # they should be in the target of the soft link
+                    return
                 for k in item.keys():
                     subitem = item[k]
                     if isinstance(subitem, h5py.Group):

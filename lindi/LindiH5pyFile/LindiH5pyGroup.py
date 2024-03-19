@@ -46,6 +46,15 @@ class LindiH5pyGroup(h5py.Group):
                     "not {}".format(type(name))
                 )
             if isinstance(x, LindiZarrWrapperGroup):
+                # follow the link if this is a soft link
+                if x.soft_link is not None:
+                    link_path = x.soft_link['path']
+                    target_grp = self._file.get(link_path)
+                    if not isinstance(target_grp, LindiH5pyGroup):
+                        raise Exception(
+                            f"Expected a group at {link_path} but got {type(x)}"
+                        )
+                    return target_grp
                 return LindiH5pyGroup(x, self._file)
             elif isinstance(x, LindiZarrWrapperDataset):
                 return LindiH5pyDataset(x, self._file)

@@ -151,8 +151,8 @@ def _compare_h5py_datasets(d1: h5py.Dataset, d2: h5py.Dataset, label: str):
     if d1.size and d1.size < 100:
         if not _check_equal(d1[()], d2[()]):
             print("*************** Data mismatch")
-            print(f"  h5f1: {d1[()].ravel()[:5]}")
-            print(f"  h5f2: {d2[()].ravel()[:5]}")
+            print(f"  h5f1: {d1[()].ravel()[:5]} (dtype: {d1.dtype})")
+            print(f"  h5f2: {d2[()].ravel()[:5]} (dtype: {d2.dtype})")
 
 
 def _download_file(url, fname):
