@@ -85,7 +85,9 @@ class LindiZarrWrapperDataset:
         for i in range(shape[0]):
             yield self[i]
 
-    def __getitem__(self, selection):
+    def __getitem__(self, selection, new_dtype=None):
+        if new_dtype is not None:
+            raise TypeError("new_dtype not supported in LindiZarrWrapperDataset.__getitem__")
         # First check whether this is an external array link
         external_array_link = self._zarr_array.attrs.get("_EXTERNAL_ARRAY_LINK", None)
         if external_array_link and isinstance(external_array_link, dict):

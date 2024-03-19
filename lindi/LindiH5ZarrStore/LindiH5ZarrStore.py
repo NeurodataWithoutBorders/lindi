@@ -9,7 +9,6 @@ import h5py
 from zarr.errors import ReadOnlyError
 from ._zarr_info_for_h5_dataset import _zarr_info_for_h5_dataset
 from ._util import (
-    _get_h5_item,
     _read_bytes,
     _get_chunk_byte_range,
     _get_byte_range_for_contiguous_dataset,
@@ -138,7 +137,7 @@ class LindiH5ZarrStore(Store):
         key_name = parts[-1]
         key_parent = "/".join(parts[:-1])
         if key_name == ".zattrs":
-            h5_item = _get_h5_item(self._h5f, key_parent)
+            h5_item = self._h5f.get('/' + key_parent, None)
             if not h5_item:
                 return False
             # We always return True here even if the attributes are going to be
@@ -146,18 +145,18 @@ class LindiH5ZarrStore(Store):
             # write out the ref file system, we exclude it there.
             return isinstance(h5_item, h5py.Group) or isinstance(h5_item, h5py.Dataset)
         elif key_name == ".zgroup":
-            h5_item = _get_h5_item(self._h5f, key_parent)
+            h5_item = self._h5f.get('/' + key_parent, None)
             if not h5_item:
                 return False
             return isinstance(h5_item, h5py.Group)
         elif key_name == ".zarray":
-            h5_item = _get_h5_item(self._h5f, key_parent)
+            h5_item = self._h5f.get('/' + key_parent, None)
             if not h5_item:
                 return False
             return isinstance(h5_item, h5py.Dataset)
         else:
             # a chunk file
-            h5_item = _get_h5_item(self._h5f, key_parent)
+            h5_item = self._h5f.get('/' + key_parent, None)
             if not h5_item:
                 return False
             if not isinstance(h5_item, h5py.Dataset):
@@ -193,10 +192,12 @@ class LindiH5ZarrStore(Store):
         """Get the attributes of a group or dataset"""
         if self._h5f is None:
             raise Exception("Store is closed")
-        h5_item = _get_h5_item(self._h5f, parent_key)
-        assert isinstance(h5_item, h5py.Group) or isinstance(h5_item, h5py.Dataset), (
-            f"Item {parent_key} is not a group or dataset in _get_zattrs_bytes"
-        )
+        h5_item = self._h5f.get('/' + parent_key, None)
+        if h5_item is None:
+            raise KeyError(parent_key)
+        if not isinstance(h5_item, h5py.Group) and not isinstance(h5_item, h5py.Dataset):
+            raise Exception(f"Item {parent_key} is not a group or dataset. It is {type(h5_item)}")
+
         # We create a dummy zarr group and copy the attributes to it. That way
         # we know that zarr has accepted them and they are serialized in the
         # correct format.
@@ -219,6 +220,14 @@ class LindiH5ZarrStore(Store):
             external_array_link = self._get_external_array_link(parent_key, h5_item)
             if external_array_link is not None:
                 dummy_group.attrs["_EXTERNAL_ARRAY_LINK"] = external_array_link
+        elif isinstance(h5_item, h5py.Group) and parent_key != '':
+            link = self._h5f.get('/' + parent_key, getlink=True)
+            if isinstance(link, h5py.ExternalLink):
+                print(f'WARNING: External links not supported: {parent_key}')
+            elif isinstance(link, h5py.SoftLink):
+                dummy_group.attrs["_SOFT_LINK"] = {
+                    "path": link.path
+                }
         zattrs_content = _reformat_json(memory_store.get(".zattrs"))
         if zattrs_content is not None:
             return zattrs_content
@@ -230,7 +239,7 @@ class LindiH5ZarrStore(Store):
         """Get the .zgroup JSON text for a group"""
         if self._h5f is None:
             raise Exception("Store is closed")
-        h5_item = _get_h5_item(self._h5f, parent_key)
+        h5_item = self._h5f.get('/' + parent_key, None)
         if not isinstance(h5_item, h5py.Group):
             raise Exception(f"Item {parent_key} is not a group")
         # We create a dummy zarr group and then get the .zgroup JSON text
@@ -243,7 +252,7 @@ class LindiH5ZarrStore(Store):
         """Get the .zarray JSON text for a dataset"""
         if self._h5f is None:
             raise Exception("Store is closed")
-        h5_item = _get_h5_item(self._h5f, parent_key)
+        h5_item = self._h5f.get('/' + parent_key, None)
         if not isinstance(h5_item, h5py.Dataset):
             raise Exception(f"Item {parent_key} is not a dataset")
         # get the shape, chunks, dtype, and filters from the h5 dataset
@@ -289,7 +298,7 @@ class LindiH5ZarrStore(Store):
     def _get_chunk_file_bytes_data(self, key_parent: str, key_name: str):
         if self._h5f is None:
             raise Exception("Store is closed")
-        h5_item = _get_h5_item(self._h5f, key_parent)
+        h5_item = self._h5f.get('/' + key_parent, None)
         if not isinstance(h5_item, h5py.Dataset):
             raise Exception(f"Item {key_parent} is not a dataset")
 
@@ -380,7 +389,7 @@ class LindiH5ZarrStore(Store):
         if self._h5f is None:
             raise Exception("Store is closed")
         try:
-            item = _get_h5_item(self._h5f, path)
+            item = self._h5f[path]
         except KeyError:
             return []
         if isinstance(item, h5py.Group):

@@ -3,12 +3,17 @@ import zarr
 from .LindiZarrWrapperReference import LindiZarrWrapperReference
 
 
+_special_attribute_keys = ["_SCALAR", "_COMPOUND_DTYPE", "_REFERENCE", "_EXTERNAL_ARRAY_LINK", "_SOFT_LINK"]
+
+
 class LindiZarrWrapperAttributes:
     def __init__(self, *, _object: Union[zarr.Group, zarr.Array]):
         self._object = _object
 
     def get(self, key, default=None):
         try:
+            if key in _special_attribute_keys:
+                raise KeyError
             return self[key]
         except KeyError:
             return default
@@ -26,13 +31,19 @@ class LindiZarrWrapperAttributes:
         raise KeyError("Cannot delete attributes on read-only object")
 
     def __iter__(self):
-        return iter(self._object.attrs)
+        for k in self._object.attrs:
+            if k not in _special_attribute_keys:
+                yield k
 
     def items(self):
-        return self._object.attrs.items()
+        for k in self:
+            yield k, self[k]
 
     def __len__(self):
-        return len(self._object.attrs)
+        ct = 0
+        for _ in self:
+            ct += 1
+        return ct
 
     def __repr__(self):
         return repr(self._object.attrs)

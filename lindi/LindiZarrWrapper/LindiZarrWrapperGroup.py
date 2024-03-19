@@ -1,10 +1,15 @@
+from typing import TYPE_CHECKING
 import zarr
 from .LindiZarrWrapperAttributes import LindiZarrWrapperAttributes
 from .LindiZarrWrapperDataset import LindiZarrWrapperDataset
 
 
+if TYPE_CHECKING:
+    from .LindiZarrWrapper import LindiZarrWrapper
+
+
 class LindiZarrWrapperGroup:
-    def __init__(self, *, _zarr_group: zarr.Group, _client):
+    def __init__(self, *, _zarr_group: zarr.Group, _client: "LindiZarrWrapper"):
         self._zarr_group = _zarr_group
         self._client = _client
 
@@ -27,6 +32,11 @@ class LindiZarrWrapperGroup:
     @property
     def name(self):
         return self._zarr_group.name
+
+    @property
+    def soft_link(self):
+        x = self._zarr_group.attrs.get("_SOFT_LINK", None)
+        return x
 
     def get(self, key, default=None):
         try:
@@ -53,3 +63,10 @@ class LindiZarrWrapperGroup:
     def __iter__(self):
         for k in self.keys():
             yield k
+
+    def __reversed__(self):
+        for k in reversed(self.keys()):
+            yield k
+
+    def __contains__(self, key):
+        return key in self._zarr_group

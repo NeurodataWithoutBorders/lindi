@@ -58,18 +58,12 @@ class LindiZarrWrapper(LindiZarrWrapperGroup):
         fs = ReferenceFileSystem(data).get_mapper(root="")
         return LindiZarrWrapper.from_zarr_store(fs)
 
-    def get(self, key, default=None, getlink: bool = False):
+    def get(self, key, default=None):
         try:
             ret = self[key]
         except KeyError:
             ret = default
-        if getlink:
-            return ret
-        else:
-            if isinstance(ret, LindiZarrWrapperReference):
-                return self[ret]
-            else:
-                return ret
+        return ret
 
     def __getitem__(self, key):  # type: ignore
         if isinstance(key, str):
