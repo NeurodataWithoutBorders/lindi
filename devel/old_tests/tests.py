@@ -1,7 +1,7 @@
 import tempfile
 import numpy as np
 import h5py
-from lindi import LindiH5Store, LindiClient, LindiGroup, LindiDataset
+from lindi import LindiH5ZarrStore, LindiH5pyFile, LindiGroup, LindiDataset
 
 
 def test_scalar_dataset():
@@ -11,11 +11,11 @@ def test_scalar_dataset():
             filename = f"{tmpdir}/test.h5"
             with h5py.File(filename, "w") as f:
                 f.create_dataset("X", data=val)
-            with LindiH5Store.from_file(
+            with LindiH5ZarrStore.from_file(
                 filename, url=filename
             ) as store:  # set url so that a reference file system can be created
                 rfs = store.to_reference_file_system()
-                client = LindiClient.from_reference_file_system(rfs)
+                client = LindiH5pyFile.from_reference_file_system(rfs)
                 h5f = h5py.File(filename, "r")
                 X1 = h5f["X"]
                 assert isinstance(X1, h5py.Dataset)
@@ -69,11 +69,11 @@ def test_numpy_array():
             filename = f"{tmpdir}/test.h5"
             with h5py.File(filename, "w") as f:
                 f.create_dataset("X", data=array, chunks=chunks)
-            with LindiH5Store.from_file(
+            with LindiH5ZarrStore.from_file(
                 filename, url=filename
             ) as store:  # set url so that a reference file system can be created
                 rfs = store.to_reference_file_system()
-                client = LindiClient.from_reference_file_system(rfs)
+                client = LindiH5pyFile.from_reference_file_system(rfs)
                 h5f = h5py.File(filename, "r")
                 X1 = h5f["X"]
                 assert isinstance(X1, h5py.Dataset)
@@ -92,9 +92,9 @@ def test_numpy_array_of_strings():
         with h5py.File(filename, "w") as f:
             f.create_dataset("X", data=["abc", "def", "ghi"])
         h5f = h5py.File(filename, "r")
-        with LindiH5Store.from_file(filename, url=filename) as store:
+        with LindiH5ZarrStore.from_file(filename, url=filename) as store:
             rfs = store.to_reference_file_system()
-            client = LindiClient.from_reference_file_system(rfs)
+            client = LindiH5pyFile.from_reference_file_system(rfs)
             X1 = h5f["X"]
             assert isinstance(X1, h5py.Dataset)
             X2 = client["X"]
@@ -120,9 +120,9 @@ def test_attributes():
             f["group"].attrs["foo"] = "bar2"
             f["group"].attrs["baz"] = 3.15
         h5f = h5py.File(filename, "r")
-        with LindiH5Store.from_file(filename, url=filename) as store:
+        with LindiH5ZarrStore.from_file(filename, url=filename) as store:
             rfs = store.to_reference_file_system()
-            client = LindiClient.from_reference_file_system(rfs)
+            client = LindiH5pyFile.from_reference_file_system(rfs)
             X1 = h5f["X"]
             assert isinstance(X1, h5py.Dataset)
             X2 = client["X"]

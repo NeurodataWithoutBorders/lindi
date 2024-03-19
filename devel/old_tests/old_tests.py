@@ -4,7 +4,7 @@ import numpy as np
 import h5py
 import zarr
 import kerchunk.hdf  # type: ignore
-from lindi import LindiH5Store
+from lindi import LindiH5ZarrStore
 from fsspec.implementations.reference import ReferenceFileSystem
 
 
@@ -88,7 +88,7 @@ def test_numpy_array_of_strings():
 
 
 def _get_lindi_zarr(filename):
-    store = LindiH5Store.from_file(filename, url='.')  # use url='.' so that a reference file system can be created
+    store = LindiH5ZarrStore.from_file(filename, url='.')  # use url='.' so that a reference file system can be created
     root = zarr.open(store)
     return root, store
 

@@ -74,7 +74,7 @@ def _h5_ref_to_zarr_attr(ref: h5py.Reference, *, label: str = '', h5f: h5py.File
     object_id = dref_obj.attrs.get("object_id", None)
 
     # Here we assume that the file has a top-level attribute called "object_id".
-    # This will be the case for files created by the LindiH5Store class.
+    # This will be the case for files created by the LindiH5ZarrStore class.
     file_object_id = h5f.attrs.get("object_id", None)
 
     # See https://hdmf-zarr.readthedocs.io/en/latest/storage.html#storing-object-references-in-attributes

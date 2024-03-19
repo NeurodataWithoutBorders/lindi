@@ -18,22 +18,22 @@ from ._h5_attr_to_zarr_attr import _h5_attr_to_zarr_attr
 
 
 @dataclass
-class LindiH5StoreOpts:
+class LindiH5ZarrStoreOpts:
     num_dataset_chunks_threshold: Union[int, None] = 1000
 
 
-class LindiH5Store(Store):
+class LindiH5ZarrStore(Store):
     """A zarr store that provides a read-only view of an HDF5 file.
 
     Do not call the constructor directly. Instead do one of the following:
 
-    store = LindiH5Store.from_file(hdf5_file_name)
+    store = LindiH5ZarrStore.from_file(hdf5_file_name)
     # do stuff with store
     store.close()
 
     or
 
-    with LindiH5Store.from_file(hdf5_file_name) as store:
+    with LindiH5ZarrStore.from_file(hdf5_file_name) as store:
         # do stuff with store
     """
 
@@ -41,7 +41,7 @@ class LindiH5Store(Store):
         self,
         *,
         _file: Union[IO, Any],
-        _opts: LindiH5StoreOpts,
+        _opts: LindiH5ZarrStoreOpts,
         _url: Union[str, None] = None,
     ):
         """
@@ -76,17 +76,17 @@ class LindiH5Store(Store):
     def from_file(
         hdf5_file_name_or_url: str,
         *,
-        opts: LindiH5StoreOpts = LindiH5StoreOpts(),
+        opts: LindiH5ZarrStoreOpts = LindiH5ZarrStoreOpts(),
         url: Union[str, None] = None,
     ):
         """
-        Create a LindiH5Store from a file or url.
+        Create a LindiH5ZarrStore from a file or url.
 
         Parameters
         ----------
         hdf5_file_name_or_url : str
             The name of the HDF5 file or a URL to the HDF5 file.
-        opts : LindiH5StoreOpts
+        opts : LindiH5ZarrStoreOpts
             Options for the store.
         url : str or None
             If hdf5_file_name_or_url is a local file name, then this can
@@ -100,10 +100,10 @@ class LindiH5Store(Store):
             "http://"
         ) or hdf5_file_name_or_url.startswith("https://"):
             remf = remfile.File(hdf5_file_name_or_url, verbose=False)
-            return LindiH5Store(_file=remf, _url=hdf5_file_name_or_url, _opts=opts)
+            return LindiH5ZarrStore(_file=remf, _url=hdf5_file_name_or_url, _opts=opts)
         else:
             f = open(hdf5_file_name_or_url, "rb")
-            return LindiH5Store(_file=f, _url=url, _opts=opts)
+            return LindiH5ZarrStore(_file=f, _url=url, _opts=opts)
 
     def __getitem__(self, key):
         """Get an item from the store (required by base class)."""
@@ -397,7 +397,7 @@ class LindiH5Store(Store):
     def to_file(self, file_name: str, *, file_type: Literal["zarr.json"] = "zarr.json"):
         """Write a reference file system cooresponding to this store to a file.
 
-        This can then be loaded using LindiClient.from_file(fname)
+        This can then be loaded using LindiH5pyFile.from_file(fname)
         """
         if file_type != "zarr.json":
             raise Exception(f"Unsupported file type: {file_type}")
@@ -410,7 +410,7 @@ class LindiH5Store(Store):
         """Create a reference file system cooresponding to this store.
 
         This can then be loaded using
-        LindiClient.from_reference_file_system(obj)
+        LindiH5pyFile.from_reference_file_system(obj)
         """
         if self._h5f is None:
             raise Exception("Store is closed")

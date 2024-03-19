@@ -11,7 +11,7 @@ from .LindiGroup import LindiGroup
 from .LindiReference import LindiReference
 
 
-class LindiClient(LindiGroup):
+class LindiH5pyFile(LindiGroup):
     def __init__(
         self,
         *,
@@ -25,15 +25,15 @@ class LindiClient(LindiGroup):
         return ''
 
     @staticmethod
-    def from_zarr_store(zarr_store: Union[Store, FSMap]) -> "LindiClient":
+    def from_zarr_store(zarr_store: Union[Store, FSMap]) -> "LindiH5pyFile":
         zarr_group = zarr.open(store=zarr_store, mode="r")
         assert isinstance(zarr_group, zarr.Group)
-        return LindiClient.from_zarr_group(zarr_group)
+        return LindiH5pyFile.from_zarr_group(zarr_group)
 
     @staticmethod
     def from_file(
         json_file: str, file_type: Literal["zarr.json"] = "zarr.json"
-    ) -> "LindiClient":
+    ) -> "LindiH5pyFile":
         if file_type == "zarr.json":
             if json_file.startswith("http") or json_file.startswith("https"):
                 with tempfile.TemporaryDirectory() as tmpdir:
@@ -41,22 +41,22 @@ class LindiClient(LindiGroup):
                     _download_file(json_file, filename)
                     with open(filename, "r") as f:
                         data = json.load(f)
-                    return LindiClient.from_reference_file_system(data)
+                    return LindiH5pyFile.from_reference_file_system(data)
             else:
                 with open(json_file, "r") as f:
                     data = json.load(f)
-                return LindiClient.from_reference_file_system(data)
+                return LindiH5pyFile.from_reference_file_system(data)
         else:
             raise ValueError(f"Unknown file_type: {file_type}")
 
     @staticmethod
-    def from_zarr_group(zarr_group: zarr.Group) -> "LindiClient":
-        return LindiClient(_zarr_group=zarr_group)
+    def from_zarr_group(zarr_group: zarr.Group) -> "LindiH5pyFile":
+        return LindiH5pyFile(_zarr_group=zarr_group)
 
     @staticmethod
-    def from_reference_file_system(data: dict) -> "LindiClient":
+    def from_reference_file_system(data: dict) -> "LindiH5pyFile":
         fs = ReferenceFileSystem(data).get_mapper(root="")
-        return LindiClient.from_zarr_store(fs)
+        return LindiH5pyFile.from_zarr_store(fs)
 
     def get(self, key, default=None, getlink: bool = False):
         try:
@@ -95,7 +95,7 @@ class LindiClient(LindiGroup):
                     raise Exception(f'Mismatch in object_id: "{key._object_id}" and "{target.attrs.get("object_id")}"')
             return target
         else:
-            raise Exception(f'Cannot use key "{key}" of type "{type(key)}" to index into a LindiClient')
+            raise Exception(f'Cannot use key "{key}" of type "{type(key)}" to index into a LindiH5pyFile')
 
 
 def _download_file(url: str, filename: str) -> None:

@@ -24,7 +24,7 @@ class ZarrInfoForH5Dataset:
 def _zarr_info_for_h5_dataset(h5_dataset: h5py.Dataset) -> ZarrInfoForH5Dataset:
     """Get the information needed to create a zarr dataset from an h5py dataset.
 
-    This is the main workhorse function for LindiH5Store. It takes an h5py
+    This is the main workhorse function for LindiH5ZarrStore. It takes an h5py
     dataset and returns a ZarrInfoForH5Dataset object.
 
     It handles the following cases:

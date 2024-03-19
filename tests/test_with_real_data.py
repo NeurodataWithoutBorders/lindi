@@ -3,7 +3,7 @@ import numpy as np
 import zarr
 import h5py
 import remfile
-from lindi import LindiH5Store, LindiClient
+from lindi import LindiH5ZarrStore, LindiH5pyFile
 import lindi
 import pytest
 
@@ -281,16 +281,16 @@ def test_with_real_data():
     h5_url = example["h5_url"]
     print(f"Running comparison for {h5_url}")
     h5f = h5py.File(remfile.File(h5_url), "r")
-    with LindiH5Store.from_file(h5_url) as store:
+    with LindiH5ZarrStore.from_file(h5_url) as store:
         rfs = store.to_reference_file_system()
-        client = LindiClient.from_reference_file_system(rfs)
+        client = LindiH5pyFile.from_reference_file_system(rfs)
 
         # visit the items in the h5py file and compare them to the zarr file
         _hdf5_visit_items(h5f, lambda key, item: _compare_item(item, client[key]))
 
         with tempfile.TemporaryDirectory() as tmpdir:
             store.to_file(f"{tmpdir}/example.zarr.json")
-            LindiClient.from_file(f"{tmpdir}/example.zarr.json")
+            LindiH5pyFile.from_file(f"{tmpdir}/example.zarr.json")
 
         top_level_keys = [k for k in h5f.keys()]
         top_level_keys_2 = store.listdir()

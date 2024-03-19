@@ -3,7 +3,7 @@ import numpy as np
 import zarr
 import h5py
 import remfile
-from lindi import LindiH5Store
+from lindi import LindiH5ZarrStore
 
 examples = []
 
@@ -40,7 +40,7 @@ def do_compare(example_num: int):
     h5_url = example["h5_url"]
     print(f"Running comparison for {h5_url}")
     h5f = h5py.File(remfile.File(h5_url), "r")
-    with LindiH5Store.from_file(h5_url) as store:
+    with LindiH5ZarrStore.from_file(h5_url) as store:
         root = zarr.open(store)
         assert isinstance(root, zarr.Group)
 

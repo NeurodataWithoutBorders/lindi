@@ -1,8 +1,8 @@
-from lindi import LindiClient, LindiGroup, LindiDataset
+from lindi import LindiH5pyFile, LindiGroup, LindiDataset
 
 
 def test_lindi_client():
-    client = LindiClient.from_file("example_0.zarr.json")
+    client = LindiH5pyFile.from_file("example_0.zarr.json")
 
     for k, v in client.attrs.items():
         print(f"{k}: {v}")

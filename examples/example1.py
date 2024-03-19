@@ -2,18 +2,18 @@ import numpy as np
 import h5py
 import tempfile
 import lindi
-from lindi import LindiH5Store, LindiClient, LindiDataset
+from lindi import LindiH5ZarrStore, LindiH5pyFile, LindiDataset
 from _check_equal import _check_equal
 
 
 def example1():
     # In this example, we create a temporary hdf5 file, with some sample
     # datasets, groups, and attributes. We then load that file using
-    # LindiH5Store which is a zarr storage backend providing read-only view of
+    # LindiH5ZarrStore which is a zarr storage backend providing read-only view of
     # that hdf5 file. We then create a reference file system and use that to
-    # create a LindiClient, which mimics the h5py API. We then compare the
+    # create a LindiH5pyFile, which mimics the h5py API. We then compare the
     # datasets, groups, and attributes of the original hdf5 file with those of
-    # the LindiClient.
+    # the LindiH5pyFile.
 
     with tempfile.TemporaryDirectory() as tmpdir:
         print("Creating an example hdf5 file")
@@ -31,16 +31,16 @@ def example1():
             f["group"].attrs["baz"] = 3.15
         h5f = h5py.File(filename, "r")
 
-        print("Creating a LindiH5Store from the hdf5 file")
+        print("Creating a LindiH5ZarrStore from the hdf5 file")
         # We set url to filename so that the references can point to a local file
         # but normally, this would be a remote URL
-        with LindiH5Store.from_file(filename, url=filename) as store:
-            print("Creating a reference file system from the LindiH5Store")
+        with LindiH5ZarrStore.from_file(filename, url=filename) as store:
+            print("Creating a reference file system from the LindiH5ZarrStore")
             rfs_fname = f"{tmpdir}/example.zarr.json"
             store.to_file(rfs_fname)
 
-            print("Creating a LindiClient from the reference file system")
-            client = LindiClient.from_file(rfs_fname)
+            print("Creating a LindiH5pyFile from the reference file system")
+            client = LindiH5pyFile.from_file(rfs_fname)
 
             print("Comparing dataset: X")
             X1 = h5f["X"]

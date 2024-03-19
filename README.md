@@ -37,7 +37,7 @@ h5_url = "https://api.dandiarchive.org/api/assets/3d12a902-139a-4c1a-8fd0-0a7faf
 
 
 # Create the read-only Zarr store for the h5 file
-store = lindi.LindiH5Store.from_file(h5_url)
+store = lindi.LindiH5ZarrStore.from_file(h5_url)
 
 # Create the reference file system object
 rfs = store.to_reference_file_system()
@@ -47,7 +47,7 @@ with open("example.zarr.json", "w") as f:
     json.dump(rfs, f, indent=2)
 
 # Create the h5py-like client from the reference file system
-client = lindi.LindiClient.from_reference_file_system(rfs)
+client = lindi.LindiH5pyFile.from_reference_file_system(rfs)
 
 # Try to read using pynwb
 # (This part does not work yet)
