@@ -1,7 +1,10 @@
 from typing import TYPE_CHECKING, Union
 import h5py
+
 from .LindiH5pyAttributes import LindiH5pyAttributes
+from .LindiH5pyReference import LindiH5pyReference
 from ..LindiZarrWrapper import LindiZarrWrapperDataset
+from ..LindiZarrWrapper import LindiZarrWrapperReference
 
 
 if TYPE_CHECKING:
@@ -61,4 +64,9 @@ class LindiH5pyDataset(h5py.Dataset):
         return LindiH5pyAttributes(self._dataset_object.attrs)
 
     def __getitem__(self, args, new_dtype=None):
-        return self._dataset_object.__getitem__(args, new_dtype)
+        ret = self._dataset_object.__getitem__(args, new_dtype)
+        if isinstance(self._dataset_object, LindiZarrWrapperDataset):
+            if isinstance(ret, dict):
+                if '_REFERENCE' in ret:
+                    ret = LindiH5pyReference(LindiZarrWrapperReference(ret['_REFERENCE']))
+        return ret

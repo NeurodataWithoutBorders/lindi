@@ -5,11 +5,12 @@ import pynwb
 import h5py
 import lindi
 import json
+import remfile
 
 
 def test_load_pynwb():
     # https://neurosift.app/?p=/nwb&dandisetId=000939&dandisetVersion=0.240318.1555&url=https://api.dandiarchive.org/api/assets/11f512ba-5bcf-4230-a8cb-dc8d36db38cb/download/
-    # url_nwb = "https://api.dandiarchive.org/api/assets/11f512ba-5bcf-4230-a8cb-dc8d36db38cb/download/"
+    url_nwb = "https://api.dandiarchive.org/api/assets/11f512ba-5bcf-4230-a8cb-dc8d36db38cb/download/"
     url = "https://kerchunk.neurosift.org/dandi/dandisets/000939/assets/11f512ba-5bcf-4230-a8cb-dc8d36db38cb/zarr.json"
 
     thisdir = os.path.dirname(os.path.abspath(__file__))
@@ -17,32 +18,20 @@ def test_load_pynwb():
     if not os.path.exists(fname):
         _download_file(url, fname)
 
-    # remf = remfile.File(url_nwb)
-    # h5f0 = h5py.File(remf, mode="r")
-    h5f0 = h5py.File("/home/magland/test.nwb", mode="r")
+    remf = remfile.File(url_nwb)
+    h5f0 = h5py.File(remf, mode="r")
     h5f = lindi.LindiH5pyFile.from_h5py_file(h5f0)
-    with pynwb.NWBHDF5IO(file=h5f, mode="r") as io:
-        nwb = io.read()
-        print(nwb)
-        for k in nwb.fields:
-            print(
-                f"________________________________ {k} __________________________________"
-            )
-            print(getattr(nwb, k))
 
-    print("-------------------------------------------")
-    store = lindi.LindiH5ZarrStore.from_file(
-        "/home/magland/test.nwb", url="/home/magland/test.nwb"
-    )
+    store = lindi.LindiH5ZarrStore.from_file(url_nwb, url=url_nwb)
     rfs = store.to_reference_file_system()
     with open("test_rfs.zarr.json", "w") as f:
         json.dump(rfs, f, indent=2)
     hf5_rfs = lindi.LindiH5pyFile.from_reference_file_system(rfs)
 
-    _compare_h5py_files(h5f0, hf5_rfs)
+    _compare_h5py_files(h5f, hf5_rfs)
 
-    with pynwb.NWBHDF5IO(file=hf5_rfs, mode="r") as io:
-        nwb = io.read()
+    with pynwb.NWBHDF5IO(file=hf5_rfs, mode="r") as io1:
+        nwb = io1.read()
         print(nwb)
         for k in nwb.fields:
             print(
@@ -115,25 +104,25 @@ def _compare_h5py_groups(g1: h5py.Group, g2: h5py.Group, label: str):
             if isinstance(obj1, h5py.Group):
                 obj1x = g1.get(k, getlink=True)
                 obj2x = g2.get(k, getlink=True)
-                if isinstance(obj1x, h5py.SoftLink):
-                    if isinstance(obj2x, lindi.LindiH5pySoftLink):
+                if isinstance(obj1x, h5py.SoftLink) or isinstance(obj1x, lindi.LindiH5pySoftLink):
+                    if isinstance(obj2x, h5py.SoftLink) or isinstance(obj2x, lindi.LindiH5pySoftLink):
                         pass
                     else:
                         print(f"*************** Link type mismatch for {k}")
                         print(type(obj1x))
                         print(type(obj2x))
-                elif isinstance(obj1x, h5py.HardLink):
-                    if isinstance(obj2x, lindi.LindiH5pyHardLink):
+                elif isinstance(obj1x, h5py.HardLink) or isinstance(obj1x, lindi.LindiH5pyHardLink):
+                    if isinstance(obj2x, h5py.HardLink) or isinstance(obj2x, lindi.LindiH5pyHardLink):
                         pass
                     else:
                         print(f"*************** Hard link type mismatch for {k}")
                         print(type(obj1x))
                         print(type(obj2x))
-                elif isinstance(obj2x, lindi.LindiH5pySoftLink):
+                elif isinstance(obj2x, h5py.SoftLink) or isinstance(obj2x, lindi.LindiH5pySoftLink):
                     print(f"*************** Link type mismatch for {k}")
                     print(type(obj1x))
                     print(type(obj2x))
-                elif isinstance(obj2x, lindi.LindiH5pyHardLink):
+                elif isinstance(obj2x, h5py.HardLink) or isinstance(obj2x, lindi.LindiH5pyHardLink):
                     print(f"*************** Link type mismatch for {k}")
                     print(type(obj1x))
                     print(type(obj2x))
@@ -159,6 +148,11 @@ def _compare_h5py_datasets(d1: h5py.Dataset, d2: h5py.Dataset, label: str):
         print("*************** Ndim mismatch")
     if d1.maxshape != d2.maxshape:
         print("*************** Maxshape mismatch")
+    if d1.size and d1.size < 100:
+        if not _check_equal(d1[()], d2[()]):
+            print("*************** Data mismatch")
+            print(f"  h5f1: {d1[()].ravel()[:5]}")
+            print(f"  h5f2: {d2[()].ravel()[:5]}")
 
 
 def _download_file(url, fname):

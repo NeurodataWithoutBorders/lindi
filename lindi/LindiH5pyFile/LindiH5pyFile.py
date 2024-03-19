@@ -1,9 +1,12 @@
 from typing import Union
 import h5py
 import zarr
+
 from .LindiH5pyGroup import LindiH5pyGroup
-from ..LindiZarrWrapper import LindiZarrWrapper
+from .LindiH5pyDataset import LindiH5pyDataset
+from ..LindiZarrWrapper import LindiZarrWrapper, LindiZarrWrapperGroup, LindiZarrWrapperDataset
 from .LindiH5pyAttributes import LindiH5pyAttributes
+from .LindiH5pyReference import LindiH5pyReference
 
 
 class LindiH5pyFile(h5py.File):
@@ -96,6 +99,24 @@ class LindiH5pyFile(h5py.File):
     # Group methods
 
     def __getitem__(self, name):
+        if isinstance(name, LindiH5pyReference):
+            assert isinstance(self._file_object, LindiZarrWrapper)
+            x = self._file_object[name._reference]
+            if isinstance(x, LindiZarrWrapperGroup):
+                return LindiH5pyGroup(x, self)
+            elif isinstance(x, LindiZarrWrapperDataset):
+                return LindiH5pyDataset(x, self)
+            else:
+                raise Exception(f"Unexpected type for resolved reference at path {name}: {type(x)}")
+        elif isinstance(name, h5py.Reference):
+            assert isinstance(self._file_object, h5py.File)
+            x = self._file_object[name]
+            if isinstance(x, h5py.Group):
+                return LindiH5pyGroup(x, self)
+            elif isinstance(x, h5py.Dataset):
+                return LindiH5pyDataset(x, self)
+            else:
+                raise Exception(f"Unexpected type for resolved reference at path {name}: {type(x)}")
         return self._the_group[name]
 
     def get(self, name, default=None, getclass=False, getlink=False):

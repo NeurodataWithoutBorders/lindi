@@ -300,3 +300,7 @@ def test_with_real_data():
 
         root = zarr.open(store, mode="r")
         _hdf5_visit_items(h5f, lambda key, item: _compare_item_2(item, root[key]))
+
+
+if __name__ == "__main__":
+    test_with_real_data()

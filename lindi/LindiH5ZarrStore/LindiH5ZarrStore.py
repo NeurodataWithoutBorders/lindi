@@ -389,7 +389,7 @@ class LindiH5ZarrStore(Store):
         if self._h5f is None:
             raise Exception("Store is closed")
         try:
-            item = self._h5f[path]
+            item = self._h5f['/' + path]
         except KeyError:
             return []
         if isinstance(item, h5py.Group):

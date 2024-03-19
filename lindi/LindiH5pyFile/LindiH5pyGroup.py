@@ -6,7 +6,6 @@ from .LindiH5pyDataset import LindiH5pyDataset
 from .LindiH5pyLink import LindiH5pyHardLink, LindiH5pySoftLink
 from ..LindiZarrWrapper import LindiZarrWrapperGroup
 from .LindiH5pyAttributes import LindiH5pyAttributes
-from .LindiH5pyReference import LindiH5pyReference
 
 
 if TYPE_CHECKING:
@@ -25,7 +24,7 @@ class LindiH5pyGroup(h5py.Group):
 
     def __getitem__(self, name):
         if isinstance(self._group_object, h5py.Group):
-            if isinstance(name, h5py.h5r.Reference) or isinstance(name, (bytes, str)):
+            if isinstance(name, (bytes, str)):
                 x = self._group_object[name]
             else:
                 raise TypeError(
@@ -39,10 +38,7 @@ class LindiH5pyGroup(h5py.Group):
             else:
                 raise Exception(f"Unknown type: {type(x)}")
         elif isinstance(self._group_object, LindiZarrWrapperGroup):
-            if isinstance(name, LindiH5pyReference):
-                # is this the right thing to do?
-                x = self._group_object.file[name._reference]
-            elif isinstance(name, (bytes, str)):
+            if isinstance(name, (bytes, str)):
                 x = self._group_object[name]
             else:
                 raise TypeError(
