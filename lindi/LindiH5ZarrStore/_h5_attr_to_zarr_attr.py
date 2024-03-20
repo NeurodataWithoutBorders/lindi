@@ -14,6 +14,14 @@ def _h5_attr_to_zarr_attr(attr: Any, *, label: str = '', h5f: h5py.File):
 
     Otherwise, raise NotImplementedError
     """
+
+    # first disallow special strings
+    special_strings = ['NaN', 'Infinity', '-Infinity']
+    if isinstance(attr, str) and attr in special_strings:
+        raise ValueError(f"Special string {attr} not allowed in attribute value at {label}")
+    if isinstance(attr, bytes) and attr in [x.encode('utf-8') for x in special_strings]:
+        raise ValueError(f"Special string {attr} not allowed in attribute value at {label}")
+
     if attr is None:
         return None
     elif isinstance(attr, bytes):
@@ -26,8 +34,8 @@ def _h5_attr_to_zarr_attr(attr: Any, *, label: str = '', h5f: h5py.File):
         return float(attr)
     elif np.issubdtype(type(attr), np.bool_):
         return bool(attr)
-    elif np.issubdtype(type(attr), np.bytes_):
-        return attr.decode('utf-8')
+    elif type(attr) is np.bytes_:
+        return attr.tobytes().decode('utf-8')
     elif isinstance(attr, h5py.Reference):
         return _h5_ref_to_zarr_attr(attr, label=label + '._REFERENCE', h5f=h5f)
     elif isinstance(attr, list):

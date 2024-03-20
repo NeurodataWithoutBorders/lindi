@@ -44,18 +44,11 @@ class LindiH5pyAttributes:
             if isinstance(val, dict) and "_REFERENCE" in val:
                 return LindiH5pyReference(val["_REFERENCE"])
 
-            # Convert special values
-            # @rly: doing this saves a lot of headache when loading the nwb file
-            # but then how can we represent strings that should not be converted?
-            elif val == 'NaN':
-                return float('nan')
-            elif val == 'Infinity':
-                return float('inf')
-            elif val == '-Infinity':
-                return float('-inf')
+            # Convert special float values to actual floats (NaN, Inf, -Inf)
+            # Note that string versions of these values are not supported
+            val = _decode_nan_inf_ninf_in_attr_val(val)
 
-            else:
-                return val
+            return val
         else:
             raise ValueError(f"Unknown attrs_type: {self._attrs_type}")
 
@@ -90,3 +83,18 @@ class LindiH5pyAttributes:
 
     def __str__(self):
         return str(self._attrs)
+
+
+def _decode_nan_inf_ninf_in_attr_val(val):
+    if isinstance(val, list):
+        return [_decode_nan_inf_ninf_in_attr_val(v) for v in val]
+    elif isinstance(val, dict):
+        return {k: _decode_nan_inf_ninf_in_attr_val(v) for k, v in val.items()}
+    elif val == 'NaN':
+        return float('nan')
+    elif val == 'Infinity':
+        return float('inf')
+    elif val == '-Infinity':
+        return float('-inf')
+    else:
+        return val
