@@ -2,11 +2,7 @@ import numpy as np
 import h5py
 import tempfile
 import lindi
-from lindi import (
-    LindiH5ZarrStore,
-    LindiZarrWrapper,
-    LindiZarrWrapperDataset
-)
+from lindi import LindiH5ZarrStore
 
 
 def test_variety():
@@ -37,15 +33,15 @@ def test_variety():
             assert _lists_are_equal(h5f_2.attrs["list1"], h5f.attrs["list1"])
             assert _lists_are_equal(h5f_2.attrs["tuple1"], h5f.attrs["tuple1"])
             assert _arrays_are_equal(np.array(h5f_2.attrs["array1"]), h5f.attrs["array1"])
-            assert h5f_2["dataset1"].attrs["test_attr1"] == h5f["dataset1"].attrs["test_attr1"]
+            assert h5f_2["dataset1"].attrs["test_attr1"] == h5f["dataset1"].attrs["test_attr1"]  # type: ignore
             assert _arrays_are_equal(h5f_2["dataset1"][()], h5f["dataset1"][()])  # type: ignore
-            assert h5f_2["group1"].attrs["test_attr2"] == h5f["group1"].attrs["test_attr2"]
+            assert h5f_2["group1"].attrs["test_attr2"] == h5f["group1"].attrs["test_attr2"]  # type: ignore
             target_1 = h5f[h5f.attrs["dataset1_ref"]]
             target_2 = h5f_2[h5f_2.attrs["dataset1_ref"]]
-            assert target_1.attrs["test_attr1"] == target_2.attrs["test_attr1"]
+            assert target_1.attrs["test_attr1"] == target_2.attrs["test_attr1"]  # type: ignore
             target_1 = h5f[h5f.attrs["group1_ref"]]
             target_2 = h5f_2[h5f_2.attrs["group1_ref"]]
-            assert target_1.attrs["test_attr2"] == target_2.attrs["test_attr2"]
+            assert target_1.attrs["test_attr2"] == target_2.attrs["test_attr2"]  # type: ignore
 
 
 def test_soft_links():
@@ -62,10 +58,10 @@ def test_soft_links():
             h5f_2 = lindi.LindiH5pyFile.from_reference_file_system(rfs)
             g1 = h5f['group_target']
             g2 = h5f_2['group_target']
-            assert g1.attrs['foo'] == g2.attrs['foo']
+            assert g1.attrs['foo'] == g2.attrs['foo']  # type: ignore
             h1 = h5f['soft_link']
             h2 = h5f_2['soft_link']
-            assert h1.attrs['foo'] == h2.attrs['foo']
+            assert h1.attrs['foo'] == h2.attrs['foo']  # type: ignore
             # this is tricky: it seems that with h5py, the name of the soft link
             # is the source name. So the following assertion will fail.
             # assert h1.name == h2.name
@@ -75,7 +71,7 @@ def test_soft_links():
             assert isinstance(k2, h5py.SoftLink)
             ds1 = h5f['soft_link']['dataset1']  # type: ignore
             assert isinstance(ds1, h5py.Dataset)
-            ds2 = h5f_2['soft_link']['dataset1']
+            ds2 = h5f_2['soft_link']['dataset1']  # type: ignore
             assert isinstance(ds2, h5py.Dataset)
             assert _arrays_are_equal(ds1[()], ds2[()])
             ds1 = h5f['soft_link/dataset1']
@@ -213,12 +209,12 @@ def test_numpy_arrays():
                 filename, url=filename
             ) as store:  # set url so that a reference file system can be created
                 rfs = store.to_reference_file_system()
-                client = LindiZarrWrapper.from_reference_file_system(rfs)
+                client = lindi.LindiH5pyFile.from_reference_file_system(rfs)
                 h5f = h5py.File(filename, "r")
                 X1 = h5f["X"]
                 assert isinstance(X1, h5py.Dataset)
                 X2 = client["X"]
-                assert isinstance(X2, LindiZarrWrapperDataset)
+                assert isinstance(X2, lindi.LindiH5pyDataset)
 
                 assert X1.shape == X2.shape
                 assert X1.dtype == X2.dtype
@@ -238,12 +234,12 @@ def test_nan_inf_attributes():
         h5f = h5py.File(filename, "r")
         with LindiH5ZarrStore.from_file(filename, url=filename) as store:
             rfs = store.to_reference_file_system()
-            client = LindiZarrWrapper.from_reference_file_system(rfs)
+            client = lindi.LindiH5pyFile.from_reference_file_system(rfs)
 
             X1 = h5f["X"]
             assert isinstance(X1, h5py.Dataset)
             X2 = client["X"]
-            assert isinstance(X2, LindiZarrWrapperDataset)
+            assert isinstance(X2, lindi.LindiH5pyDataset)
 
             assert X2.attrs["nan"] == "NaN"
             assert X2.attrs["inf"] == "Infinity"
@@ -272,4 +268,4 @@ def _arrays_are_equal(a, b):
 
 
 if __name__ == '__main__':
-    test_arrays_of_compound_dtype_with_references()
+    test_scalar_arrays()

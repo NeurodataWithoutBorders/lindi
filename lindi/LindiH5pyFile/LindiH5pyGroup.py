@@ -1,10 +1,9 @@
 from typing import TYPE_CHECKING, Union
 import h5py
+import zarr
 
-from lindi.LindiZarrWrapper import LindiZarrWrapperDataset
 from .LindiH5pyDataset import LindiH5pyDataset
 from .LindiH5pyLink import LindiH5pyHardLink, LindiH5pySoftLink
-from ..LindiZarrWrapper import LindiZarrWrapperGroup
 from .LindiH5pyAttributes import LindiH5pyAttributes
 
 
@@ -18,7 +17,7 @@ class LindiH5pyGroupId:
 
 
 class LindiH5pyGroup(h5py.Group):
-    def __init__(self, _group_object: Union[h5py.Group, LindiZarrWrapperGroup], _file: "LindiH5pyFile"):
+    def __init__(self, _group_object: Union[h5py.Group, zarr.Group], _file: "LindiH5pyFile"):
         self._group_object = _group_object
         self._file = _file
 
@@ -37,7 +36,7 @@ class LindiH5pyGroup(h5py.Group):
                 return LindiH5pyDataset(x, self._file)
             else:
                 raise Exception(f"Unknown type: {type(x)}")
-        elif isinstance(self._group_object, LindiZarrWrapperGroup):
+        elif isinstance(self._group_object, zarr.Group):
             if isinstance(name, (bytes, str)):
                 x = self._group_object[name]
             else:
@@ -45,10 +44,11 @@ class LindiH5pyGroup(h5py.Group):
                     "Accessing a group is done with bytes or str, "
                     "not {}".format(type(name))
                 )
-            if isinstance(x, LindiZarrWrapperGroup):
+            if isinstance(x, zarr.Group):
                 # follow the link if this is a soft link
-                if x.soft_link is not None:
-                    link_path = x.soft_link['path']
+                soft_link = x.attrs.get('_SOFT_LINK', None)
+                if soft_link is not None:
+                    link_path = soft_link['path']
                     target_grp = self._file.get(link_path)
                     if not isinstance(target_grp, LindiH5pyGroup):
                         raise Exception(
@@ -56,7 +56,7 @@ class LindiH5pyGroup(h5py.Group):
                         )
                     return target_grp
                 return LindiH5pyGroup(x, self._file)
-            elif isinstance(x, LindiZarrWrapperDataset):
+            elif isinstance(x, zarr.Array):
                 return LindiH5pyDataset(x, self._file)
             else:
                 raise Exception(f"Unknown type: {type(x)}")
@@ -85,10 +85,13 @@ class LindiH5pyGroup(h5py.Group):
                     raise Exception(
                         f"Unhandled type for get with getlink at {self.name} {name}: {type(x)}"
                     )
-            elif isinstance(self._group_object, LindiZarrWrapperGroup):
+            elif isinstance(self._group_object, zarr.Group):
                 x = self._group_object.get(name, default=default)
-                if isinstance(x, LindiZarrWrapperGroup) and x.soft_link is not None:
-                    return LindiH5pySoftLink(x.soft_link['path'])
+                if x is None:
+                    return default
+                soft_link = x.attrs.get('_SOFT_LINK', None)
+                if isinstance(x, zarr.Group) and soft_link is not None:
+                    return LindiH5pySoftLink(soft_link['path'])
                 else:
                     return LindiH5pyHardLink()
             else:
@@ -100,18 +103,26 @@ class LindiH5pyGroup(h5py.Group):
     def name(self):
         return self._group_object.name
 
+    def keys(self):  # type: ignore
+        return self._group_object.keys()
+
     def __iter__(self):
         return self._group_object.__iter__()
 
     def __reversed__(self):
-        return self._group_object.__reversed__()
+        raise Exception("Not implemented: __reversed__")
 
     def __contains__(self, name):
         return self._group_object.__contains__(name)
 
     @property
     def id(self):
-        return LindiH5pyGroupId(self._group_object.id)
+        if isinstance(self._group_object, h5py.Group):
+            return LindiH5pyGroupId(self._group_object.id)
+        elif isinstance(self._group_object, zarr.Group):
+            return LindiH5pyGroupId(None)
+        else:
+            raise Exception(f'Unexpected group object type: {type(self._group_object)}')
 
     @property
     def file(self):
@@ -119,4 +130,10 @@ class LindiH5pyGroup(h5py.Group):
 
     @property
     def attrs(self):  # type: ignore
-        return LindiH5pyAttributes(self._group_object.attrs)
+        if isinstance(self._group_object, h5py.Group):
+            attrs_type = 'h5py'
+        elif isinstance(self._group_object, zarr.Group):
+            attrs_type = 'zarr'
+        else:
+            raise Exception(f'Unexpected group object type: {type(self._group_object)}')
+        return LindiH5pyAttributes(self._group_object.attrs, attrs_type=attrs_type)
