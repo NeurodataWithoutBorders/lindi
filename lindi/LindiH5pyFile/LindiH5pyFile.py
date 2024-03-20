@@ -43,9 +43,11 @@ class LindiH5pyFile(h5py.File):
                     data = json.load(f)
                 assert isinstance(data, dict)  # prevent infinite recursion
                 return LindiH5pyFile.from_reference_file_system(data)
-        else:
+        elif isinstance(rfs, dict):
             fs = ReferenceFileSystem(rfs).get_mapper(root="")
             return LindiH5pyFile.from_zarr_store(fs)
+        else:
+            raise Exception(f"Unhandled type for rfs: {type(rfs)}")
 
     @staticmethod
     def from_zarr_store(zarr_store: Union[ZarrStore, FSMap]):
