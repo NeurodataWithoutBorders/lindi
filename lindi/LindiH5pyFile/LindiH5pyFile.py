@@ -4,7 +4,7 @@ import zarr
 
 from .LindiH5pyGroup import LindiH5pyGroup
 from .LindiH5pyDataset import LindiH5pyDataset
-from ..LindiZarrWrapper import LindiZarrWrapper, LindiZarrWrapperGroup, LindiZarrWrapperDataset
+from ..LindiZarrWrapper import LindiZarrWrapper, LindiZarrWrapperGroup, LindiZarrWrapperDataset, LindiZarrWrapperReference
 from .LindiH5pyAttributes import LindiH5pyAttributes
 from .LindiH5pyReference import LindiH5pyReference
 
@@ -99,6 +99,10 @@ class LindiH5pyFile(h5py.File):
     # Group methods
 
     def __getitem__(self, name):
+        if isinstance(name, LindiZarrWrapperReference):
+            # annoyingly we have to do this because references
+            # in arrays of compound types will come in as LindiZarrWrapperReference
+            name = LindiH5pyReference(name)
         if isinstance(name, LindiH5pyReference):
             assert isinstance(self._file_object, LindiZarrWrapper)
             x = self._file_object[name._reference]
@@ -117,6 +121,13 @@ class LindiH5pyFile(h5py.File):
                 return LindiH5pyDataset(x, self)
             else:
                 raise Exception(f"Unexpected type for resolved reference at path {name}: {type(x)}")
+        # if it contains slashes, it's a path
+        if isinstance(name, str) and "/" in name:
+            parts = name.split("/")
+            x = self._the_group
+            for part in parts:
+                x = x[part]
+            return x
         return self._the_group[name]
 
     def get(self, name, default=None, getclass=False, getlink=False):

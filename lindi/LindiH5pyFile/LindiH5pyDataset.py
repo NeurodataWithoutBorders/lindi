@@ -78,11 +78,13 @@ def _resolve_references(x: Any):
         else:
             for k, v in x.items():
                 x[k] = _resolve_references(v)
+    elif isinstance(x, LindiZarrWrapperReference):
+        return LindiH5pyReference(x)
     elif isinstance(x, list):
         for i, v in enumerate(x):
             x[i] = _resolve_references(v)
     elif isinstance(x, np.ndarray):
-        if x.dtype == object:
+        if x.dtype == object or x.dtype is None:
             view_1d = x.reshape(-1)
             for i in range(len(view_1d)):
                 view_1d[i] = _resolve_references(view_1d[i])
