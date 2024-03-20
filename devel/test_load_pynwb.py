@@ -33,7 +33,7 @@ def test_load_pynwb():
     with pynwb.NWBHDF5IO(file=hf5_rfs, mode="r") as io1:
         nwb = io1.read()
         print(nwb)
-        for k in nwb.fields:
+        for k in nwb.fields:  # type: ignore
             print(
                 f"________________________________ {k} __________________________________"
             )

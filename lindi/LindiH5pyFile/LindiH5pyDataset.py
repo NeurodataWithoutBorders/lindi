@@ -67,7 +67,20 @@ class LindiH5pyDataset(h5py.Dataset):
     def dtype(self):
         if self._compound_dtype is not None:
             return self._compound_dtype
-        return self._dataset_object.dtype
+        ret = self._dataset_object.dtype
+        if ret.kind == 'O':
+            if not ret.metadata:
+                # The following correction is needed because of
+                # this code in hdmf/backends/hdf5/h5tools.py:
+                # def _check_str_dtype(self, h5obj):
+                #     dtype = h5obj.dtype
+                #     if dtype.kind == 'O':
+                #         if dtype.metadata.get('vlen') == str and H5PY_3:
+                #             return StrDataset(h5obj, None)
+                #     return h5obj
+                # We cannot have a dtype with kind 'O' and no metadata
+                ret = np.dtype(str(ret), metadata={})
+        return ret
 
     @property
     def nbytes(self):
