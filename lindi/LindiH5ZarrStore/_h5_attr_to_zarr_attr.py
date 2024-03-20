@@ -14,7 +14,9 @@ def _h5_attr_to_zarr_attr(attr: Any, *, label: str = '', h5f: h5py.File):
 
     Otherwise, raise NotImplementedError
     """
-    if isinstance(attr, bytes):
+    if attr is None:
+        return None
+    elif isinstance(attr, bytes):
         return attr.decode('utf-8')
     elif isinstance(attr, (int, float, str)):
         return attr
@@ -27,7 +29,7 @@ def _h5_attr_to_zarr_attr(attr: Any, *, label: str = '', h5f: h5py.File):
     elif np.issubdtype(type(attr), np.bytes_):
         return attr.decode('utf-8')
     elif isinstance(attr, h5py.Reference):
-        return _h5_ref_to_zarr_attr(attr, label=label, h5f=h5f)
+        return _h5_ref_to_zarr_attr(attr, label=label + '._REFERENCE', h5f=h5f)
     elif isinstance(attr, list):
         return [_h5_attr_to_zarr_attr(x, label=label, h5f=h5f) for x in attr]
     elif isinstance(attr, dict):
@@ -95,6 +97,8 @@ def _h5_ref_to_zarr_attr(ref: h5py.Reference, *, label: str = '', h5f: h5py.File
     #     "value": value
     # }
 
-    return {
+    # important to run it through _h5_attr_to_zarr_attr to handle object IDs of
+    # type bytes
+    return _h5_attr_to_zarr_attr({
         "_REFERENCE": value
-    }
+    }, label=label, h5f=h5f)
