@@ -25,6 +25,8 @@ pip install -e .
 ## Example usage
 
 ```python
+# examples/example1.py
+
 import json
 import pynwb
 import lindi
@@ -54,6 +56,8 @@ with pynwb.NWBHDF5IO(file=client, mode="r") as io:
 Or if you already have a .zarr.json file prepared (loading is much faster)
 
 ```python
+# examples/example2.py
+
 import pynwb
 import lindi
 
