@@ -1,3 +1,4 @@
+import pytest
 import numpy as np
 import h5py
 import tempfile
@@ -23,25 +24,27 @@ def test_variety():
             f["dataset1"].attrs["test_attr1"] = "attribute-of-dataset1"
             f["group1"].attrs["test_attr2"] = "attribute-of-group1"
         h5f = h5py.File(filename, "r")
+        h5f_wrapped = lindi.LindiH5pyFile.from_h5py_file(h5f)
         with LindiH5ZarrStore.from_file(filename, url=filename) as store:
             rfs = store.to_reference_file_system()
-            h5f_2 = lindi.LindiH5pyFile.from_reference_file_system(rfs)
-            assert h5f_2.attrs["int1"] == h5f.attrs["int1"]
-            assert h5f_2.attrs["float1"] == h5f.attrs["float1"]
-            assert h5f_2.attrs["str1"] == h5f.attrs["str1"]
-            assert h5f_2.attrs["bytes1"] == h5f.attrs["bytes1"]
-            assert _lists_are_equal(h5f_2.attrs["list1"], h5f.attrs["list1"])
-            assert _lists_are_equal(h5f_2.attrs["tuple1"], h5f.attrs["tuple1"])
-            assert _arrays_are_equal(np.array(h5f_2.attrs["array1"]), h5f.attrs["array1"])
-            assert h5f_2["dataset1"].attrs["test_attr1"] == h5f["dataset1"].attrs["test_attr1"]  # type: ignore
-            assert _arrays_are_equal(h5f_2["dataset1"][()], h5f["dataset1"][()])  # type: ignore
-            assert h5f_2["group1"].attrs["test_attr2"] == h5f["group1"].attrs["test_attr2"]  # type: ignore
-            target_1 = h5f[h5f.attrs["dataset1_ref"]]
-            target_2 = h5f_2[h5f_2.attrs["dataset1_ref"]]
-            assert target_1.attrs["test_attr1"] == target_2.attrs["test_attr1"]  # type: ignore
-            target_1 = h5f[h5f.attrs["group1_ref"]]
-            target_2 = h5f_2[h5f_2.attrs["group1_ref"]]
-            assert target_1.attrs["test_attr2"] == target_2.attrs["test_attr2"]  # type: ignore
+            h5f_rfs = lindi.LindiH5pyFile.from_reference_file_system(rfs)
+            for h5f_2 in [h5f_rfs, h5f_wrapped]:
+                assert h5f_2.attrs["int1"] == h5f.attrs["int1"]
+                assert h5f_2.attrs["float1"] == h5f.attrs["float1"]
+                assert h5f_2.attrs["str1"] == h5f.attrs["str1"]
+                assert h5f_2.attrs["bytes1"] == h5f.attrs["bytes1"]
+                assert _lists_are_equal(h5f_2.attrs["list1"], h5f.attrs["list1"])
+                assert _lists_are_equal(h5f_2.attrs["tuple1"], h5f.attrs["tuple1"])
+                assert _arrays_are_equal(np.array(h5f_2.attrs["array1"]), h5f.attrs["array1"])
+                assert h5f_2["dataset1"].attrs["test_attr1"] == h5f["dataset1"].attrs["test_attr1"]  # type: ignore
+                assert _arrays_are_equal(h5f_2["dataset1"][()], h5f["dataset1"][()])  # type: ignore
+                assert h5f_2["group1"].attrs["test_attr2"] == h5f["group1"].attrs["test_attr2"]  # type: ignore
+                target_1 = h5f[h5f.attrs["dataset1_ref"]]
+                target_2 = h5f_2[h5f_2.attrs["dataset1_ref"]]
+                assert target_1.attrs["test_attr1"] == target_2.attrs["test_attr1"]  # type: ignore
+                target_1 = h5f[h5f.attrs["group1_ref"]]
+                target_2 = h5f_2[h5f_2.attrs["group1_ref"]]
+                assert target_1.attrs["test_attr2"] == target_2.attrs["test_attr2"]  # type: ignore
 
 
 def test_soft_links():
@@ -53,37 +56,45 @@ def test_soft_links():
             g.create_dataset('dataset1', data=[5, 6, 7])
             f['soft_link'] = h5py.SoftLink('/group_target')
         h5f = h5py.File(filename, "r")
+        h5f_wrapped = lindi.LindiH5pyFile.from_h5py_file(h5f)
         with LindiH5ZarrStore.from_file(filename, url=filename) as store:
             rfs = store.to_reference_file_system()
-            h5f_2 = lindi.LindiH5pyFile.from_reference_file_system(rfs)
-            g1 = h5f['group_target']
-            g2 = h5f_2['group_target']
-            assert g1.attrs['foo'] == g2.attrs['foo']  # type: ignore
-            h1 = h5f['soft_link']
-            h2 = h5f_2['soft_link']
-            assert h1.attrs['foo'] == h2.attrs['foo']  # type: ignore
-            # this is tricky: it seems that with h5py, the name of the soft link
-            # is the source name. So the following assertion will fail.
-            # assert h1.name == h2.name
-            k1 = h5f.get('soft_link', getlink=True)
-            k2 = h5f_2.get('soft_link', getlink=True)
-            assert isinstance(k1, h5py.SoftLink)
-            assert isinstance(k2, h5py.SoftLink)
-            ds1 = h5f['soft_link']['dataset1']  # type: ignore
-            assert isinstance(ds1, h5py.Dataset)
-            ds2 = h5f_2['soft_link']['dataset1']  # type: ignore
-            assert isinstance(ds2, h5py.Dataset)
-            assert _arrays_are_equal(ds1[()], ds2[()])
-            ds1 = h5f['soft_link/dataset1']
-            assert isinstance(ds1, h5py.Dataset)
-            ds2 = h5f_2['soft_link/dataset1']
-            assert isinstance(ds2, h5py.Dataset)
-            assert _arrays_are_equal(ds1[()], ds2[()])
-            ds1 = h5f['group_target/dataset1']
-            assert isinstance(ds1, h5py.Dataset)
-            ds2 = h5f_2['group_target/dataset1']
-            assert isinstance(ds2, h5py.Dataset)
-            assert _arrays_are_equal(ds1[()], ds2[()])
+            h5f_rfs = lindi.LindiH5pyFile.from_reference_file_system(rfs)
+            for h5f_2 in [h5f_rfs, h5f_wrapped]:
+                g1 = h5f['group_target']
+                assert isinstance(g1, h5py.Group)
+                g2 = h5f_2['group_target']
+                assert isinstance(g2, h5py.Group)
+                assert g1.attrs['foo'] == g2.attrs['foo']  # type: ignore
+                with pytest.raises(TypeError):
+                    g1[np.array([0, 1, 2])]
+                h1 = h5f['soft_link']
+                assert isinstance(h1, h5py.Group)
+                h2 = h5f_2['soft_link']
+                assert isinstance(h2, h5py.Group)
+                assert h1.attrs['foo'] == h2.attrs['foo']  # type: ignore
+                # this is tricky: it seems that with h5py, the name of the soft link
+                # is the source name. So the following assertion will fail.
+                # assert h1.name == h2.name
+                k1 = h5f.get('soft_link', getlink=True)
+                k2 = h5f_2.get('soft_link', getlink=True)
+                assert isinstance(k1, h5py.SoftLink)
+                assert isinstance(k2, h5py.SoftLink)
+                ds1 = h5f['soft_link']['dataset1']  # type: ignore
+                assert isinstance(ds1, h5py.Dataset)
+                ds2 = h5f_2['soft_link']['dataset1']  # type: ignore
+                assert isinstance(ds2, h5py.Dataset)
+                assert _arrays_are_equal(ds1[()], ds2[()])
+                ds1 = h5f['soft_link/dataset1']
+                assert isinstance(ds1, h5py.Dataset)
+                ds2 = h5f_2['soft_link/dataset1']
+                assert isinstance(ds2, h5py.Dataset)
+                assert _arrays_are_equal(ds1[()], ds2[()])
+                ds1 = h5f['group_target/dataset1']
+                assert isinstance(ds1, h5py.Dataset)
+                ds2 = h5f_2['group_target/dataset1']
+                assert isinstance(ds2, h5py.Dataset)
+                assert _arrays_are_equal(ds1[()], ds2[()])
 
 
 def test_arrays_of_compound_dtype():
@@ -244,6 +255,20 @@ def test_nan_inf_attributes():
             assert X2.attrs["nan"] == "NaN"
             assert X2.attrs["inf"] == "Infinity"
             assert X2.attrs["ninf"] == "-Infinity"
+
+
+def test_reference_file_system_to_file():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        filename = f"{tmpdir}/test.h5"
+        with h5py.File(filename, "w") as f:
+            f.create_dataset("X", data=[1, 2, 3])
+        with LindiH5ZarrStore.from_file(filename, url=filename) as store:
+            rfs_fname = f'{tmpdir}/test.zarr.json'
+            store.to_file(rfs_fname)
+            client = lindi.LindiH5pyFile.from_reference_file_system(rfs_fname)
+            X = client["X"]
+            assert isinstance(X, lindi.LindiH5pyDataset)
+            assert _lists_are_equal(X[()], [1, 2, 3])
 
 
 def _lists_are_equal(a, b):

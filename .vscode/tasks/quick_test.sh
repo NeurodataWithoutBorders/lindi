@@ -8,4 +8,4 @@ flake8 .
 # pyright
 cd ..
 
-pytest --cov=lindi --cov-report=xml --cov-report=term -m "not slow" tests/
+pytest --cov=lindi --cov-report=xml --cov-report=term -m "not slow and not network" tests/

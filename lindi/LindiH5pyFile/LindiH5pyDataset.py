@@ -17,12 +17,17 @@ class LindiH5pyDatasetId:
         self._h5py_dataset_id = _h5py_dataset_id
 
 
+# This is a global list of external hdf5 clients, which are used by
+# possibly multiple LindiH5pyFile objects. The key is the URL of the
+# external hdf5 file, and the value is the h5py.File object.
+# TODO: figure out how to close these clients
+_external_hdf5_clients: Dict[str, h5py.File] = {}
+
+
 class LindiH5pyDataset(h5py.Dataset):
     def __init__(self, _dataset_object: Union[h5py.Dataset, zarr.Array], _file: "LindiH5pyFile"):
         self._dataset_object = _dataset_object
         self._file = _file
-
-        self._external_hdf5_clients: Dict[str, h5py.File] = {}
 
         # See if we have the _COMPOUND_DTYPE attribute, which signifies that
         # this is a compound dtype
@@ -176,10 +181,13 @@ class LindiH5pyDataset(h5py.Dataset):
         return zarr_array[selection]
 
     def _get_external_hdf5_client(self, url: str) -> h5py.File:
-        if url not in self._external_hdf5_clients:
-            remf = remfile.File(url)
-            self._external_hdf5_clients[url] = h5py.File(remf, "r")
-        return self._external_hdf5_clients[url]
+        if url not in _external_hdf5_clients:
+            if url.startswith("http://") or url.startswith("https://"):
+                ff = remfile.File(url)
+            else:
+                ff = open(url, "rb")  # this never gets closed
+            _external_hdf5_clients[url] = h5py.File(ff, "r")
+        return _external_hdf5_clients[url]
 
 
 def _resolve_references(x: Any):

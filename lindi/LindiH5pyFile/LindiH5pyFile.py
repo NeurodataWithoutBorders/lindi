@@ -94,15 +94,15 @@ class LindiH5pyFile(h5py.File):
     def driver(self):
         raise Exception("Getting driver is not allowed")
 
-    @property
-    def mode(self):
-        if isinstance(self._file_object, h5py.File):
-            return self._file_object.mode
-        elif isinstance(self._file_object, zarr.Group):
-            # hard-coded to read-only
-            return "r"
-        else:
-            raise Exception(f"Unhandled type: {type(self._file_object)}")
+    # @property
+    # def mode(self):
+    #     if isinstance(self._file_object, h5py.File):
+    #         return self._file_object.mode
+    #     elif isinstance(self._file_object, zarr.Group):
+    #         # hard-coded to read-only
+    #         return "r"
+    #     else:
+    #         raise Exception(f"Unhandled type: {type(self._file_object)}")
 
     @property
     def libver(self):
