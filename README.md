@@ -77,6 +77,10 @@ with pynwb.NWBHDF5IO(file=client, mode="r") as io:
 
 Once we have NWB files represented by relatively small reference file systems (e.g., .zarr.json files), we can begin to mix and match data from multiple sources. More on this to come.
 
+## For developers
+
+[Special Zarr annotations used by LINDI](docs/special_zarr_annotations.md)
+
 ## License
 
 See [LICENSE](LICENSE).
