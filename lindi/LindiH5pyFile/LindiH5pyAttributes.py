@@ -43,6 +43,17 @@ class LindiH5pyAttributes:
         elif self._attrs_type == "zarr":
             if isinstance(val, dict) and "_REFERENCE" in val:
                 return LindiH5pyReference(val["_REFERENCE"])
+
+            # Convert special values
+            # @rly: doing this saves a lot of headache when loading the nwb file
+            # but then how can we represent strings that should not be converted?
+            elif val == 'NaN':
+                return float('nan')
+            elif val == 'Infinity':
+                return float('inf')
+            elif val == '-Infinity':
+                return float('-inf')
+
             else:
                 return val
         else:
