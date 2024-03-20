@@ -13,6 +13,8 @@ jobs:
     - name: Install packages needed for tests
       # pyright 1.1.336 can produce annoying errors
       run: pip install pytest pytest-cov pyright==1.1.335
+    - name: Install pynwb needed for tests
+      run: pip install pynwb
     - name: Run pyright
       run: cd lindi && pyright
     - name: Run tests and collect coverage
