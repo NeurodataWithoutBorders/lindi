@@ -1,3 +1,4 @@
+from pandas import isna
 import pytest
 import numpy as np
 import h5py
@@ -242,6 +243,7 @@ def test_nan_inf_attributes():
             f["X"].attrs["nan"] = np.nan
             f["X"].attrs["inf"] = np.inf
             f["X"].attrs["ninf"] = -np.inf
+            f["X"].attrs['float_list'] = [np.nan, np.inf, -np.inf, 23]
         h5f = h5py.File(filename, "r")
         with LindiH5ZarrStore.from_file(filename, url=filename) as store:
             rfs = store.to_reference_file_system()
@@ -256,10 +258,27 @@ def test_nan_inf_attributes():
             assert isinstance(nanval, float) and np.isnan(nanval)
             assert X1.attrs["inf"] == np.inf
             assert X1.attrs["ninf"] == -np.inf
+            assert _lists_are_equal(X1.attrs['float_list'], [np.nan, np.inf, -np.inf, 23])
 
-            # assert X2.attrs["nan"] == "NaN"
-            # assert X2.attrs["inf"] == "Infinity"
-            # assert X2.attrs["ninf"] == "-Infinity"
+            nanval = X2.attrs["nan"]
+            assert isinstance(nanval, float) and np.isnan(nanval)
+            assert X2.attrs["inf"] == np.inf
+            assert X2.attrs["ninf"] == -np.inf
+            assert _lists_are_equal(X2.attrs['float_list'], [np.nan, np.inf, -np.inf, 23])
+
+        for test_string in ["NaN", "Infinity", "-Infinity", "Not-illegal"]:
+            filename = f"{tmpdir}/illegal_string.h5"
+            with h5py.File(filename, "w") as f:
+                f.create_dataset("X", data=[1, 2, 3])
+                f["X"].attrs["test_string"] = test_string
+            with LindiH5ZarrStore.from_file(filename, url=filename) as store:
+                if test_string in ["NaN", "Infinity", "-Infinity"]:
+                    with pytest.raises(Exception):
+                        rfs = store.to_reference_file_system()
+                else:
+                    rfs = store.to_reference_file_system()
+                    client = lindi.LindiH5pyFile.from_reference_file_system(rfs)
+                    assert client["X"].attrs["test_string"] == test_string  # type: ignore
 
 
 def test_reference_file_system_to_file():
@@ -281,6 +300,9 @@ def _lists_are_equal(a, b):
         return False
     for aa, bb in zip(a, b):
         if aa != bb:
+            if np.isnan(aa) and np.isnan(bb):
+                # nan != nan, but we want to consider them equal
+                continue
             return False
     return True
 
