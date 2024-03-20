@@ -33,16 +33,16 @@ def _zarr_info_for_h5_dataset(h5_dataset: h5py.Dataset) -> ZarrInfoForH5Dataset:
     is in the hdf5 file. The hdf5 filters are translated into zarr filters using
     the _h5_filters_to_codecs function.
 
-    If it is a non-scalar object array, then the inline_data will be a JSON string and the
-    JSON codec will be used.
+    If it is a non-scalar object array, then the inline_data will be a JSON
+    string and the JSON codec will be used.
 
     When the shape is (), we have a scalar dataset. Since zarr doesn't support
-    scalar datasets, we make an array of shape (1,). The _ARRAY_DIMENSIONS
-    attribute will be set to [] elsewhere to indicate that it is actually a
-    scalar. The inline_data attribute will be set. In the case of a numeric
-    scalar, it will be a bytes object with the binary representation of the
-    value. In the case of an object, the inline_data will be a JSON string and
-    the JSON codec will be used.
+    scalar datasets, we make an array of shape (1,). The _SCALAR attribute will
+    be set to True elsewhere to indicate that it is actually a scalar. The
+    inline_data attribute will be set. In the case of a numeric scalar, it will
+    be a bytes object with the binary representation of the value. In the case
+    of an object, the inline_data will be a JSON string and the JSON codec will
+    be used.
     """
     shape = h5_dataset.shape
     dtype = h5_dataset.dtype

@@ -18,6 +18,15 @@ from ._h5_attr_to_zarr_attr import _h5_attr_to_zarr_attr
 
 @dataclass
 class LindiH5ZarrStoreOpts:
+    """
+    Options for the LindiH5ZarrStore class.
+
+    Attributes:
+        num_dataset_chunks_threshold (Union[int, None]): For each dataset in the
+        HDF5 file, if the number of chunks is greater than this threshold, then
+        the dataset will be represented as an external array link. If None, then
+        the threshold is not used. Default is 1000.
+    """
     num_dataset_chunks_threshold: Union[int, None] = 1000
 
 
@@ -60,17 +69,6 @@ class LindiH5ZarrStore(Store):
 
         self._external_array_links: Dict[str, Union[dict, None]] = {}
 
-    def close(self):
-        # overrides the base class method
-        # now a context manager can be used
-        if hasattr(self, "_h5f") and self._h5f:
-            self._h5f.close()
-            self._h5f = None
-        if hasattr(self, "_file") and self._file:
-            if not isinstance(self._file, remfile.File):
-                self._file.close()
-            self._file = None
-
     @staticmethod
     def from_file(
         hdf5_file_name_or_url: str,
@@ -79,7 +77,7 @@ class LindiH5ZarrStore(Store):
         url: Union[str, None] = None,
     ):
         """
-        Create a LindiH5ZarrStore from a file or url.
+        Create a LindiH5ZarrStore from a file or url pointing to an HDF5 file.
 
         Parameters
         ----------
@@ -103,6 +101,16 @@ class LindiH5ZarrStore(Store):
         else:
             f = open(hdf5_file_name_or_url, "rb")
             return LindiH5ZarrStore(_file=f, _url=url, _opts=opts)
+
+    def close(self):
+        """Close the store."""
+        if hasattr(self, "_h5f") and self._h5f:
+            self._h5f.close()
+            self._h5f = None
+        if hasattr(self, "_file") and self._file:
+            if not isinstance(self._file, remfile.File):
+                self._file.close()
+            self._file = None
 
     def __getitem__(self, key):
         """Get an item from the store (required by base class)."""
@@ -326,6 +334,10 @@ class LindiH5ZarrStore(Store):
                     f"Chunk name {key_name} does not match dataset dimensions"
                 )
 
+        # Check whether we have inline data for this array. This would be set
+        # when we created the .zarray JSON text for the dataset. Note that this
+        # means that the .zarray file needs to be read before the chunk files,
+        # which should always be the case (I assume).
         if key_parent in self._inline_data_for_arrays:
             x = self._inline_data_for_arrays[key_parent]
             if isinstance(x, bytes):
@@ -337,6 +349,7 @@ class LindiH5ZarrStore(Store):
                     f"Inline data for dataset {key_parent} is not bytes or str. It is {type(x)}"
                 )
 
+        # If this is a scalar, then the data should have been inline
         if h5_item.ndim == 0:
             raise Exception(f"No inline data for scalar dataset {key_parent}")
 
@@ -351,12 +364,10 @@ class LindiH5ZarrStore(Store):
                     f"Chunk coordinates {chunk_coords} out of range for dataset {key_parent}"
                 )
         if h5_item.chunks is not None:
-            # Get the byte range in the file for the chunk. We do it this way
-            # rather than reading from the h5py dataset Because we want to
-            # ensure that we are reading the exact bytes.
+            # Get the byte range in the file for the chunk.
             byte_offset, byte_count = _get_chunk_byte_range(h5_item, chunk_coords)
         else:
-            # in this case (contiguous dataset), we need to check that the chunk
+            # In this case (contiguous dataset), we need to check that the chunk
             # coordinates are (0, 0, 0, ...)
             if chunk_coords != (0,) * h5_item.ndim:
                 raise Exception(
@@ -367,12 +378,15 @@ class LindiH5ZarrStore(Store):
         return byte_offset, byte_count, None
 
     def _get_external_array_link(self, parent_key: str, h5_item: h5py.Dataset):
+        # First check the memory cache
         if parent_key in self._external_array_links:
             return self._external_array_links[parent_key]
-        self._external_array_links[parent_key] = (
-            None  # important to set to None so that we don't keep checking
-        )
+        # Important to set it to None so that we don't keep checking it
+        self._external_array_links[parent_key] = None
         if h5_item.chunks and self._opts.num_dataset_chunks_threshold is not None:
+            # We compute the expected number of chunks using the shape and chunks
+            # and compare it to the threshold. If it's greater, then we create an
+            # external array link.
             shape = h5_item.shape
             chunks = h5_item.chunks
             chunk_coords_shape = [
@@ -393,6 +407,9 @@ class LindiH5ZarrStore(Store):
         return self._external_array_links[parent_key]
 
     def listdir(self, path: str = "") -> List[str]:
+        # This function is used by zarr. We need to return the names of the
+        # subdirectories of the given path in the store. We should not return
+        # the names of files.
         if self._h5f is None:
             raise Exception("Store is closed")
         try:
@@ -406,20 +423,21 @@ class LindiH5ZarrStore(Store):
                 # in this case we don't return any keys because the keys should
                 # be in the target of the soft link
                 return []
+            # We will have one subdir for each key in the group
             ret = []
             for k in item.keys():
                 ret.append(k)
             return ret
         elif isinstance(item, h5py.Dataset):
-            ret = []
-            return ret
+            # Datasets do not have subdirectories
+            return []
         else:
             return []
 
     def to_file(self, file_name: str, *, file_type: Literal["zarr.json"] = "zarr.json"):
         """Write a reference file system cooresponding to this store to a file.
 
-        This can then be loaded using LindiZarrWrapper.from_file(fname)
+        This can then be loaded using LindiH5pyFile.from_reference_file_system(file_name)
         """
         if file_type != "zarr.json":
             raise Exception(f"Unsupported file type: {file_type}")
@@ -431,8 +449,7 @@ class LindiH5ZarrStore(Store):
     def to_reference_file_system(self) -> dict:
         """Create a reference file system cooresponding to this store.
 
-        This can then be loaded using
-        LindiZarrWrapper.from_reference_file_system(obj)
+        This can then be loaded using LindiH5pyFile.from_reference_file_system(obj)
         """
         if self._h5f is None:
             raise Exception("Store is closed")
@@ -440,21 +457,34 @@ class LindiH5ZarrStore(Store):
             raise Exception("You must specify a url to create a reference file system")
         ret = {"refs": {}, "version": 1}
 
+        # TODO: use templates to decrease the size of the JSON
+
         def _add_ref(key: str, content: Union[bytes, None]):
+            import base64
             if content is None:
                 raise Exception(f"Unable to get content for key {key}")
             try:
-                ret["refs"][key] = content.decode("ascii")
+                if content.startswith(b"base64:"):
+                    # This is the rare case where the content actually starts with "base64:"
+                    # which is confusing. Not sure when this would happen, but it could.
+                    ret["refs"][key] = (b"base64:" + base64.b64encode(content)).decode(
+                        "ascii"
+                    )
+                else:
+                    # This is the usual case. It will raise a UnicodeDecodeError if the
+                    # content is not valid ASCII, in which case the content will be
+                    # base64 encoded.
+                    ret["refs"][key] = content.decode("ascii")
             except UnicodeDecodeError:
-                import base64
-
-                # from kerchunk
+                # If the content is not valid ASCII, then we base64 encode it. The
+                # reference file system reader will know what to do with it.
                 ret["refs"][key] = (b"base64:" + base64.b64encode(content)).decode(
                     "ascii"
                 )
 
         def _process_group(key, item: h5py.Group):
             if isinstance(item, h5py.Group):
+                # Add the .zattrs and .zgroup files for the group
                 zattrs_bytes = self.get(_join(key, ".zattrs"))
                 if zattrs_bytes != b"{}":  # don't include empty zattrs
                     _add_ref(_join(key, ".zattrs"), self.get(_join(key, ".zattrs")))
@@ -468,8 +498,10 @@ class LindiH5ZarrStore(Store):
                 for k in item.keys():
                     subitem = item[k]
                     if isinstance(subitem, h5py.Group):
+                        # recursively process subgroups
                         _process_group(_join(key, k), subitem)
                     elif isinstance(subitem, h5py.Dataset):
+                        # Add the .zattrs and .zarray files for the dataset
                         subkey = _join(key, k)
                         zattrs_bytes = self.get(f"{subkey}/.zattrs")
                         assert zattrs_bytes is not None
@@ -482,15 +514,16 @@ class LindiH5ZarrStore(Store):
                         assert zarray_bytes is not None
                         _add_ref(f"{subkey}/.zarray", zarray_bytes)
                         zarray_dict = json.loads(zarray_bytes.decode("utf-8"))
-                        if (
-                            external_array_link is None
-                        ):  # only process chunks for non-external array links
+                        if external_array_link is None:
+                            # only process chunks for non-external array links
                             shape = zarray_dict["shape"]
                             chunks = zarray_dict.get("chunks", None)
                             chunk_coords_shape = [
                                 (shape[i] + chunks[i] - 1) // chunks[i]
                                 for i in range(len(shape))
                             ]
+                            # For example, chunk_names could be ['0', '1', '2', ...]
+                            # or ['0.0', '0.1', '0.2', ...]
                             chunk_names = _get_chunk_names_for_dataset(
                                 chunk_coords_shape
                             )
@@ -499,8 +532,11 @@ class LindiH5ZarrStore(Store):
                                     self._get_chunk_file_bytes_data(subkey, chunk_name)
                                 )
                                 if inline_data is not None:
+                                    # The data is inline for this chunk
                                     _add_ref(f"{subkey}/{chunk_name}", inline_data)
                                 else:
+                                    # In this case we reference a chunk of data
+                                    # in a separate file
                                     assert byte_offset is not None
                                     assert byte_count is not None
                                     ret["refs"][f"{subkey}/{chunk_name}"] = [
@@ -509,6 +545,7 @@ class LindiH5ZarrStore(Store):
                                         byte_count,
                                     ]
 
+        # Process the groups recursively starting with the root group
         _process_group("", self._h5f)
         return ret
 
