@@ -22,7 +22,7 @@ class LindiReferenceFileSystemStore(ZarrStore):
 
     To read from a file in an embargoed DANDI dataset, you will need to set the
     DANDI_API_KEY environment variable to your DANDI API token. Or, if this is
-    and Dandiset in the staging site, you will need to set the
+    a Dandiset on the staging server, you will need to set the
     DANDI_STAGING_API_KEY.
 
     Following the fsspec convention, the reference file system is specified as a
