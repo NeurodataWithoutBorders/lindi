@@ -297,15 +297,83 @@ def test_reference_file_system_to_file():
             assert _lists_are_equal(X[()], [1, 2, 3])
 
 
-def test_misc_coverage():
-    from lindi.LindiH5pyFile.LindiH5pyReference import test_coverage as test_lindi_h5py_reference
-    test_lindi_h5py_reference()
+def test_lindi_reference_file_system_store():
+    from lindi.LindiH5pyFile.LindiReferenceFileSystemStore import LindiReferenceFileSystemStore
+
+    # test that setting items is not allowed
+    rfs = {"refs": {"a": "a"}}
+    store = LindiReferenceFileSystemStore(rfs)
+    with pytest.raises(Exception):
+        store["b"] = "b"
+
+    # test that deleting items is not allowed
+    rfs = {"refs": {"a": "a"}}
+    store = LindiReferenceFileSystemStore(rfs)
+    with pytest.raises(Exception):
+        del store["a"]
+
+    # test for invalid rfs
+    rfs = {"rfs_misspelled": {"a": "a"}}  # misspelled
+    with pytest.raises(Exception):
+        store = LindiReferenceFileSystemStore(rfs)
+    rfs = {"refs": {"a": 1}}  # invalid value
+    with pytest.raises(Exception):
+        store = LindiReferenceFileSystemStore(rfs)
+    rfs = {"refs": {"a": ["a", 1]}}  # invalid list
+    with pytest.raises(Exception):
+        store = LindiReferenceFileSystemStore(rfs)
+    rfs = {"refs": {"a": ["a", 1, 2, 3]}}  # invalid list
+    with pytest.raises(Exception):
+        store = LindiReferenceFileSystemStore(rfs)
+    rfs = {"refs": {"a": [1, 2, 3]}}  # invalid list
+    with pytest.raises(Exception):
+        store = LindiReferenceFileSystemStore(rfs)
+    rfs = {"refs": {"a": ['a', 'a', 2]}}  # invalid list
+    with pytest.raises(Exception):
+        store = LindiReferenceFileSystemStore(rfs)
+    rfs = {"refs": {"a": ['a', 1, 'a']}}  # invalid list
+    with pytest.raises(Exception):
+        store = LindiReferenceFileSystemStore(rfs)
+    rfs = {"refs": {"a": "base64:abc+++"}}  # invalid base64
+    store = LindiReferenceFileSystemStore(rfs)
+    with pytest.raises(Exception):
+        store["a"]
+    with pytest.raises(Exception):
+        store[{}]  # invalid key type # type: ignore
+    rfs = {"refs": {"a": {}}}  # invalid value
+    with pytest.raises(Exception):
+        store = LindiReferenceFileSystemStore(rfs)
+
+    rfs = {"refs": {"a": "abc"}}
+    store = LindiReferenceFileSystemStore(rfs)
+    assert store.is_readable()
+    assert not store.is_writeable()
+    assert store.is_listable()
+    assert not store.is_erasable()
+    assert len(store) == 1
+    assert "a" in store
+    assert "b" not in store
+    assert store["a"] == b"abc"
 
 
-def test_lindi_file_store_exceptions():
-    from lindi.LindiH5pyFile.LindiReferenceFileSystemStore import test_exceptions
-    test_exceptions()
-
+def test_lindi_h5py_reference():
+    from lindi.LindiH5pyFile.LindiH5pyReference import LindiH5pyReference
+    obj = {
+        "object_id": "object_id",
+        "path": "path",
+        "source": "source",
+        "source_object_id": "source_object_id",
+    }
+    ref = LindiH5pyReference(obj)
+    assert repr(ref) == "LindiH5pyReference(object_id, path)"
+    assert str(ref) == "LindiH5pyReference(object_id, path)"
+    assert ref._object_id == "object_id"
+    assert ref._path == "path"
+    assert ref._source == "source"
+    assert ref._source_object_id == "source_object_id"
+    assert ref.__class__.__name__ == "LindiH5pyReference"
+    assert isinstance(ref, h5py.h5r.Reference)
+    assert isinstance(ref, LindiH5pyReference)
 
 
 def _lists_are_equal(a, b):
