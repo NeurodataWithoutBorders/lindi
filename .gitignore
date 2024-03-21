@@ -1,4 +1,5 @@
 *.zarr.json
+*.nwb
 
 .coverage
 

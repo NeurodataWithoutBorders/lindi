@@ -7,6 +7,8 @@ import remfile
 from .LindiH5pyAttributes import LindiH5pyAttributes
 from .LindiH5pyReference import LindiH5pyReference
 
+from .write.LindiH5pyDatasetWrite import LindiH5pyDatasetWrite
+
 
 if TYPE_CHECKING:
     from .LindiH5pyFile import LindiH5pyFile  # pragma: no cover
@@ -48,6 +50,8 @@ class LindiH5pyDataset(h5py.Dataset):
             self._is_scalar = self._dataset_object.attrs.get("_SCALAR", False)
         else:
             self._is_scalar = self._dataset_object.ndim == 0
+
+        self._write = LindiH5pyDatasetWrite(self)
 
     @property
     def id(self):
@@ -119,7 +123,13 @@ class LindiH5pyDataset(h5py.Dataset):
             attrs_type = 'zarr'
         else:
             raise Exception(f'Unexpected dataset object type: {type(self._dataset_object)}')
-        return LindiH5pyAttributes(self._dataset_object.attrs, attrs_type=attrs_type)
+        return LindiH5pyAttributes(self._dataset_object.attrs, attrs_type=attrs_type, readonly=self._file.mode == 'r')
+
+    def __repr__(self):  # type: ignore
+        return f"<{self.__class__.__name__}: {self.name}>"
+
+    def __str__(self):
+        return f"<{self.__class__.__name__}: {self.name}>"
 
     def __getitem__(self, args, new_dtype=None):
         if isinstance(self._dataset_object, h5py.Dataset):
@@ -188,6 +198,15 @@ class LindiH5pyDataset(h5py.Dataset):
                 ff = open(url, "rb")  # this never gets closed
             _external_hdf5_clients[url] = h5py.File(ff, "r")
         return _external_hdf5_clients[url]
+
+    ##############################
+    # Write
+    def __setitem__(self, args, val):
+        self._write.__setitem__(args, val)
+
+    @property
+    def ref(self):
+        return self._write.ref
 
 
 def _resolve_references(x: Any):

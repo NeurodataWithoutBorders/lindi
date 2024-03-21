@@ -11,9 +11,10 @@ _special_attribute_keys = [
 
 
 class LindiH5pyAttributes:
-    def __init__(self, attrs, attrs_type: Literal["h5py", "zarr"]):
+    def __init__(self, attrs, attrs_type: Literal["h5py", "zarr"], readonly: bool):
         self._attrs = attrs
         self._attrs_type = attrs_type
+        self._readonly = readonly
 
     def get(self, key, default=None):
         if self._attrs_type == "h5py":
@@ -53,7 +54,15 @@ class LindiH5pyAttributes:
             raise ValueError(f"Unknown attrs_type: {self._attrs_type}")
 
     def __setitem__(self, key, value):
-        raise KeyError("Cannot set attributes on read-only object")
+        if self._readonly:
+            raise KeyError("Cannot set attributes on read-only object")
+        if self._attrs_type == "h5py":
+            self._attrs[key] = value
+        elif self._attrs_type == "zarr":
+            from ..LindiH5ZarrStore._h5_attr_to_zarr_attr import _h5_attr_to_zarr_attr  # avoid circular import
+            self._attrs[key] = _h5_attr_to_zarr_attr(value, h5f=None)
+        else:
+            raise ValueError(f"Unknown attrs_type: {self._attrs_type}")
 
     def __delitem__(self, key):
         raise KeyError("Cannot delete attributes on read-only object")

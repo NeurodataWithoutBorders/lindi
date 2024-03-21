@@ -1,4 +1,4 @@
-from typing import Union
+from typing import Union, Literal
 import json
 import tempfile
 import urllib.request
@@ -50,13 +50,13 @@ class LindiH5pyFile(h5py.File):
             raise Exception(f"Unhandled type for rfs: {type(rfs)}")
 
     @staticmethod
-    def from_zarr_store(zarr_store: ZarrStore):
+    def from_zarr_store(zarr_store: ZarrStore, mode: Literal["r", "a"] = "r"):
         """
         Create a LindiH5pyFile from a zarr store.
         """
         # note that even though the function is called "open", the zarr_group
         # does not need to be closed
-        zarr_group = zarr.open(store=zarr_store, mode="r")
+        zarr_group = zarr.open(store=zarr_store, mode=mode)
         assert isinstance(zarr_group, zarr.Group)
         return LindiH5pyFile.from_zarr_group(zarr_group)
 
@@ -82,7 +82,7 @@ class LindiH5pyFile(h5py.File):
             attrs_type = 'zarr'
         else:
             raise Exception(f'Unexpected file object type: {type(self._file_object)}')
-        return LindiH5pyAttributes(self._file_object.attrs, attrs_type=attrs_type)
+        return LindiH5pyAttributes(self._file_object.attrs, attrs_type=attrs_type, readonly=self.mode == "r")
 
     @property
     def filename(self):
@@ -136,6 +136,9 @@ class LindiH5pyFile(h5py.File):
 
     def __exit__(self, *args):
         self.close()
+
+    def __str__(self):
+        return f'<LindiH5pyFile "{self._file_object}">'
 
     def __repr__(self):
         return f'<LindiH5pyFile "{self._file_object}">'
@@ -208,6 +211,35 @@ class LindiH5pyFile(h5py.File):
     @property
     def name(self):
         return self._the_group.name
+
+    @property
+    def mode(self):
+        if isinstance(self._file_object, h5py.File):
+            return self._file_object.mode
+        elif isinstance(self._file_object, zarr.Group):
+            if self._file_object.read_only:
+                return "r"
+            else:
+                return "r+"
+        else:
+            raise Exception(f"Unhandled type: {type(self._file_object)}")
+
+    ##############################
+    # write
+    def create_group(self, name, track_order=None):
+        if track_order is not None:
+            raise Exception("track_order is not supported (I don't know what it is)")
+        return self._the_group.create_group(name)
+
+    def require_group(self, name):
+        return self._the_group.require_group(name)
+
+    def create_dataset(self, name, shape=None, dtype=None, data=None, **kwds):
+        return self._the_group.create_dataset(name, shape=shape, dtype=dtype, data=data, **kwds)
+
+    @property
+    def ref(self):
+        return self._the_group.ref
 
 
 def _download_file(url: str, filename: str) -> None:

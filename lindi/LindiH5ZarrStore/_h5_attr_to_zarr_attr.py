@@ -1,9 +1,11 @@
-from typing import Any
+from typing import Any, Union
 import numpy as np
 import h5py
 
+from ..LindiH5pyFile.LindiH5pyReference import LindiH5pyReference
 
-def _h5_attr_to_zarr_attr(attr: Any, *, label: str = '', h5f: h5py.File):
+
+def _h5_attr_to_zarr_attr(attr: Any, *, label: str = '', h5f: Union[h5py.File, None]):
     """Convert an attribute from h5py to a format that zarr can accept.
 
     bytes -> decoded utf-8 string
@@ -36,7 +38,13 @@ def _h5_attr_to_zarr_attr(attr: Any, *, label: str = '', h5f: h5py.File):
         return bool(attr)
     elif type(attr) is np.bytes_:
         return attr.tobytes().decode('utf-8')
+    elif isinstance(attr, LindiH5pyReference):
+        return _h5_attr_to_zarr_attr({
+            '_REFERENCE': attr._obj
+        }, label=label + '.__REFERENCE', h5f=h5f)
     elif isinstance(attr, h5py.Reference):
+        if h5f is None:
+            raise ValueError(f"h5f cannot be None when converting h5py.Reference to zarr attribute at {label}")
         return _h5_ref_to_zarr_attr(attr, label=label + '._REFERENCE', h5f=h5f)
     elif isinstance(attr, list):
         return [_h5_attr_to_zarr_attr(x, label=label, h5f=h5f) for x in attr]
