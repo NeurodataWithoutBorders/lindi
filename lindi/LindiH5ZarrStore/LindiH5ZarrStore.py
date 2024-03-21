@@ -7,7 +7,6 @@ import zarr
 import remfile
 from zarr.storage import Store, MemoryStore
 import h5py
-from zarr.errors import ReadOnlyError
 from ._zarr_info_for_h5_dataset import _zarr_info_for_h5_dataset
 from ._util import (
     _read_bytes,
@@ -15,6 +14,7 @@ from ._util import (
     _get_byte_range_for_contiguous_dataset,
 )
 from ._h5_attr_to_zarr_attr import _h5_attr_to_zarr_attr
+from ._utils import _join, _get_chunk_names_for_dataset, _reformat_json
 
 
 @dataclass
@@ -116,7 +116,7 @@ class LindiH5ZarrStore(Store):
 
     def __getitem__(self, key):
         """Get an item from the store (required by base class)."""
-        parts = key.split("/")
+        parts = [part for part in key.split("/") if part]
         if len(parts) == 0:
             raise KeyError(key)
         key_name = parts[-1]
@@ -141,7 +141,7 @@ class LindiH5ZarrStore(Store):
         # it would be nice if we didn't have to repeat the logic from __getitem__
         if self._h5f is None:
             raise Exception("Store is closed")
-        parts = key.split("/")
+        parts = [part for part in key.split("/") if part]
         if len(parts) == 0:
             return False
         key_name = parts[-1]
@@ -180,17 +180,22 @@ class LindiH5ZarrStore(Store):
             chunk_name_parts = key_name.split(".")
             if len(chunk_name_parts) != h5_item.ndim:
                 return False
+            shape = h5_item.shape
+            chunks = h5_item.chunks or shape
+            chunk_coords_shape = [
+                (shape[i] + chunks[i] - 1) // chunks[i] for i in range(len(shape))
+            ]
             chunk_coords = tuple(int(x) for x in chunk_name_parts)
             for i, c in enumerate(chunk_coords):
-                if c < 0 or c >= h5_item.shape[i]:
+                if c < 0 or c >= chunk_coords_shape[i]:
                     return False
             return True
 
     def __delitem__(self, key):
-        raise ReadOnlyError()
+        raise Exception("Deleting items is not allowed")
 
     def __setitem__(self, key, value):
-        raise ReadOnlyError()
+        raise Exception("Setting items is not allowed")
 
     def __iter__(self):
         raise Exception("Not implemented")
@@ -206,13 +211,13 @@ class LindiH5ZarrStore(Store):
         if h5_item is None:
             raise KeyError(parent_key)
         if not isinstance(h5_item, h5py.Group) and not isinstance(h5_item, h5py.Dataset):
-            raise Exception(f"Item {parent_key} is not a group or dataset. It is {type(h5_item)}")
+            raise Exception(f"Item {parent_key} is not a group or dataset. It is {type(h5_item)}")  # pragma: no cover
 
         # Check whether this is a soft link
         if isinstance(h5_item, h5py.Group) and parent_key != '':
             link = self._h5f.get('/' + parent_key, getlink=True)
             if isinstance(link, h5py.ExternalLink):
-                print(f'WARNING: External links not supported: {parent_key}')
+                raise Exception(f"External links not supported: {parent_key}")
             elif isinstance(link, h5py.SoftLink):
                 # if it's a soft link, we return a special attribute and ignore
                 # the rest of the attributes because they should be stored in
@@ -344,11 +349,9 @@ class LindiH5ZarrStore(Store):
             x = self._inline_data_for_arrays[key_parent]
             if isinstance(x, bytes):
                 return None, None, x
-            elif isinstance(x, str):
-                return None, None, x.encode("utf-8")
             else:
                 raise Exception(
-                    f"Inline data for dataset {key_parent} is not bytes or str. It is {type(x)}"
+                    f"Inline data for dataset {key_parent} is not bytes. It is {type(x)}"
                 )
 
         # If this is a scalar, then the data should have been inline
@@ -553,77 +556,3 @@ class LindiH5ZarrStore(Store):
         # Process the groups recursively starting with the root group
         _process_group("", self._h5f)
         return ret
-
-
-def _join(a: str, b: str) -> str:
-    if a == "":
-        return b
-    else:
-        return f"{a}/{b}"
-
-
-def _get_chunk_names_for_dataset(chunk_coords_shape: List[int]) -> List[str]:
-    """Get the chunk names for a dataset with the given chunk coords shape.
-
-    For example: _get_chunk_names_for_dataset([1, 2, 3]) returns
-    ['0.0.0', '0.0.1', '0.0.2', '0.1.0', '0.1.1', '0.1.2']
-    """
-    ndim = len(chunk_coords_shape)
-    if ndim == 0:
-        return ["0"]
-    elif ndim == 1:
-        return [str(i) for i in range(chunk_coords_shape[0])]
-    else:
-        names0 = _get_chunk_names_for_dataset(chunk_coords_shape[1:])
-        names = []
-        for i in range(chunk_coords_shape[0]):
-            for name0 in names0:
-                names.append(f"{i}.{name0}")
-        return names
-
-
-def _reformat_json(x: Union[bytes, None]) -> Union[bytes, None]:
-    """Reformat to not include whitespace and to encode NaN, Inf, and -Inf as strings."""
-    if x is None:
-        return None
-    a = json.loads(x.decode("utf-8"))
-    return json.dumps(a, cls=FloatJSONEncoder, separators=(",", ":")).encode("utf-8")
-
-
-# From https://github.com/rly/h5tojson/blob/b162ff7f61160a48f1dc0026acb09adafdb422fa/h5tojson/h5tojson.py#L121-L156
-class FloatJSONEncoder(json.JSONEncoder):
-    """JSON encoder that converts NaN, Inf, and -Inf to strings."""
-
-    def encode(self, obj, *args, **kwargs):  # type: ignore
-        """Convert NaN, Inf, and -Inf to strings."""
-        obj = FloatJSONEncoder._convert_nan(obj)
-        return super().encode(obj, *args, **kwargs)
-
-    def iterencode(self, obj, *args, **kwargs):  # type: ignore
-        """Convert NaN, Inf, and -Inf to strings."""
-        obj = FloatJSONEncoder._convert_nan(obj)
-        return super().iterencode(obj, *args, **kwargs)
-
-    @staticmethod
-    def _convert_nan(obj):
-        """Convert NaN, Inf, and -Inf from a JSON object to strings."""
-        if isinstance(obj, dict):
-            return {k: FloatJSONEncoder._convert_nan(v) for k, v in obj.items()}
-        elif isinstance(obj, list):
-            return [FloatJSONEncoder._convert_nan(v) for v in obj]
-        elif isinstance(obj, float):
-            return FloatJSONEncoder._nan_to_string(obj)
-        return obj
-
-    @staticmethod
-    def _nan_to_string(obj: float):
-        """Convert NaN, Inf, and -Inf from a float to a string."""
-        if np.isnan(obj):
-            return "NaN"
-        elif np.isinf(obj):
-            if obj > 0:
-                return "Infinity"
-            else:
-                return "-Infinity"
-        else:
-            return float(obj)
