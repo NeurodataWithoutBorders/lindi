@@ -9,7 +9,7 @@ from .LindiH5pyReference import LindiH5pyReference
 
 
 if TYPE_CHECKING:
-    from .LindiH5pyFile import LindiH5pyFile
+    from .LindiH5pyFile import LindiH5pyFile  # pragma: no cover
 
 
 class LindiH5pyDatasetId:

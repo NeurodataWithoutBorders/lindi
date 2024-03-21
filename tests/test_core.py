@@ -25,6 +25,7 @@ def test_variety():
             f["group1"].attrs["test_attr2"] = "attribute-of-group1"
         h5f = h5py.File(filename, "r")
         h5f_wrapped = lindi.LindiH5pyFile.from_h5py_file(h5f)
+        assert h5f_wrapped.id  # for coverage
         with LindiH5ZarrStore.from_file(filename, url=filename) as store:
             rfs = store.to_reference_file_system()
             h5f_rfs = lindi.LindiH5pyFile.from_reference_file_system(rfs)
@@ -37,6 +38,7 @@ def test_variety():
                 assert _lists_are_equal(h5f_2.attrs["tuple1"], h5f.attrs["tuple1"])
                 assert _arrays_are_equal(np.array(h5f_2.attrs["array1"]), h5f.attrs["array1"])
                 assert h5f_2["dataset1"].attrs["test_attr1"] == h5f["dataset1"].attrs["test_attr1"]  # type: ignore
+                assert h5f_2["dataset1"].id
                 assert _arrays_are_equal(h5f_2["dataset1"][()], h5f["dataset1"][()])  # type: ignore
                 assert h5f_2["group1"].attrs["test_attr2"] == h5f["group1"].attrs["test_attr2"]  # type: ignore
                 target_1 = h5f[h5f.attrs["dataset1_ref"]]
@@ -171,6 +173,7 @@ def test_scalar_arrays():
             X2 = h5f_2['X']
             assert isinstance(X2, h5py.Dataset)
             assert X1[()] == X2[()]
+            assert X2.size == 1
             Y1 = h5f['Y']
             assert isinstance(Y1, h5py.Dataset)
             Y2 = h5f_2['Y']
@@ -292,6 +295,85 @@ def test_reference_file_system_to_file():
             X = client["X"]
             assert isinstance(X, lindi.LindiH5pyDataset)
             assert _lists_are_equal(X[()], [1, 2, 3])
+
+
+def test_lindi_reference_file_system_store():
+    from lindi.LindiH5pyFile.LindiReferenceFileSystemStore import LindiReferenceFileSystemStore
+
+    # test that setting items is not allowed
+    rfs = {"refs": {"a": "a"}}
+    store = LindiReferenceFileSystemStore(rfs)
+    with pytest.raises(Exception):
+        store["b"] = "b"
+
+    # test that deleting items is not allowed
+    rfs = {"refs": {"a": "a"}}
+    store = LindiReferenceFileSystemStore(rfs)
+    with pytest.raises(Exception):
+        del store["a"]
+
+    # test for invalid rfs
+    rfs = {"rfs_misspelled": {"a": "a"}}  # misspelled
+    with pytest.raises(Exception):
+        store = LindiReferenceFileSystemStore(rfs)
+    rfs = {"refs": {"a": 1}}  # invalid value
+    with pytest.raises(Exception):
+        store = LindiReferenceFileSystemStore(rfs)
+    rfs = {"refs": {"a": ["a", 1]}}  # invalid list
+    with pytest.raises(Exception):
+        store = LindiReferenceFileSystemStore(rfs)
+    rfs = {"refs": {"a": ["a", 1, 2, 3]}}  # invalid list
+    with pytest.raises(Exception):
+        store = LindiReferenceFileSystemStore(rfs)
+    rfs = {"refs": {"a": [1, 2, 3]}}  # invalid list
+    with pytest.raises(Exception):
+        store = LindiReferenceFileSystemStore(rfs)
+    rfs = {"refs": {"a": ['a', 'a', 2]}}  # invalid list
+    with pytest.raises(Exception):
+        store = LindiReferenceFileSystemStore(rfs)
+    rfs = {"refs": {"a": ['a', 1, 'a']}}  # invalid list
+    with pytest.raises(Exception):
+        store = LindiReferenceFileSystemStore(rfs)
+    rfs = {"refs": {"a": "base64:abc+++"}}  # invalid base64
+    store = LindiReferenceFileSystemStore(rfs)
+    with pytest.raises(Exception):
+        store["a"]
+    with pytest.raises(Exception):
+        store[{}]  # invalid key type # type: ignore
+    rfs = {"refs": {"a": {}}}  # invalid value
+    with pytest.raises(Exception):
+        store = LindiReferenceFileSystemStore(rfs)
+
+    rfs = {"refs": {"a": "abc"}}
+    store = LindiReferenceFileSystemStore(rfs)
+    assert store.is_readable()
+    assert not store.is_writeable()
+    assert store.is_listable()
+    assert not store.is_erasable()
+    assert len(store) == 1
+    assert "a" in store
+    assert "b" not in store
+    assert store["a"] == b"abc"
+
+
+def test_lindi_h5py_reference():
+    from lindi.LindiH5pyFile.LindiH5pyReference import LindiH5pyReference
+    obj = {
+        "object_id": "object_id",
+        "path": "path",
+        "source": "source",
+        "source_object_id": "source_object_id",
+    }
+    ref = LindiH5pyReference(obj)
+    assert repr(ref) == "LindiH5pyReference(object_id, path)"
+    assert str(ref) == "LindiH5pyReference(object_id, path)"
+    assert ref._object_id == "object_id"
+    assert ref._path == "path"
+    assert ref._source == "source"
+    assert ref._source_object_id == "source_object_id"
+    assert ref.__class__.__name__ == "LindiH5pyReference"
+    assert isinstance(ref, h5py.h5r.Reference)
+    assert isinstance(ref, LindiH5pyReference)
 
 
 def _lists_are_equal(a, b):

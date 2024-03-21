@@ -403,8 +403,8 @@ class LindiH5ZarrStore(Store):
                         "name": parent_key,
                     }
                 else:
-                    print(
-                        f"WARNING when creating external array link for {parent_key}: url is not set, so external array link will not work"
+                    raise Exception(
+                        f"Unable to create external array link for {parent_key}: url is not set"
                     )
         return self._external_array_links[parent_key]
 

@@ -85,7 +85,7 @@ class LindiReferenceFileSystemStore(ZarrStore):
                 return x.encode("utf-8")
         elif isinstance(x, list):
             if len(x) != 3:
-                raise Exception("list must have 3 elements")
+                raise Exception("list must have 3 elements")  # pragma: no cover
             url = x[0]
             offset = x[1]
             length = x[2]
