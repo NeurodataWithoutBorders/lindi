@@ -19,7 +19,11 @@ This project was inspired by [kerchunk](https://github.com/fsspec/kerchunk) and 
 
 ## Installation
 
-For now, install from source. Clone this repo and then
+```bash
+pip install lindi
+```
+
+Or install from source
 
 ```bash
 cd lindi
