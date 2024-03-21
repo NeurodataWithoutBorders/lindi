@@ -1,4 +1,5 @@
 import json
+import base64
 from typing import Union, List, IO, Any, Dict, Literal
 from dataclasses import dataclass
 import numpy as np
@@ -460,27 +461,27 @@ class LindiH5ZarrStore(Store):
         # TODO: use templates to decrease the size of the JSON
 
         def _add_ref(key: str, content: Union[bytes, None]):
-            import base64
             if content is None:
                 raise Exception(f"Unable to get content for key {key}")
-            try:
-                if content.startswith(b"base64:"):
-                    # This is the rare case where the content actually starts with "base64:"
-                    # which is confusing. Not sure when this would happen, but it could.
-                    ret["refs"][key] = (b"base64:" + base64.b64encode(content)).decode(
-                        "ascii"
-                    )
-                else:
-                    # This is the usual case. It will raise a UnicodeDecodeError if the
-                    # content is not valid ASCII, in which case the content will be
-                    # base64 encoded.
-                    ret["refs"][key] = content.decode("ascii")
-            except UnicodeDecodeError:
-                # If the content is not valid ASCII, then we base64 encode it. The
-                # reference file system reader will know what to do with it.
+            if content.startswith(b"base64:"):
+                # This is the rare case where the content actually starts with "base64:"
+                # which is confusing. Not sure when this would happen, but it could.
+                # TODO: needs a unit test
                 ret["refs"][key] = (b"base64:" + base64.b64encode(content)).decode(
                     "ascii"
                 )
+            else:
+                # This is the usual case. It will raise a UnicodeDecodeError if the
+                # content is not valid ASCII, in which case the content will be
+                # base64 encoded.
+                try:
+                    ret["refs"][key] = content.decode("ascii")
+                except UnicodeDecodeError:
+                    # If the content is not valid ASCII, then we base64 encode it. The
+                    # reference file system reader will know what to do with it.
+                    ret["refs"][key] = (b"base64:" + base64.b64encode(content)).decode(
+                        "ascii"
+                    )
 
         def _process_group(key, item: h5py.Group):
             if isinstance(item, h5py.Group):
