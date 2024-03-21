@@ -52,15 +52,17 @@ class LindiH5ZarrStore(Store):
         _file: Union[IO, Any],
         _opts: LindiH5ZarrStoreOpts,
         _url: Union[str, None] = None,
+        _entities_to_close: List[Any]
     ):
         """
         Do not call the constructor directly. Instead, use the from_file class
         method.
         """
-        self._file = _file
-        self._h5f = h5py.File(_file, "r")
+        self._file: Union[IO, Any, None] = _file
+        self._h5f: Union[h5py.File, None] = h5py.File(_file, "r")
         self._url = _url
         self._opts = _opts
+        self._entities_to_close = _entities_to_close + [self._h5f]
 
         # Some datasets do not correspond to traditional chunked datasets. For
         # those datasets, we need to store the inline data so that we can return
@@ -97,21 +99,19 @@ class LindiH5ZarrStore(Store):
         if hdf5_file_name_or_url.startswith(
             "http://"
         ) or hdf5_file_name_or_url.startswith("https://"):
+            # note that the remfile.File object does not need to be closed
             remf = remfile.File(hdf5_file_name_or_url, verbose=False)
-            return LindiH5ZarrStore(_file=remf, _url=hdf5_file_name_or_url, _opts=opts)
+            return LindiH5ZarrStore(_file=remf, _url=hdf5_file_name_or_url, _opts=opts, _entities_to_close=[])
         else:
             f = open(hdf5_file_name_or_url, "rb")
-            return LindiH5ZarrStore(_file=f, _url=url, _opts=opts)
+            return LindiH5ZarrStore(_file=f, _url=url, _opts=opts, _entities_to_close=[f])
 
     def close(self):
         """Close the store."""
-        if hasattr(self, "_h5f") and self._h5f:
-            self._h5f.close()
-            self._h5f = None
-        if hasattr(self, "_file") and self._file:
-            if not isinstance(self._file, remfile.File):
-                self._file.close()
-            self._file = None
+        for e in self._entities_to_close:
+            e.close()
+        self._h5f = None
+        self._file = None
 
     def __getitem__(self, key):
         """Get an item from the store (required by base class)."""
