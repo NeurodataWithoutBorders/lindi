@@ -562,7 +562,11 @@ def _join(a: str, b: str) -> str:
 
 
 def _get_chunk_names_for_dataset(chunk_coords_shape: List[int]) -> List[str]:
-    """Get the chunk names for a dataset with the given chunk coords shape."""
+    """Get the chunk names for a dataset with the given chunk coords shape.
+
+    For example: _get_chunk_names_for_dataset([1, 2, 3]) returns
+    ['0.0.0', '0.0.1', '0.0.2', '0.1.0', '0.1.1', '0.1.2']
+    """
     ndim = len(chunk_coords_shape)
     if ndim == 0:
         return ["0"]

@@ -62,6 +62,7 @@ class LindiH5pyAttributes:
         if self._attrs_type == "h5py":
             return self._attrs.__iter__()
         elif self._attrs_type == "zarr":
+            # Do not return special zarr attributes during iteration
             for k in self._attrs:
                 if k not in _special_attribute_keys:
                     yield k

@@ -163,7 +163,7 @@ class LindiH5pyDataset(h5py.Dataset):
                     dtype = np.dtype(dt)
                 # Return a new object that can be sliced further
                 # It's important that the return type is Any here, because otherwise we get linter problems
-                ret: Any = LindiH5pyDatasetCompoundFieldSelection(
+                ret = LindiH5pyDatasetCompoundFieldSelection(
                     dataset=self, ind=ind, dtype=dtype
                 )
                 return ret
@@ -236,17 +236,18 @@ class LindiH5pyDatasetCompoundFieldSelection:
         d = [za[i][self._ind] for i in range(len(za))]
         if self._dtype == h5py.Reference:
             # Convert to LindiH5pyReference
+            # Every element in the selection should be a reference dict
             d = [LindiH5pyReference(x['_REFERENCE']) for x in d]
         self._data = np.array(d, dtype=self._dtype)
 
     def __len__(self):
-        """We conform to h5py, which is the number of elements in the first dimension, TypeError if scalar"""
+        """We conform to h5py, which is the number of elements in the first dimension. TypeError if scalar"""
         if self.ndim == 0:
             raise TypeError("Scalar dataset")
         return self.shape[0]  # type: ignore
 
     def __iter__(self):
-        """We conform to h5py, which is: Iterate over the first axis.  TypeError if scalar."""
+        """We conform to h5py, which is: Iterate over the first axis. TypeError if scalar."""
         shape = self.shape
         if len(shape) == 0:
             raise TypeError("Can't iterate over a scalar dataset")
