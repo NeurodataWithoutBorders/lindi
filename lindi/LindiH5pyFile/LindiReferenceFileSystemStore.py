@@ -14,7 +14,7 @@ class LindiReferenceFileSystemStore(ZarrStore):
     particular, it handles reading data from DANDI URLs, even when the file is
     part of an embargoed dataset. This requires some special handling as the
     DANDI API URL must be exchanged for a pre-signed S3 bucket URL by
-    authenticating with a DANDI API token. This presigned URL expires have a
+    authenticating with a DANDI API token. This presigned URL expires after a
     period of time, so this Zarr store handles the renewal of the presigned URL.
     It also does the exchange once the first time and caches the redirected URL
     for a period so that the redirect doesn't need to be done every time a
