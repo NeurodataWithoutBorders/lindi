@@ -92,6 +92,8 @@ class LindiReferenceFileSystemStore(ZarrStore):
             val = _read_bytes_from_url(url, offset, length)
             return val
         else:
+            # should not happen given checks in __init__, but self.rfs is mutable
+            # and contains mutable lists
             raise Exception(f"Problem with {key}: value must be a string or a list")
 
     def __setitem__(self, key: str, value):
