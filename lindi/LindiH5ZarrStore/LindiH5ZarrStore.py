@@ -505,7 +505,8 @@ class LindiH5ZarrStore(Store):
                         subkey = _join(key, k)
                         zattrs_bytes = self.get(f"{subkey}/.zattrs")
                         assert zattrs_bytes is not None
-                        _add_ref(f"{subkey}/.zattrs", zattrs_bytes)
+                        if zattrs_bytes != b"{}":  # don't include empty zattrs
+                            _add_ref(f"{subkey}/.zattrs", zattrs_bytes)
                         zattrs_dict = json.loads(zattrs_bytes.decode("utf-8"))
                         external_array_link = zattrs_dict.get(
                             "_EXTERNAL_ARRAY_LINK", None
