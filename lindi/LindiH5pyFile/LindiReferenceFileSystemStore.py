@@ -14,7 +14,7 @@ class LindiReferenceFileSystemStore(ZarrStore):
     particular, it handles reading data from DANDI URLs, even when the file is
     part of an embargoed dataset. This requires some special handling as the
     DANDI API URL must be exchanged for a pre-signed S3 bucket URL by
-    authenticating with a DANDI API token. This presigned URL expires have a
+    authenticating with a DANDI API token. This presigned URL expires after a
     period of time, so this Zarr store handles the renewal of the presigned URL.
     It also does the exchange once the first time and caches the redirected URL
     for a period so that the redirect doesn't need to be done every time a
@@ -22,10 +22,11 @@ class LindiReferenceFileSystemStore(ZarrStore):
 
     To read from a file in an embargoed DANDI dataset, you will need to set the
     DANDI_API_KEY environment variable to your DANDI API token. Or, if this is
-    and Dandiset in the staging site, you will need to set the
+    a Dandiset on the staging server, you will need to set the
     DANDI_STAGING_API_KEY.
 
-    Following the fsspec convention, the reference file system is specified as a
+    Following the fsspec convention (https://fsspec.github.io/kerchunk/spec.html),
+    the reference file system is specified as a
     dictionary with a "refs" key. The value of "refs" is a dictionary where the
     keys are the names of the files and the values are either strings or lists.
     If the value is a string, it is assumed to be the data of the file, which
@@ -91,7 +92,9 @@ class LindiReferenceFileSystemStore(ZarrStore):
             val = _read_bytes_from_url(url, offset, length)
             return val
         else:
-            raise Exception(f"Problem with {key}: value must be a string or a list")  # pragma: no cover
+            # should not happen given checks in __init__, but self.rfs is mutable
+            # and contains mutable lists
+            raise Exception(f"Problem with {key}: value must be a string or a list")
 
     def __setitem__(self, key: str, value):
         raise Exception("Setting items is not allowed")
