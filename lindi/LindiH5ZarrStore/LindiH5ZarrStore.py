@@ -110,6 +110,7 @@ class LindiH5ZarrStore(Store):
         """Close the store."""
         for e in self._entities_to_close:
             e.close()
+        self._entities_to_close.clear()
         self._h5f = None
         self._file = None
 
