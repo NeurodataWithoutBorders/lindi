@@ -1,4 +1,3 @@
-from pandas import isna
 import pytest
 import numpy as np
 import h5py
