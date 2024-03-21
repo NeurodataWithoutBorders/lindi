@@ -84,14 +84,14 @@ class LindiReferenceFileSystemStore(ZarrStore):
                 return x.encode("utf-8")
         elif isinstance(x, list):
             if len(x) != 3:
-                raise Exception("list must have 3 elements")
+                raise Exception("list must have 3 elements")  # pragma: no cover
             url = x[0]
             offset = x[1]
             length = x[2]
             val = _read_bytes_from_url(url, offset, length)
             return val
         else:
-            raise Exception(f"Problem with {key}: value must be a string or a list")
+            raise Exception(f"Problem with {key}: value must be a string or a list")  # pragma: no cover
 
     def __setitem__(self, key: str, value):
         raise Exception("Setting items is not allowed")
@@ -138,3 +138,64 @@ def _read_bytes_from_url(url: str, offset: int, length: int):
             file_segment_reader = FileSegmentReader(url)
         _file_segment_readers[url] = file_segment_reader
     return _file_segment_readers[url].read(offset, length)
+
+
+def test_exceptions():
+    # only import if we are running tests
+    import pytest
+
+    # test that setting items is not allowed
+    rfs = {"refs": {"a": "a"}}
+    store = LindiReferenceFileSystemStore(rfs)
+    with pytest.raises(Exception):
+        store["b"] = "b"
+
+    # test that deleting items is not allowed
+    rfs = {"refs": {"a": "a"}}
+    store = LindiReferenceFileSystemStore(rfs)
+    with pytest.raises(Exception):
+        del store["a"]
+
+    # test for invalid rfs
+    rfs = {"rfs_misspelled": {"a": "a"}}  # misspelled
+    with pytest.raises(Exception):
+        store = LindiReferenceFileSystemStore(rfs)
+    rfs = {"refs": {"a": 1}}  # invalid value
+    with pytest.raises(Exception):
+        store = LindiReferenceFileSystemStore(rfs)
+    rfs = {"refs": {"a": ["a", 1]}}  # invalid list
+    with pytest.raises(Exception):
+        store = LindiReferenceFileSystemStore(rfs)
+    rfs = {"refs": {"a": ["a", 1, 2, 3]}}  # invalid list
+    with pytest.raises(Exception):
+        store = LindiReferenceFileSystemStore(rfs)
+    rfs = {"refs": {"a": [1, 2, 3]}}  # invalid list
+    with pytest.raises(Exception):
+        store = LindiReferenceFileSystemStore(rfs)
+    rfs = {"refs": {"a": ['a', 'a', 2]}}  # invalid list
+    with pytest.raises(Exception):
+        store = LindiReferenceFileSystemStore(rfs)
+    rfs = {"refs": {"a": ['a', 1, 'a']}}  # invalid list
+    with pytest.raises(Exception):
+        store = LindiReferenceFileSystemStore(rfs)
+    rfs = {"refs": {"a": "base64:abc+++"}}  # invalid base64
+    store = LindiReferenceFileSystemStore(rfs)
+    with pytest.raises(Exception):
+        store["a"]
+    with pytest.raises(Exception):
+        store[{}]  # invalid key type # type: ignore
+    rfs = {"refs": {"a": {}}}  # invalid value
+    with pytest.raises(Exception):
+        store = LindiReferenceFileSystemStore(rfs)
+
+    # more coverage
+    rfs = {"refs": {"a": "abc"}}
+    store = LindiReferenceFileSystemStore(rfs)
+    assert store.is_readable()
+    assert not store.is_writeable()
+    assert store.is_listable()
+    assert not store.is_erasable()
+    assert len(store) == 1
+    assert "a" in store
+    assert "b" not in store
+    assert store["a"] == b"abc"

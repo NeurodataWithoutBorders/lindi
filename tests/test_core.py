@@ -1,3 +1,4 @@
+from py import test
 import pytest
 import numpy as np
 import h5py
@@ -25,6 +26,7 @@ def test_variety():
             f["group1"].attrs["test_attr2"] = "attribute-of-group1"
         h5f = h5py.File(filename, "r")
         h5f_wrapped = lindi.LindiH5pyFile.from_h5py_file(h5f)
+        assert h5f_wrapped.id  # for coverage
         with LindiH5ZarrStore.from_file(filename, url=filename) as store:
             rfs = store.to_reference_file_system()
             h5f_rfs = lindi.LindiH5pyFile.from_reference_file_system(rfs)
@@ -37,6 +39,7 @@ def test_variety():
                 assert _lists_are_equal(h5f_2.attrs["tuple1"], h5f.attrs["tuple1"])
                 assert _arrays_are_equal(np.array(h5f_2.attrs["array1"]), h5f.attrs["array1"])
                 assert h5f_2["dataset1"].attrs["test_attr1"] == h5f["dataset1"].attrs["test_attr1"]  # type: ignore
+                assert h5f_2["dataset1"].id
                 assert _arrays_are_equal(h5f_2["dataset1"][()], h5f["dataset1"][()])  # type: ignore
                 assert h5f_2["group1"].attrs["test_attr2"] == h5f["group1"].attrs["test_attr2"]  # type: ignore
                 target_1 = h5f[h5f.attrs["dataset1_ref"]]
@@ -171,6 +174,7 @@ def test_scalar_arrays():
             X2 = h5f_2['X']
             assert isinstance(X2, h5py.Dataset)
             assert X1[()] == X2[()]
+            assert X2.size == 1
             Y1 = h5f['Y']
             assert isinstance(Y1, h5py.Dataset)
             Y2 = h5f_2['Y']
@@ -292,6 +296,17 @@ def test_reference_file_system_to_file():
             X = client["X"]
             assert isinstance(X, lindi.LindiH5pyDataset)
             assert _lists_are_equal(X[()], [1, 2, 3])
+
+
+def test_misc_coverage():
+    from lindi.LindiH5pyFile.LindiH5pyReference import test_coverage as test_lindi_h5py_reference
+    test_lindi_h5py_reference()
+
+
+def test_lindi_file_store_exceptions():
+    from lindi.LindiH5pyFile.LindiReferenceFileSystemStore import test_exceptions
+    test_exceptions()
+
 
 
 def _lists_are_equal(a, b):
