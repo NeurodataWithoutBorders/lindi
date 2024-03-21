@@ -1,5 +1,9 @@
 # LINDI - Linked Data Interface
 
+[![latest-release](https://img.shields.io/pypi/v/lindi.svg)](https://pypi.org/project/lindi)
+![tests](https://github.com/neurodatawithoutborders/lindi/actions/workflows/integration_tests.yml/badge.svg)
+[![codecov](https://codecov.io/gh/neurodatawithoutborders/lindi/branch/main/graph/badge.svg?token=xxxx)](https://codecov.io/gh/neurodatawithoutborders/lindi)
+
 :warning: Please note, LINDI is currently under development and should not yet be used in practice.
 
 LINDI is a Python library that facilitates handling NWB (Neurodata Without Borders) files in an efficient, flexible manner, especially when dealing with large datasets on remote servers. The goal is to enable composition of NWB files by integrating data from multiple sources without the need to copy or move large datasets.

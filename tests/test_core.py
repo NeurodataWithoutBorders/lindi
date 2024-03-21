@@ -376,6 +376,99 @@ def test_lindi_h5py_reference():
     assert isinstance(ref, LindiH5pyReference)
 
 
+def test_lindi_h5_zarr_store():
+    # Test that exceptions are raised as expected
+    with tempfile.TemporaryDirectory() as tmpdir:
+        filename = f"{tmpdir}/test.h5"
+        with h5py.File(filename, "w") as f:
+            f.create_dataset("dataset1", data=[1, 2, 3])
+            f.create_group("group1")
+            f.create_dataset("scalar_dataset", data=42)
+        # Store is closed
+        store = LindiH5ZarrStore.from_file(filename)
+        store.close()
+        store_is_closed_msg = "Store is closed"
+        with pytest.raises(Exception, match=store_is_closed_msg):
+            if 'dataset1/.zarray' in store:
+                pass
+        with pytest.raises(Exception, match=store_is_closed_msg):
+            store["dataset1/.zarray"]
+        with pytest.raises(Exception, match=store_is_closed_msg):
+            store["dataset1/.zattrs"]
+        with pytest.raises(Exception, match=store_is_closed_msg):
+            store["group1/.zgroup"]
+        with pytest.raises(Exception, match=store_is_closed_msg):
+            store["group1/.zattrs"]
+        with pytest.raises(Exception, match=store_is_closed_msg):
+            store["dataset1/0"]
+        with pytest.raises(Exception, match=store_is_closed_msg):
+            store.listdir()
+        with pytest.raises(Exception, match=store_is_closed_msg):
+            store.to_reference_file_system()
+        with pytest.raises(Exception, match=store_is_closed_msg):
+            store.to_file("test.json")
+        with pytest.raises(Exception, match=store_is_closed_msg):
+            store._get_chunk_file_bytes_data("dataset1", "0")
+
+        # Nonexistent item
+        store = LindiH5ZarrStore.from_file(filename)
+        assert 'nonexistent/.zattrs' not in store
+        with pytest.raises(KeyError):
+            store["nonexistent/.zattrs"]
+        assert 'nonexistent/.zgroup' not in store
+        with pytest.raises(Exception, match="Item nonexistent is not a group"):
+            store["nonexistent/.zgroup"]
+        assert 'nonexistent/.zarray' not in store
+        with pytest.raises(Exception, match="Item nonexistent is not a dataset"):
+            store["nonexistent/.zarray"]
+        assert 'nonexistent/0' not in store
+        with pytest.raises(Exception, match="Item nonexistent is not a dataset"):
+            store["nonexistent/0"]
+
+        # Key error
+        store = LindiH5ZarrStore.from_file(filename)
+        with pytest.raises(KeyError):
+            store['']
+        assert '' not in store
+        with pytest.raises(KeyError):
+            store["nonexistent/.zattrs"]
+
+        # Unsupported file type
+        with pytest.raises(Exception, match="Unsupported file type: zarr"):
+            store.to_file("test.json", file_type="zarr")  # type: ignore
+
+        # URL is not set
+        store = LindiH5ZarrStore.from_file(filename, url=None)
+        with pytest.raises(Exception, match="You must specify a url to create a reference file system"):
+            store.to_reference_file_system()
+
+        # External links not supported
+        with h5py.File(f'{tmpdir}/external.h5', 'w') as f:
+            grp = f.create_group('group1')
+            grp.attrs['attr1'] = 'value1'
+        with h5py.File(filename, "a") as f:
+            f["external_link"] = h5py.ExternalLink(f'{tmpdir}/external.h5', 'group1')
+        store = LindiH5ZarrStore.from_file(filename, url=filename)
+        with pytest.raises(Exception, match="External links not supported: external_link"):
+            print(store["external_link/.zattrs"])
+
+        store = LindiH5ZarrStore.from_file(filename, url=filename)
+        with pytest.raises(Exception, match="Setting items is not allowed"):
+            store["dataset1/.zattrs"] = b"{}"
+        with pytest.raises(Exception, match="Deleting items is not allowed"):
+            del store["dataset1/.zattrs"]
+        with pytest.raises(Exception, match="Not implemented"):
+            iter(store)
+        with pytest.raises(Exception, match="Not implemented"):
+            len(store)
+
+        store = LindiH5ZarrStore.from_file(filename, url=filename)
+        assert 'dataset1/0.0' not in store
+        assert 'dataset1/1' not in store
+        assert 'scalar_dataset/0' in store
+        assert 'scalar_dataset/1' not in store
+
+
 def _lists_are_equal(a, b):
     if len(a) != len(b):
         return False

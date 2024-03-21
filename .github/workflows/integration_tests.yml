@@ -19,9 +19,8 @@ jobs:
       run: cd lindi && pyright
     - name: Run tests and collect coverage
       run: pytest --cov lindi --cov-report=xml --cov-report=term tests/
-    # - uses: codecov/codecov-action@v3
-    #   with:
-    #     token: ${{ secrets.CODECOV_TOKEN }}
-    #     fail_ci_if_error: true
-    #     file: ./coverage.xml
-    #     flags: unittests
+    - name: Upload coverage reports to Codecov
+      uses: codecov/codecov-action@v4.0.1
+      with:
+        token: ${{ secrets.CODECOV_TOKEN }}
+        slug: NeurodataWithoutBorders/lindi
