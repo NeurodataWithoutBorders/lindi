@@ -5,13 +5,12 @@ import urllib.request
 import h5py
 import zarr
 from zarr.storage import Store as ZarrStore
-from fsspec.implementations.reference import ReferenceFileSystem
-from fsspec import FSMap
 
 from .LindiH5pyGroup import LindiH5pyGroup
 from .LindiH5pyDataset import LindiH5pyDataset
 from .LindiH5pyAttributes import LindiH5pyAttributes
 from .LindiH5pyReference import LindiH5pyReference
+from .LindiReferenceFileSystemStore import LindiReferenceFileSystemStore
 
 
 class LindiH5pyFile(h5py.File):
@@ -44,13 +43,14 @@ class LindiH5pyFile(h5py.File):
                 assert isinstance(data, dict)  # prevent infinite recursion
                 return LindiH5pyFile.from_reference_file_system(data)
         elif isinstance(rfs, dict):
-            fs = ReferenceFileSystem(rfs).get_mapper(root="")
-            return LindiH5pyFile.from_zarr_store(fs)
+            # This store does not need to be closed
+            store = LindiReferenceFileSystemStore(rfs)
+            return LindiH5pyFile.from_zarr_store(store)
         else:
             raise Exception(f"Unhandled type for rfs: {type(rfs)}")
 
     @staticmethod
-    def from_zarr_store(zarr_store: Union[ZarrStore, FSMap]):
+    def from_zarr_store(zarr_store: ZarrStore):
         """
         Create a LindiH5pyFile from a zarr store.
         """
