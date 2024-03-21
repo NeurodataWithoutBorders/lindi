@@ -11,7 +11,7 @@ LINDI features include:
 - A function for generating a reference file system .zarr.json file from a Zarr store. This is inspired by [kerchunk](https://github.com/fsspec/kerchunk).
 - An h5py-like interface for accessing these Zarr stores that can be used with [pynwb](https://pynwb.readthedocs.io/en/stable/).
 
-This project was inspired by [kerchunk](https://github.com/fsspec/kerchunk) and [hdmf-zarr](https://hdmf-zarr.readthedocs.io/en/latest/index.html) and depends on [zarr](https://zarr.readthedocs.io/en/stable/), [h5py](https://www.h5py.org/), [remfile](https://github.com/magland/remfile), [fsspec](https://filesystem-spec.readthedocs.io/en/latest/), and [numcodecs](https://numcodecs.readthedocs.io/en/stable/).
+This project was inspired by [kerchunk](https://github.com/fsspec/kerchunk) and [hdmf-zarr](https://hdmf-zarr.readthedocs.io/en/latest/index.html) and depends on [zarr](https://zarr.readthedocs.io/en/stable/), [h5py](https://www.h5py.org/), [remfile](https://github.com/magland/remfile) and [numcodecs](https://numcodecs.readthedocs.io/en/stable/).
 
 ## Installation
 

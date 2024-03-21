@@ -11,8 +11,6 @@ numcodecs = "^0.12.1"
 zarr = "^2.16.1"
 h5py = "^3.10.0"
 remfile = "^0.1.9"
-fsspec = "^2023.12.2"
-aiohttp = "^3.9.3"
 requests = "^2.31.0"
 
 [tool.poetry.group.dev.dependencies]
