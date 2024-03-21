@@ -1,17 +1,15 @@
 # LINDI - Linked Data Interface
 
-:warning: Please note, LINDI is currently under development and not yet operational.
+:warning: Please note, LINDI is currently under development and should not yet be used in practice.
 
-LINDI is a Python library that facilitates handling NWB (Neurodata Without Borders) files in an efficient, flexible manner that minimizes the need for excessive data downloads. Our goal is to enable composition of NWB files by integrating data from multiple sources.
+LINDI is a Python library that facilitates handling NWB (Neurodata Without Borders) files in an efficient, flexible manner, especially when dealing with large datasets on remote servers. The goal is to enable composition of NWB files by integrating data from multiple sources without the need to copy or move large datasets.
 
-Key features include:
+LINDI features include:
 
-- A read-only [Zarr storage backend](https://zarr.readthedocs.io/en/stable/) for HDF5 files, including NWB. In other words, a Zarr wrapper for HDF5. *(in progress)*
-- Generation of a relatively small JSON file representing the NWB Zarr store, inspired by [kerchunk](https://github.com/fsspec/kerchunk).
-- An [h5py](https://www.h5py.org/)-like interface for accessing NWB Zarr stores that can be used with [pynwb](https://pynwb.readthedocs.io/en/stable/). In other words an h5py-like wrapper for Zarr. This feature is only partially functional.
-- The ability to assemble composite NWB files that draw from multiple sources. Also not yet functional.
-
-Why a Zarr wrapper of HDF5, and then an h5py-like wrapper of Zarr? It's because we need a Zarr representation of existing files HDF5 NWB files, but we want to still leverage tools that utilize h5py.
+- A specification for representing arbitrary HDF5 files as Zarr stores. This handles scalar datasets, references, soft links, and compound data types for datasets.
+- A Zarr wrapper for remote or local HDF5 files (LindiH5ZarrStore). This involves pointers to remote files for remote data chunks.
+- A function for generating a reference file system .zarr.json file from a Zarr store. This is inspired by [kerchunk](https://github.com/fsspec/kerchunk).
+- An h5py-like interface for accessing these Zarr stores that can be used with [pynwb](https://pynwb.readthedocs.io/en/stable/).
 
 This project was inspired by [kerchunk](https://github.com/fsspec/kerchunk) and [hdmf-zarr](https://hdmf-zarr.readthedocs.io/en/latest/index.html) and depends on [zarr](https://zarr.readthedocs.io/en/stable/), [h5py](https://www.h5py.org/), [remfile](https://github.com/magland/remfile), [fsspec](https://filesystem-spec.readthedocs.io/en/latest/), and [numcodecs](https://numcodecs.readthedocs.io/en/stable/).
 
@@ -27,36 +25,61 @@ pip install -e .
 ## Example usage
 
 ```python
-import lindi
+# examples/example1.py
+
+import json
 import pynwb
+import lindi
 
-# Here's an example DANDI NWB file
+# Define the URL for a remote NWB file
+h5_url = "https://api.dandiarchive.org/api/assets/11f512ba-5bcf-4230-a8cb-dc8d36db38cb/download/"
 
-# https://neurosift.app/?p=/nwb&dandisetId=000717&dandisetVersion=draft&url=https://api.dandiarchive.org/api/assets/3d12a902-139a-4c1a-8fd0-0a7faf2fb223/download/
-h5_url = "https://api.dandiarchive.org/api/assets/3d12a902-139a-4c1a-8fd0-0a7faf2fb223/download/"
+# Create a read-only Zarr store as a wrapper for the h5 file
+store = lindi.LindiH5ZarrStore.from_file(h5_url)
 
-
-# Create the read-only Zarr store for the h5 file
-store = lindi.LindiH5Store.from_file(h5_url)
-
-# Create the reference file system object
+# Generate a reference file system
 rfs = store.to_reference_file_system()
 
-# For reference, save it to a file
+# Save it to a file for later use
 with open("example.zarr.json", "w") as f:
     json.dump(rfs, f, indent=2)
 
-# Create the h5py-like client from the reference file system
-client = lindi.LindiClient.from_reference_file_system(rfs)
+# Create an h5py-like client from the reference file system
+client = lindi.LindiH5pyFile.from_reference_file_system(rfs)
 
-# Try to read using pynwb
-# (This part does not work yet)
+# Open using pynwb
 with pynwb.NWBHDF5IO(file=client, mode="r") as io:
     nwbfile = io.read()
     print(nwbfile)
 ```
 
-The idea is that you would then be able to augment, mix, and merge the reference file system JSON files, creating NWB files that can involve chunk data from multiple sources.
+Or if you already have a .zarr.json file prepared (loading is much faster)
+
+```python
+# examples/example2.py
+
+import pynwb
+import lindi
+
+# Define the URL for a remote .zarr.json file
+url = 'https://kerchunk.neurosift.org/dandi/dandisets/000939/assets/11f512ba-5bcf-4230-a8cb-dc8d36db38cb/zarr.json'
+
+# Load the h5py-like client from the reference file system
+client = lindi.LindiH5pyFile.from_reference_file_system(url)
+
+# Open using pynwb
+with pynwb.NWBHDF5IO(file=client, mode="r") as io:
+    nwbfile = io.read()
+    print(nwbfile)
+```
+
+## Mixing and matching data from multiple sources
+
+Once we have NWB files represented by relatively small reference file systems (e.g., .zarr.json files), we can begin to mix and match data from multiple sources. More on this to come.
+
+## For developers
+
+[Special Zarr annotations used by LINDI](docs/special_zarr_annotations.md)
 
 ## License
 
