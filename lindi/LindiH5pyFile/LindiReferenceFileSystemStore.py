@@ -25,7 +25,8 @@ class LindiReferenceFileSystemStore(ZarrStore):
     a Dandiset on the staging server, you will need to set the
     DANDI_STAGING_API_KEY.
 
-    Following the fsspec convention, the reference file system is specified as a
+    Following the fsspec convention (https://fsspec.github.io/kerchunk/spec.html),
+    the reference file system is specified as a
     dictionary with a "refs" key. The value of "refs" is a dictionary where the
     keys are the names of the files and the values are either strings or lists.
     If the value is a string, it is assumed to be the data of the file, which
