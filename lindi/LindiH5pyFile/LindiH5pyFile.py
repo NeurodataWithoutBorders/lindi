@@ -54,6 +54,8 @@ class LindiH5pyFile(h5py.File):
         """
         Create a LindiH5pyFile from a zarr store.
         """
+        # note that even though the function is called "open", the zarr_group
+        # does not need to be closed
         zarr_group = zarr.open(store=zarr_store, mode="r")
         assert isinstance(zarr_group, zarr.Group)
         return LindiH5pyFile.from_zarr_group(zarr_group)
@@ -122,7 +124,7 @@ class LindiH5pyFile(h5py.File):
         raise Exception("Getting swmr_mode is not allowed")
 
     def close(self):
-        # return self._file_object.close()
+        # Nothing was opened, so nothing needs to be closed
         pass
 
     def flush(self):
