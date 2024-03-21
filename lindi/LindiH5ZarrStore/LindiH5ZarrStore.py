@@ -553,7 +553,6 @@ class LindiH5ZarrStore(Store):
         return ret
 
 
-
 def _join(a: str, b: str) -> str:
     if a == "":
         return b
