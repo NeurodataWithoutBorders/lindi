@@ -501,54 +501,57 @@ class LindiH5ZarrStore(Store):
                         # recursively process subgroups
                         _process_group(_join(key, k), subitem)
                     elif isinstance(subitem, h5py.Dataset):
-                        # Add the .zattrs and .zarray files for the dataset
-                        subkey = _join(key, k)
-                        zattrs_bytes = self.get(f"{subkey}/.zattrs")
-                        assert zattrs_bytes is not None
-                        if zattrs_bytes != b"{}":  # don't include empty zattrs
-                            _add_ref(f"{subkey}/.zattrs", zattrs_bytes)
-                        zattrs_dict = json.loads(zattrs_bytes.decode("utf-8"))
-                        external_array_link = zattrs_dict.get(
-                            "_EXTERNAL_ARRAY_LINK", None
-                        )
-                        zarray_bytes = self.get(f"{subkey}/.zarray")
-                        assert zarray_bytes is not None
-                        _add_ref(f"{subkey}/.zarray", zarray_bytes)
-                        zarray_dict = json.loads(zarray_bytes.decode("utf-8"))
-                        if external_array_link is None:
-                            # only process chunks for non-external array links
-                            shape = zarray_dict["shape"]
-                            chunks = zarray_dict.get("chunks", None)
-                            chunk_coords_shape = [
-                                (shape[i] + chunks[i] - 1) // chunks[i]
-                                for i in range(len(shape))
-                            ]
-                            # For example, chunk_names could be ['0', '1', '2', ...]
-                            # or ['0.0', '0.1', '0.2', ...]
-                            chunk_names = _get_chunk_names_for_dataset(
-                                chunk_coords_shape
-                            )
-                            for chunk_name in chunk_names:
-                                byte_offset, byte_count, inline_data = (
-                                    self._get_chunk_file_bytes_data(subkey, chunk_name)
-                                )
-                                if inline_data is not None:
-                                    # The data is inline for this chunk
-                                    _add_ref(f"{subkey}/{chunk_name}", inline_data)
-                                else:
-                                    # In this case we reference a chunk of data
-                                    # in a separate file
-                                    assert byte_offset is not None
-                                    assert byte_count is not None
-                                    ret["refs"][f"{subkey}/{chunk_name}"] = [
-                                        self._url,
-                                        byte_offset,
-                                        byte_count,
-                                    ]
+                        _process_dataset(_join(key, k))
+
+        def _process_dataset(key):
+            # Add the .zattrs and .zarray files for the dataset
+            zattrs_bytes = self.get(f"{key}/.zattrs")
+            assert zattrs_bytes is not None
+            if zattrs_bytes != b"{}":  # don't include empty zattrs
+                _add_ref(f"{key}/.zattrs", zattrs_bytes)
+            zattrs_dict = json.loads(zattrs_bytes.decode("utf-8"))
+            external_array_link = zattrs_dict.get(
+                "_EXTERNAL_ARRAY_LINK", None
+            )
+            zarray_bytes = self.get(f"{key}/.zarray")
+            assert zarray_bytes is not None
+            _add_ref(f"{key}/.zarray", zarray_bytes)
+            zarray_dict = json.loads(zarray_bytes.decode("utf-8"))
+
+            if external_array_link is None:
+                # Only add chunk references for datasets without an external array link
+                shape = zarray_dict["shape"]
+                chunks = zarray_dict.get("chunks", None)
+                chunk_coords_shape = [
+                    (shape[i] + chunks[i] - 1) // chunks[i]
+                    for i in range(len(shape))
+                ]
+                # For example, chunk_names could be ['0', '1', '2', ...]
+                # or ['0.0', '0.1', '0.2', ...]
+                chunk_names = _get_chunk_names_for_dataset(
+                    chunk_coords_shape
+                )
+                for chunk_name in chunk_names:
+                    byte_offset, byte_count, inline_data = (
+                        self._get_chunk_file_bytes_data(key, chunk_name)
+                    )
+                    if inline_data is not None:
+                        # The data is inline for this chunk
+                        _add_ref(f"{key}/{chunk_name}", inline_data)
+                    else:
+                        # In this case we reference a chunk of data in a separate file
+                        assert byte_offset is not None
+                        assert byte_count is not None
+                        ret["refs"][f"{key}/{chunk_name}"] = [
+                            self._url,
+                            byte_offset,
+                            byte_count,
+                        ]
 
         # Process the groups recursively starting with the root group
         _process_group("", self._h5f)
         return ret
+
 
 
 def _join(a: str, b: str) -> str:
