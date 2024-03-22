@@ -6,7 +6,7 @@ import numpy as np
 import numcodecs
 import h5py
 from numcodecs.abc import Codec
-from ._h5_attr_to_zarr_attr import _h5_ref_to_zarr_attr
+from ..conversion.h5_to_zarr_attr import h5_to_zarr_attr
 from ._h5_filters_to_codecs import _h5_filters_to_codecs
 
 
@@ -118,7 +118,7 @@ def _zarr_info_for_h5_dataset(h5_dataset: h5py.Dataset) -> ZarrInfoForH5Dataset:
                 elif isinstance(val, str):
                     data_vec_view[i] = val
                 elif isinstance(val, h5py.Reference):
-                    data_vec_view[i] = _h5_ref_to_zarr_attr(val, label=f'{h5_dataset.name}[{i}]', h5f=h5_dataset.file)
+                    data_vec_view[i] = h5_to_zarr_attr(val, label=f'{h5_dataset.name}[{i}]', h5f=h5_dataset.file)
                 else:
                     raise Exception(f'Cannot handle dataset {h5_dataset.name} with dtype {dtype} and shape {shape}')
             inline_data = json.dumps(data.tolist() + ['|O', list(shape)], separators=(',', ':')).encode('utf-8')
@@ -181,7 +181,7 @@ def _json_serialize(val: Any, dtype: np.dtype, h5_dataset: h5py.Dataset) -> Any:
     elif dtype.kind == 'U':  # unicode string
         return val
     elif dtype == h5py.Reference:
-        return _h5_ref_to_zarr_attr(val, label=f'{h5_dataset.name}', h5f=h5_dataset.file)
+        return h5_to_zarr_attr(val, label=f'{h5_dataset.name}', h5f=h5_dataset.file)
     else:
         raise Exception(f'Cannot serialize item {val} with dtype {dtype} when serializing dataset {h5_dataset.name} with compound dtype.')
 

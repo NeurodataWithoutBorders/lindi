@@ -1,5 +1,7 @@
 from typing import Literal
 from .LindiH5pyReference import LindiH5pyReference
+from ..conversion.h5_to_zarr_attr import zarr_to_h5_attr
+from ..conversion.nan_inf_ninf import decode_nan_inf_ninf
 
 _special_attribute_keys = [
     "_SCALAR",
@@ -33,6 +35,8 @@ class LindiH5pyAttributes:
         if self._attrs_type == "h5py":
             return key in self._attrs
         elif self._attrs_type == "zarr":
+            if key in _special_attribute_keys:
+                return False
             return key in self._attrs
         else:
             raise ValueError(f"Unknown attrs_type: {self._attrs_type}")
@@ -47,9 +51,9 @@ class LindiH5pyAttributes:
 
             # Convert special float values to actual floats (NaN, Inf, -Inf)
             # Note that string versions of these values are not supported
-            val = _decode_nan_inf_ninf_in_attr_val(val)
+            val = decode_nan_inf_ninf(val)
 
-            return val
+            return zarr_to_h5_attr(val)
         else:
             raise ValueError(f"Unknown attrs_type: {self._attrs_type}")
 
@@ -59,8 +63,8 @@ class LindiH5pyAttributes:
         if self._attrs_type == "h5py":
             self._attrs[key] = value
         elif self._attrs_type == "zarr":
-            from ..LindiH5ZarrStore._h5_attr_to_zarr_attr import _h5_attr_to_zarr_attr  # avoid circular import
-            self._attrs[key] = _h5_attr_to_zarr_attr(value, h5f=None)
+            from ..conversion.h5_to_zarr_attr import h5_to_zarr_attr
+            self._attrs[key] = h5_to_zarr_attr(value, h5f=None)
         else:
             raise ValueError(f"Unknown attrs_type: {self._attrs_type}")
 
@@ -93,18 +97,3 @@ class LindiH5pyAttributes:
 
     def __str__(self):
         return str(self._attrs)
-
-
-def _decode_nan_inf_ninf_in_attr_val(val):
-    if isinstance(val, list):
-        return [_decode_nan_inf_ninf_in_attr_val(v) for v in val]
-    elif isinstance(val, dict):
-        return {k: _decode_nan_inf_ninf_in_attr_val(v) for k, v in val.items()}
-    elif val == 'NaN':
-        return float('nan')
-    elif val == 'Infinity':
-        return float('inf')
-    elif val == '-Infinity':
-        return float('-inf')
-    else:
-        return val

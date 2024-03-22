@@ -12,9 +12,11 @@ from ._util import (
     _read_bytes,
     _get_chunk_byte_range,
     _get_byte_range_for_contiguous_dataset,
+    _join,
+    _get_chunk_names_for_dataset
 )
-from ._h5_attr_to_zarr_attr import _h5_attr_to_zarr_attr
-from ._utils import _join, _get_chunk_names_for_dataset, _reformat_json
+from ..conversion.h5_to_zarr_attr import h5_to_zarr_attr
+from ..conversion.reformat_json import reformat_json
 
 
 @dataclass
@@ -222,7 +224,7 @@ class LindiH5ZarrStore(Store):
                 # if it's a soft link, we return a special attribute and ignore
                 # the rest of the attributes because they should be stored in
                 # the target of the soft link
-                return _reformat_json(json.dumps({
+                return reformat_json(json.dumps({
                     "_SOFT_LINK": {
                         "path": link.path
                     }
@@ -234,7 +236,7 @@ class LindiH5ZarrStore(Store):
         memory_store = MemoryStore()
         dummy_group = zarr.group(store=memory_store)
         for k, v in h5_item.attrs.items():
-            v2 = _h5_attr_to_zarr_attr(v, label=f"{parent_key} {k}", h5f=self._h5f)
+            v2 = h5_to_zarr_attr(v, label=f"{parent_key} {k}", h5f=self._h5f)
             if v2 is not None:
                 dummy_group.attrs[k] = v2
         if isinstance(h5_item, h5py.Dataset):
@@ -250,7 +252,7 @@ class LindiH5ZarrStore(Store):
             external_array_link = self._get_external_array_link(parent_key, h5_item)
             if external_array_link is not None:
                 dummy_group.attrs["_EXTERNAL_ARRAY_LINK"] = external_array_link
-        zattrs_content = _reformat_json(memory_store.get(".zattrs"))
+        zattrs_content = reformat_json(memory_store.get(".zattrs"))
         if zattrs_content is not None:
             return zattrs_content
         else:
@@ -268,7 +270,7 @@ class LindiH5ZarrStore(Store):
         # from it.
         memory_store = MemoryStore()
         zarr.group(store=memory_store)
-        return _reformat_json(memory_store.get(".zgroup"))
+        return reformat_json(memory_store.get(".zgroup"))
 
     def _get_zarray_bytes(self, parent_key: str):
         """Get the .zarray JSON text for a dataset"""
@@ -299,7 +301,7 @@ class LindiH5ZarrStore(Store):
             filters=info.filters,
             object_codec=info.object_codec,
         )
-        zarray_text = _reformat_json(memory_store.get("dummy_array/.zarray"))
+        zarray_text = reformat_json(memory_store.get("dummy_array/.zarray"))
 
         return zarray_text
 
