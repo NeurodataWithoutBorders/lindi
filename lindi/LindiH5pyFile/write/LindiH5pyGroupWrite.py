@@ -1,14 +1,15 @@
 from typing import TYPE_CHECKING
-import numpy as np
 import h5py
+import numpy as np
 import zarr
-import numcodecs
 
 from ..LindiH5pyDataset import LindiH5pyDataset
 from ..LindiH5pyReference import LindiH5pyReference
 
 if TYPE_CHECKING:
     from ..LindiH5pyGroup import LindiH5pyGroup  # pragma: no cover
+
+from ...conversion.dataset_conversion import h5_to_zarr_dataset_prep, CreateZarrDatasetInfo
 
 
 class LindiH5pyGroupWrite:
@@ -45,65 +46,52 @@ class LindiH5pyGroupWrite:
                 chunks = v
             else:
                 raise Exception(f'Unsupported kwds in create_dataset: {k}')
+
         if isinstance(self.p._group_object, h5py.Group):
             return LindiH5pyDataset(
                 self._group_object.create_dataset(name, shape=shape, dtype=dtype, data=data, chunks=chunks),  # type: ignore
                 self.p._file
             )
         elif isinstance(self.p._group_object, zarr.Group):
-            if isinstance(data, str):
-                data = data.encode('utf-8')
-            scalar = False
-            object_codec = None
-            if data is None:
-                if dtype == 'object':
-                    object_codec = numcodecs.JSON()
-                elif dtype in (np.float32, np.float64, np.int32, np.int64, np.uint32, np.uint64, np.uint16):
-                    if shape is None:
-                        raise Exception('shape must be provided if data is None')
+            if isinstance(data, list):
+                data = np.array(data)
+            if shape is None:
+                if data is None:
+                    raise Exception('shape or data must be provided')
+                if isinstance(data, np.ndarray):
+                    shape = data.shape
                 else:
-                    raise Exception(f'Unexpected dtype in create_dataset for data of type None: {dtype}')
-            else:
-                if isinstance(data, bytes):
-                    if shape == ():
-                        shape = None
-                    if shape is not None:
-                        raise Exception(f'Unexpected shape in create_dataset for data of type bytes: {shape}')
-                    if dtype != 'object':
-                        raise Exception(f'Unexpected dtype in create_dataset for data of type bytes: {dtype}')
-                    shape = (1,)
-                    scalar = True
-                    data = [data.decode('utf-8')]
-                    object_codec = numcodecs.JSON()
-                elif dtype in (np.float32, np.float64, np.int32, np.int64, np.uint32, np.uint64, np.uint16):
-                    if isinstance(data, np.ndarray):
-                        if data.dtype != dtype:
-                            raise Exception(f'Unexpected dtype in create_dataset for data of type {type(data)}: {data.dtype} != {dtype}')
-                        if shape is None:
-                            shape = data.shape
-                        if shape != data.shape:
-                            raise Exception(f'Unexpected shape in create_dataset for data of type {type(data)}: {shape} != {data.shape}')
-                    elif isinstance(data, dtype):  # type: ignore
-                        # scalar
-                        if shape is None:
-                            shape = ()
-                        if shape != ():
-                            raise Exception(f'Unexpected shape in create_dataset for data of type {type(data)}: {shape} != ()')
-                        scalar = True
-                        data = [data]
-                        shape = (1,)
-                    else:
-                        raise Exception(f'Unexpected data type in create_dataset: {type(data)}')
-            ds = self.p._group_object.create_dataset(
-                name,
+                    shape = ()
+            if dtype is None:
+                if data is None:
+                    raise Exception('dtype or data must be provided')
+                if isinstance(data, np.ndarray):
+                    dtype = data.dtype
+                else:
+                    dtype = np.dtype(type(data))
+            scalar_value = data if not isinstance(data, np.ndarray) else None
+            if scalar_value is not None:
+                if shape != ():
+                    raise Exception('shape must be () for scalar dataset')
+            info: CreateZarrDatasetInfo = h5_to_zarr_dataset_prep(
                 shape=shape,
                 dtype=dtype,
-                data=data,
-                object_codec=object_codec,
-                chunks=chunks
+                scalar_value=scalar_value,
+                chunks=chunks,
+                label=(self.p.name or '') + '/' + name
             )
-            if scalar:
+
+            ds = self.p._group_object.create_dataset(
+                name,
+                shape=info.shape,
+                dtype=info.dtype,
+                data=data if not info.scalar else [data],
+                chunks=info.chunks
+            )
+            if info.scalar:
                 ds.attrs['_SCALAR'] = True
+            if info.compound_dtype is not None:
+                ds.attrs['_COMPOUND_DTYPE'] = info.compound_dtype
             return LindiH5pyDataset(ds, self.p._file)
         else:
             raise Exception(f'Unexpected group object type: {type(self.p._group_object)}')

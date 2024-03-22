@@ -8,6 +8,7 @@ from .LindiH5pyAttributes import LindiH5pyAttributes
 from .LindiH5pyReference import LindiH5pyReference
 
 from .write.LindiH5pyDatasetWrite import LindiH5pyDatasetWrite
+from ..conversion.resolve_references import resolve_references
 
 
 if TYPE_CHECKING:
@@ -36,9 +37,19 @@ class LindiH5pyDataset(h5py.Dataset):
         if isinstance(_dataset_object, zarr.Array):
             compound_dtype_obj = _dataset_object.attrs.get("_COMPOUND_DTYPE", None)
             if compound_dtype_obj is not None:
+                assert isinstance(compound_dtype_obj, list)
+                for i in range(len(compound_dtype_obj)):
+                    if compound_dtype_obj[i][1] == '<REFERENCE>':
+                        compound_dtype_obj[i][1] = h5py.special_dtype(ref=h5py.Reference)
                 # If we have a compound dtype, then create the numpy dtype
                 self._compound_dtype = np.dtype(
-                    [(compound_dtype_obj[i][0], compound_dtype_obj[i][1]) for i in range(len(compound_dtype_obj))]
+                    [
+                        (
+                            compound_dtype_obj[i][0],
+                            compound_dtype_obj[i][1]
+                        )
+                        for i in range(len(compound_dtype_obj))
+                    ]
                 )
             else:
                 self._compound_dtype = None
@@ -138,7 +149,6 @@ class LindiH5pyDataset(h5py.Dataset):
             if new_dtype is not None:
                 raise Exception("new_dtype is not supported for zarr.Array")
             ret = self._get_item_for_zarr(self._dataset_object, args)
-            ret = _resolve_references(ret)
         else:
             raise Exception(f"Unexpected type: {type(self._dataset_object)}")
         return ret
@@ -187,8 +197,10 @@ class LindiH5pyDataset(h5py.Dataset):
             # make sure selection is ()
             if selection != ():
                 raise TypeError(f'Cannot slice a scalar dataset with {selection}')
+            print(zarr_array)
+            print(zarr_array.shape)
             return zarr_array[0]
-        return zarr_array[selection]
+        return resolve_references(zarr_array[selection])
 
     def _get_external_hdf5_client(self, url: str) -> h5py.File:
         if url not in _external_hdf5_clients:
@@ -207,26 +219,6 @@ class LindiH5pyDataset(h5py.Dataset):
     @property
     def ref(self):
         return self._write.ref
-
-
-def _resolve_references(x: Any):
-    if isinstance(x, dict):
-        # x should only be a dict when x represents a converted reference
-        if '_REFERENCE' in x:
-            return LindiH5pyReference(x['_REFERENCE'])
-        else:  # pragma: no cover
-            raise Exception(f"Unexpected dict in selection: {x}")
-    elif isinstance(x, list):
-        # Replace any references in the list with the resolved ref in-place
-        for i, v in enumerate(x):
-            x[i] = _resolve_references(v)
-    elif isinstance(x, np.ndarray):
-        if x.dtype == object or x.dtype is None:
-            # Replace any references in the object array with the resolved ref in-place
-            view_1d = x.reshape(-1)
-            for i in range(len(view_1d)):
-                view_1d[i] = _resolve_references(view_1d[i])
-    return x
 
 
 class LindiH5pyDatasetCompoundFieldSelection:
@@ -290,4 +282,4 @@ class LindiH5pyDatasetCompoundFieldSelection:
         return self._data.size
 
     def __getitem__(self, selection):
-        return self._data[selection]
+        return resolve_references(self._data[selection])

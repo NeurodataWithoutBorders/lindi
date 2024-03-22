@@ -2,6 +2,7 @@ from typing import Any, TYPE_CHECKING
 import h5py
 import zarr
 from ..LindiH5pyReference import LindiH5pyReference
+from ...conversion.dataset_conversion import h5_object_data_to_zarr_object_data
 
 if TYPE_CHECKING:
     from ..LindiH5pyDataset import LindiH5pyDataset  # pragma: no cover
@@ -28,7 +29,7 @@ class LindiH5pyDatasetWrite:
             zarr_array[0] = val
         else:
             if zarr_array.dtype == 'object':
-                val = _h5_object_val_to_zarr_object_val(val)
+                val = h5_object_data_to_zarr_object_data(val)
             zarr_array[selection] = val
 
     @property
@@ -39,18 +40,3 @@ class LindiH5pyDatasetWrite:
             'source': '.',
             'source_object_id': self.p.file.attrs.get('object_id', None)
         })
-
-
-def _h5_object_val_to_zarr_object_val(val: Any) -> Any:
-    if isinstance(val, list):
-        return [_h5_object_val_to_zarr_object_val(x) for x in val]
-    elif isinstance(val, bytes):
-        return val.decode('utf-8')
-    elif isinstance(val, str):
-        return val
-    elif isinstance(val, LindiH5pyReference):
-        return {
-            '_REFERENCE': val._obj
-        }
-    else:
-        raise Exception(f"Unexpected type for object value: {type(val)}")

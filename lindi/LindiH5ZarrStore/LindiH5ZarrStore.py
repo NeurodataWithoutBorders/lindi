@@ -242,11 +242,14 @@ class LindiH5ZarrStore(Store):
         if isinstance(h5_item, h5py.Dataset):
             if h5_item.ndim == 0:
                 dummy_group.attrs["_SCALAR"] = True
-            if h5_item.dtype.kind == "V":  # compound type
+            if h5_item.dtype.kind == "V" and h5_item.dtype.fields is not None:  # compound type
                 compound_dtype = [
                     [name, str(h5_item.dtype[name])]
                     for name in h5_item.dtype.names
                 ]
+                for i in range(len(compound_dtype)):
+                    if compound_dtype[i][1] == h5py.special_dtype(ref=h5py.Reference):
+                        compound_dtype[i][1] = "<REFERENCE>"
                 # For example: [['x', 'uint32'], ['y', 'uint32'], ['weight', 'float32']]
                 dummy_group.attrs["_COMPOUND_DTYPE"] = compound_dtype
             external_array_link = self._get_external_array_link(parent_key, h5_item)
@@ -280,9 +283,9 @@ class LindiH5ZarrStore(Store):
         if not isinstance(h5_item, h5py.Dataset):
             raise Exception(f"Item {parent_key} is not a dataset")
         # get the shape, chunks, dtype, and filters from the h5 dataset
-        info = h5_to_zarr_dataset(h5_item)
-        if info.inline_data_bytes is not None:
-            self._inline_data_for_arrays[parent_key] = info.inline_data_bytes
+        info, filters, inline_data_bytes, object_codec = h5_to_zarr_dataset(h5_item)
+        if inline_data_bytes is not None:
+            self._inline_data_for_arrays[parent_key] = inline_data_bytes
         # We create a dummy zarr dataset with the appropriate shape, chunks,
         # dtype, and filters and then copy the .zarray JSON text from it
         memory_store = MemoryStore()
@@ -298,8 +301,8 @@ class LindiH5ZarrStore(Store):
             compressor=None,
             order="C",
             fill_value=info.fill_value,
-            filters=info.filters,
-            object_codec=info.object_codec,
+            filters=filters,
+            object_codec=object_codec,
         )
         zarray_text = reformat_json(memory_store.get("dummy_array/.zarray"))
 
