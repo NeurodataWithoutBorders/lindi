@@ -1,6 +1,6 @@
 from typing import Literal
 from .LindiH5pyReference import LindiH5pyReference
-from ..conversion.h5_to_zarr_attr import zarr_to_h5_attr
+from ..conversion.attr_conversion import zarr_to_h5_attr
 from ..conversion.nan_inf_ninf import decode_nan_inf_ninf
 
 _special_attribute_keys = [
@@ -63,7 +63,7 @@ class LindiH5pyAttributes:
         if self._attrs_type == "h5py":
             self._attrs[key] = value
         elif self._attrs_type == "zarr":
-            from ..conversion.h5_to_zarr_attr import h5_to_zarr_attr
+            from ..conversion.attr_conversion import h5_to_zarr_attr
             self._attrs[key] = h5_to_zarr_attr(value, h5f=None)
         else:
             raise ValueError(f"Unknown attrs_type: {self._attrs_type}")

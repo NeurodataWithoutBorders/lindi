@@ -1,12 +1,12 @@
 import json
-import struct
 from typing import Union, List, Any, Tuple
 from dataclasses import dataclass
 import numpy as np
 import numcodecs
-import h5py
 from numcodecs.abc import Codec
-from ..conversion.h5_to_zarr_attr import h5_to_zarr_attr
+import h5py
+import struct
+from .attr_conversion import h5_to_zarr_attr
 from ._h5_filters_to_codecs import _h5_filters_to_codecs
 
 
@@ -18,32 +18,12 @@ class ZarrInfoForH5Dataset:
     filters: Union[List[Codec], None]
     fill_value: Any
     object_codec: Union[None, Codec]
-    inline_data: Union[bytes, None]
+    inline_data_bytes: Union[bytes, None]
 
 
-def _zarr_info_for_h5_dataset(h5_dataset: h5py.Dataset) -> ZarrInfoForH5Dataset:
-    """Get the information needed to create a zarr dataset from an h5py dataset.
-
-    This is the main workhorse function for LindiH5ZarrStore. It takes an h5py
-    dataset and returns a ZarrInfoForH5Dataset object.
-
-    It handles the following cases:
-
-    For non-scalars, if it is a numeric array, then the data can stay where it
-    is in the hdf5 file. The hdf5 filters are translated into zarr filters using
-    the _h5_filters_to_codecs function.
-
-    If it is a non-scalar object array, then the inline_data will be a JSON
-    string and the JSON codec will be used.
-
-    When the shape is (), we have a scalar dataset. Since zarr doesn't support
-    scalar datasets, we make an array of shape (1,). The _SCALAR attribute will
-    be set to True elsewhere to indicate that it is actually a scalar. The
-    inline_data attribute will be set. In the case of a numeric scalar, it will
-    be a bytes object with the binary representation of the value. In the case
-    of an object, the inline_data will be a JSON string and the JSON codec will
-    be used.
-    """
+def h5_to_zarr_dataset(
+    h5_dataset: h5py.Dataset
+):
     shape = h5_dataset.shape
     dtype = h5_dataset.dtype
 
@@ -58,7 +38,7 @@ def _zarr_info_for_h5_dataset(h5_dataset: h5py.Dataset) -> ZarrInfoForH5Dataset:
         numeric_format_str = _get_numeric_format_str(dtype)
         if numeric_format_str is not None:
             # Handle the simple numeric types
-            inline_data = struct.pack(numeric_format_str, value)
+            inline_data_bytes = struct.pack(numeric_format_str, value)
             return ZarrInfoForH5Dataset(
                 shape=(1,),
                 chunks=(1,),  # be explicit about chunks
@@ -66,9 +46,9 @@ def _zarr_info_for_h5_dataset(h5_dataset: h5py.Dataset) -> ZarrInfoForH5Dataset:
                 filters=None,
                 fill_value=0,
                 object_codec=None,
-                inline_data=inline_data
+                inline_data_bytes=inline_data_bytes
             )
-        elif dtype == object:
+        elif dtype.kind == 'O':
             # For type object, we are going to use the JSON codec
             # which requires inline data of the form [[val], '|O', [1]]
             if isinstance(value, (bytes, str)):
@@ -81,10 +61,10 @@ def _zarr_info_for_h5_dataset(h5_dataset: h5py.Dataset) -> ZarrInfoForH5Dataset:
                     filters=None,
                     fill_value=' ',
                     object_codec=numcodecs.JSON(),
-                    inline_data=json.dumps([value, '|O', [1]], separators=(',', ':')).encode('utf-8')
+                    inline_data_bytes=json.dumps([value, '|O', [1]], separators=(',', ':')).encode('utf-8')
                 )
             else:
-                raise Exception(f'Not yet implemented (1): object scalar dataset with value {value} and dtype {dtype}')
+                raise Exception(f'Unsupported scalar object type: {type(value)}')
         else:
             raise Exception(f'Cannot handle scalar dataset {h5_dataset.name} with dtype {dtype}')
     else:
@@ -104,7 +84,7 @@ def _zarr_info_for_h5_dataset(h5_dataset: h5py.Dataset) -> ZarrInfoForH5Dataset:
                 filters=filters,
                 fill_value=h5_dataset.fillvalue,
                 object_codec=None,
-                inline_data=None
+                inline_data_bytes=None
             )
         elif dtype.kind == 'O':
             # For type object, we are going to use the JSON codec
@@ -121,7 +101,7 @@ def _zarr_info_for_h5_dataset(h5_dataset: h5py.Dataset) -> ZarrInfoForH5Dataset:
                     data_vec_view[i] = h5_to_zarr_attr(val, label=f'{h5_dataset.name}[{i}]', h5f=h5_dataset.file)
                 else:
                     raise Exception(f'Cannot handle dataset {h5_dataset.name} with dtype {dtype} and shape {shape}')
-            inline_data = json.dumps(data.tolist() + ['|O', list(shape)], separators=(',', ':')).encode('utf-8')
+            inline_data_bytes = json.dumps(data.tolist() + ['|O', list(shape)], separators=(',', ':')).encode('utf-8')
             return ZarrInfoForH5Dataset(
                 shape=shape,
                 chunks=shape,  # be explicit about chunks
@@ -129,7 +109,7 @@ def _zarr_info_for_h5_dataset(h5_dataset: h5py.Dataset) -> ZarrInfoForH5Dataset:
                 filters=None,
                 fill_value=' ',  # not sure what to put here
                 object_codec=object_codec,
-                inline_data=inline_data
+                inline_data_bytes=inline_data_bytes
             )
         elif dtype.kind in 'SU':  # byte string or unicode string
             raise Exception(f'Not yet implemented (2): dataset {h5_dataset.name} with dtype {dtype} and shape {shape}')
@@ -152,7 +132,8 @@ def _zarr_info_for_h5_dataset(h5_dataset: h5py.Dataset) -> ZarrInfoForH5Dataset:
                     for i in range(h5_dataset.shape[0])
                 ]
                 object_codec = numcodecs.JSON()
-                inline_data = array_list + ['|O', list(shape)]
+                inline_data_list = array_list + ['|O', list(shape)]
+                inline_data_bytes = json.dumps(inline_data_list, separators=(',', ':')).encode('utf-8')
                 return ZarrInfoForH5Dataset(
                     shape=shape,
                     chunks=shape,  # be explicit about chunks
@@ -160,7 +141,7 @@ def _zarr_info_for_h5_dataset(h5_dataset: h5py.Dataset) -> ZarrInfoForH5Dataset:
                     filters=None,
                     fill_value=' ',  # not sure what to put here
                     object_codec=object_codec,
-                    inline_data=json.dumps(inline_data, separators=(',', ':')).encode('utf-8')
+                    inline_data_bytes=inline_data_bytes
                 )
             else:
                 raise Exception(f'More than one dimension not supported for compound dataset {h5_dataset.name} with dtype {dtype} and shape {shape}')

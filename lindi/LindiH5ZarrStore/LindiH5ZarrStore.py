@@ -7,7 +7,7 @@ import zarr
 import remfile
 from zarr.storage import Store, MemoryStore
 import h5py
-from ._zarr_info_for_h5_dataset import _zarr_info_for_h5_dataset
+from ..conversion.dataset_conversion import h5_to_zarr_dataset
 from ._util import (
     _read_bytes,
     _get_chunk_byte_range,
@@ -15,7 +15,7 @@ from ._util import (
     _join,
     _get_chunk_names_for_dataset
 )
-from ..conversion.h5_to_zarr_attr import h5_to_zarr_attr
+from ..conversion.attr_conversion import h5_to_zarr_attr
 from ..conversion.reformat_json import reformat_json
 
 
@@ -280,9 +280,9 @@ class LindiH5ZarrStore(Store):
         if not isinstance(h5_item, h5py.Dataset):
             raise Exception(f"Item {parent_key} is not a dataset")
         # get the shape, chunks, dtype, and filters from the h5 dataset
-        info = _zarr_info_for_h5_dataset(h5_item)
-        if info.inline_data is not None:
-            self._inline_data_for_arrays[parent_key] = info.inline_data
+        info = h5_to_zarr_dataset(h5_item)
+        if info.inline_data_bytes is not None:
+            self._inline_data_for_arrays[parent_key] = info.inline_data_bytes
         # We create a dummy zarr dataset with the appropriate shape, chunks,
         # dtype, and filters and then copy the .zarray JSON text from it
         memory_store = MemoryStore()
