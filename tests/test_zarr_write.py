@@ -6,14 +6,10 @@ import h5py
 import lindi
 from lindi.conversion.attr_conversion import h5_to_zarr_attr
 import pytest
-import shutil
 
 
 def test_zarr_write():
     with tempfile.TemporaryDirectory() as tmpdir:
-        tmpdir = 'test1'
-        shutil.rmtree(tmpdir)
-
         dirname = f'{tmpdir}/test.zarr'
         store = zarr.DirectoryStore(dirname)
         zarr.group(store=store)

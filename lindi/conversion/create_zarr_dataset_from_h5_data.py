@@ -53,7 +53,7 @@ def create_zarr_dataset_from_h5_data(
         if h5_data is None:
             raise Exception(f'Data must be provided for scalar dataset {label}')
 
-        if _is_numeric_dtype(h5_dtype):
+        if _is_numeric_dtype(h5_dtype) or h5_dtype in [bool, np.bool_]:
             # Handle the simple numeric types
             ds = zarr_parent_group.create_dataset(
                 name,
@@ -89,7 +89,7 @@ def create_zarr_dataset_from_h5_data(
             # If we have a list, then we need to convert it to an array
             h5_data = np.array(h5_data)
 
-        if _is_numeric_dtype(h5_dtype):  # integer, unsigned integer, float
+        if _is_numeric_dtype(h5_dtype) or h5_dtype in [bool, np.bool_]:  # integer, unsigned integer, float, bool
             # This is the normal case of a chunked dataset with a numeric (or boolean) dtype
             if h5_chunks is None:
                 # We require that chunks be specified when writing a dataset with more

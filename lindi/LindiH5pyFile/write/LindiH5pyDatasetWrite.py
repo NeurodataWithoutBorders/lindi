@@ -1,6 +1,7 @@
 from typing import Any, TYPE_CHECKING
 import h5py
 import zarr
+import numpy as np
 
 from ..LindiH5pyReference import LindiH5pyReference
 from ...conversion._util import _is_numeric_dtype
@@ -31,7 +32,7 @@ class LindiH5pyDatasetWrite:
             zarr_array[0] = val
         else:
             dtype = zarr_array.dtype
-            if _is_numeric_dtype(dtype):
+            if _is_numeric_dtype(dtype) or dtype in [bool, np.bool_]:
                 # this is the usual numeric case
                 zarr_array[selection] = val
             elif dtype.kind == 'O':
