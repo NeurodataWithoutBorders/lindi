@@ -16,7 +16,7 @@ from ._util import (
 )
 from ..conversion.attr_conversion import h5_to_zarr_attr
 from ..conversion.reformat_json import reformat_json
-from ..conversion._h5_filters_to_codecs import _h5_filters_to_codecs
+from ..conversion.h5_filters_to_codecs import h5_filters_to_codecs
 from ..conversion.create_zarr_dataset_from_h5_data import create_zarr_dataset_from_h5_data
 
 
@@ -290,7 +290,7 @@ class LindiH5ZarrStore(Store):
         if inline_array.is_inline:
             return inline_array.zarray_bytes
 
-        filters = _h5_filters_to_codecs(h5_item)
+        filters = h5_filters_to_codecs(h5_item)
 
         # We create a dummy zarr dataset with the appropriate shape, chunks,
         # dtype, and filters and then copy the .zarray JSON text from it
@@ -592,12 +592,16 @@ class InlineArray:
             create_zarr_dataset_from_h5_data(
                 zarr_parent_group=dummy_group,
                 name='X',
-                chunks=h5_dataset.shape if h5_dataset.shape != () else None,  # force single chunk
+                # For inline data it's important for now that we enforce a
+                # single chunk because the rest of the code assumes a single
+                # chunk for inline data. The assumption is that the inline
+                # arrays are not going to be very large.
+                h5_chunks=h5_dataset.shape if h5_dataset.shape != () else None,
                 label=f'{h5_dataset.name}',
-                shape=h5_dataset.shape,
-                dtype=h5_dataset.dtype,
+                h5_shape=h5_dataset.shape,
+                h5_dtype=h5_dataset.dtype,
                 h5f=h5_dataset.file,
-                data=h5_dataset[...]
+                h5_data=h5_dataset[...]
             )
             self._zarray_bytes = reformat_json(memory_store['X/.zarray'])
             if h5_dataset.ndim == 0:

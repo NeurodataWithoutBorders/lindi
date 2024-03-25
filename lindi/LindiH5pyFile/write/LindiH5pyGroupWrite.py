@@ -73,14 +73,12 @@ class LindiH5pyGroupWrite:
                 zarr_parent_group=self.p._group_object,
                 name=name,
                 label=(self.p.name or '') + '/' + name,
-                chunks=chunks,
-                shape=shape,
-                dtype=dtype,
-                data=data,
+                h5_chunks=chunks,
+                h5_shape=shape,
+                h5_dtype=dtype,
+                h5_data=data,
                 h5f=None
             )
-            if shape == ():
-                ds.attrs['_SCALAR'] = True
             return LindiH5pyDataset(ds, self.p._file)
         else:
             raise Exception(f'Unexpected group object type: {type(self.p._group_object)}')

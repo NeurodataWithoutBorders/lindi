@@ -92,3 +92,6 @@ class LindiH5pyAttributes:
 
     def __str__(self):
         return str(self._attrs)
+
+    def keys(self):
+        return list(self)

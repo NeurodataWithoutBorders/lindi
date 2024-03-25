@@ -8,7 +8,7 @@ from .LindiH5pyAttributes import LindiH5pyAttributes
 from .LindiH5pyReference import LindiH5pyReference
 
 from .write.LindiH5pyDatasetWrite import LindiH5pyDatasetWrite
-from ..conversion.resolve_references import resolve_references
+from ..conversion.decode_references import decode_references
 
 
 if TYPE_CHECKING:
@@ -198,7 +198,7 @@ class LindiH5pyDataset(h5py.Dataset):
             if selection != ():
                 raise TypeError(f'Cannot slice a scalar dataset with {selection}')
             return zarr_array[0]
-        return resolve_references(zarr_array[selection])
+        return decode_references(zarr_array[selection])
 
     def _get_external_hdf5_client(self, url: str) -> h5py.File:
         if url not in _external_hdf5_clients:
@@ -280,4 +280,4 @@ class LindiH5pyDatasetCompoundFieldSelection:
         return self._data.size
 
     def __getitem__(self, selection):
-        return resolve_references(self._data[selection])
+        return decode_references(self._data[selection])

@@ -3,12 +3,17 @@ import h5py
 import numcodecs
 from numcodecs.abc import Codec
 
+# The purpose of _h5_filters_to_codecs it to translate the filters that are
+# defined on an HDF5 dataset into numcodecs filters for use with Zarr so that
+# the raw data chunks can stay within the the HDF5 file and be read by Zarr
+# without having to copy/convert the data.
+
 
 # This is adapted from _decode_filters from kerchunk source
 # https://github.com/fsspec/kerchunk
 # Copyright (c) 2020 Intake
 # MIT License
-def _h5_filters_to_codecs(h5obj: h5py.Dataset) -> Union[List[Codec], None]:
+def h5_filters_to_codecs(h5obj: h5py.Dataset) -> Union[List[Codec], None]:
     """Decode HDF5 filters to numcodecs filters."""
     if h5obj.scaleoffset:
         raise RuntimeError(

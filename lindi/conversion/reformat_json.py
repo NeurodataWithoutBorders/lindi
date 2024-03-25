@@ -5,8 +5,8 @@ import json
 def reformat_json(x: Union[bytes, None]) -> Union[bytes, None]:
     """Reformat to not include whitespace and to not allow nan, inf, and ninf.
 
-    Previously, float attributes nan, inf, and ninf float values were encoded as
-    strings. See encode_nan_inf_ninf() and h5_to_zarr_attr().
+    It is assumed that float attributes nan, inf, and ninf float values have
+    been encoded as strings. See encode_nan_inf_ninf() and h5_to_zarr_attr().
     """
     if x is None:
         return None
