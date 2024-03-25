@@ -5,10 +5,8 @@ import lindi
 
 
 def test_zarr_write():
-    return
     with tempfile.TemporaryDirectory() as tmpdirname:
-        # dirname = f'{tmpdirname}/test.zarr'
-        dirname = 'test.zarr'
+        dirname = f'{tmpdirname}/test.zarr'
         store = zarr.DirectoryStore(dirname)
         root = zarr.group(store=store)
         ff = lindi.LindiH5pyFile.from_zarr_group(root)
@@ -47,4 +45,3 @@ def test_zarr_write():
 
 if __name__ == '__main__':
     test_zarr_write()
-

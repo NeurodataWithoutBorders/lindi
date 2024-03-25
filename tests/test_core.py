@@ -508,4 +508,4 @@ def _arrays_are_equal(a, b):
 
 
 if __name__ == '__main__':
-    test_scalar_arrays()
+    test_arrays_of_compound_dtype()

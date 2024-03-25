@@ -2,7 +2,6 @@ from typing import Any, TYPE_CHECKING
 import h5py
 import zarr
 from ..LindiH5pyReference import LindiH5pyReference
-from ...conversion.dataset_conversion import h5_object_data_to_zarr_object_data
 
 if TYPE_CHECKING:
     from ..LindiH5pyDataset import LindiH5pyDataset  # pragma: no cover
@@ -28,9 +27,12 @@ class LindiH5pyDatasetWrite:
                 raise TypeError(f'Cannot slice a scalar dataset with {selection}')
             zarr_array[0] = val
         else:
-            if zarr_array.dtype == 'object':
-                val = h5_object_data_to_zarr_object_data(val)
-            zarr_array[selection] = val
+            dtype = zarr_array.dtype
+            if dtype.kind in ['i', 'u', 'f', 'b']:
+                # this is the usual numeric case
+                zarr_array[selection] = val
+            else:
+                raise Exception(f'Unsupported dtype for slice setting {dtype} in {self.p.name}')
 
     @property
     def ref(self):

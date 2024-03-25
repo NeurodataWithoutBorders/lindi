@@ -197,8 +197,6 @@ class LindiH5pyDataset(h5py.Dataset):
             # make sure selection is ()
             if selection != ():
                 raise TypeError(f'Cannot slice a scalar dataset with {selection}')
-            print(zarr_array)
-            print(zarr_array.shape)
             return zarr_array[0]
         return resolve_references(zarr_array[selection])
 

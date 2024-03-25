@@ -9,7 +9,7 @@ from ..LindiH5pyReference import LindiH5pyReference
 if TYPE_CHECKING:
     from ..LindiH5pyGroup import LindiH5pyGroup  # pragma: no cover
 
-from ...conversion.dataset_conversion import h5_to_zarr_dataset_prep, CreateZarrDatasetInfo
+from ...conversion.create_zarr_dataset_from_h5_data import create_zarr_dataset_from_h5_data
 
 
 class LindiH5pyGroupWrite:
@@ -69,29 +69,18 @@ class LindiH5pyGroupWrite:
                     dtype = data.dtype
                 else:
                     dtype = np.dtype(type(data))
-            scalar_value = data if not isinstance(data, np.ndarray) else None
-            if scalar_value is not None:
-                if shape != ():
-                    raise Exception('shape must be () for scalar dataset')
-            info: CreateZarrDatasetInfo = h5_to_zarr_dataset_prep(
+            ds = create_zarr_dataset_from_h5_data(
+                zarr_parent_group=self.p._group_object,
+                name=name,
+                label=(self.p.name or '') + '/' + name,
+                chunks=chunks,
                 shape=shape,
                 dtype=dtype,
-                scalar_value=scalar_value,
-                chunks=chunks,
-                label=(self.p.name or '') + '/' + name
+                data=data,
+                h5f=None
             )
-
-            ds = self.p._group_object.create_dataset(
-                name,
-                shape=info.shape,
-                dtype=info.dtype,
-                data=data if not info.scalar else [data],
-                chunks=info.chunks
-            )
-            if info.scalar:
+            if shape == ():
                 ds.attrs['_SCALAR'] = True
-            if info.compound_dtype is not None:
-                ds.attrs['_COMPOUND_DTYPE'] = info.compound_dtype
             return LindiH5pyDataset(ds, self.p._file)
         else:
             raise Exception(f'Unexpected group object type: {type(self.p._group_object)}')
