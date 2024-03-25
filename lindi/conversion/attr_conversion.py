@@ -8,6 +8,8 @@ from .h5_ref_to_zarr_attr import h5_ref_to_zarr_attr
 def h5_to_zarr_attr(attr: Any, *, label: str = '', h5f: Union[h5py.File, None]):
     """Convert an attribute from h5py to a format that zarr can accept."""
 
+    from ..LindiH5pyFile.LindiH5pyReference import LindiH5pyReference  # Avoid circular import
+
     # Do not allow these special strings in attributes
     special_strings = ['NaN', 'Infinity', '-Infinity']
 
@@ -51,7 +53,12 @@ def h5_to_zarr_attr(attr: Any, *, label: str = '', h5f: Union[h5py.File, None]):
             return attr.tolist()
         else:
             raise Exception(f"Unexpected dtype for attribute numpy array: {attr.dtype} at {label}")
+    elif isinstance(attr, LindiH5pyReference):
+        return {
+            '_REFERENCE': attr._obj
+        }
     elif isinstance(attr, h5py.Reference):
+        print('------------------------- attr', attr)
         if h5f is None:
             raise Exception(f"h5f cannot be None when converting h5py.Reference to zarr attribute at {label}")
         return h5_ref_to_zarr_attr(attr, h5f=h5f)

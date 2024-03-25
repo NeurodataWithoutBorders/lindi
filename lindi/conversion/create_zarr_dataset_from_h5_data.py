@@ -6,6 +6,7 @@ import h5py
 import zarr
 from .h5_ref_to_zarr_attr import h5_ref_to_zarr_attr
 from .attr_conversion import h5_to_zarr_attr
+from ._util import _is_numeric_dtype
 
 
 def create_zarr_dataset_from_h5_data(
@@ -52,7 +53,7 @@ def create_zarr_dataset_from_h5_data(
         if h5_data is None:
             raise Exception(f'Data must be provided for scalar dataset {label}')
 
-        if h5_dtype.kind in ['i', 'u', 'f', 'b']:  # integer, unsigned integer, float, boolean
+        if _is_numeric_dtype(h5_dtype):
             # Handle the simple numeric types
             ds = zarr_parent_group.create_dataset(
                 name,
@@ -65,7 +66,7 @@ def create_zarr_dataset_from_h5_data(
         elif h5_dtype.kind == 'O':
             # For type object, we are going to use the JSON codec
             # for encoding [scalar_value]
-            scalar_value = h5_data[()]
+            scalar_value = h5_data[()] if isinstance(h5_data, h5py.Dataset) or isinstance(h5_data, np.ndarray) else h5_data
             if isinstance(scalar_value, (bytes, str)):
                 if isinstance(scalar_value, bytes):
                     scalar_value = scalar_value.decode()
@@ -88,7 +89,7 @@ def create_zarr_dataset_from_h5_data(
             # If we have a list, then we need to convert it to an array
             h5_data = np.array(h5_data)
 
-        if h5_dtype.kind in ['i', 'u', 'f', 'b']:  # integer, unsigned integer, float, boolean
+        if _is_numeric_dtype(h5_dtype):  # integer, unsigned integer, float
             # This is the normal case of a chunked dataset with a numeric (or boolean) dtype
             if h5_chunks is None:
                 # We require that chunks be specified when writing a dataset with more
@@ -111,20 +112,7 @@ def create_zarr_dataset_from_h5_data(
             if h5_data is not None:
                 if isinstance(h5_data, h5py.Dataset):
                     h5_data = h5_data[:]
-                zarr_data = np.empty(h5_shape, dtype='object')
-                h5_data_1d_view = h5_data.ravel()
-                zarr_data_1d_view = zarr_data.ravel()
-                for i, val in enumerate(h5_data_1d_view):
-                    if isinstance(val, bytes):
-                        zarr_data_1d_view[i] = val.decode()
-                    elif isinstance(val, str):
-                        zarr_data_1d_view[i] = val
-                    elif isinstance(val, h5py.Reference):
-                        if h5f is None:
-                            raise Exception(f'h5f cannot be None when converting h5py.Reference to zarr attribute at {label}')
-                        zarr_data_1d_view[i] = h5_ref_to_zarr_attr(val, h5f=h5f)
-                    else:
-                        raise Exception(f'Cannot handle value of type {type(val)} in dataset {label} with dtype {h5_dtype} and shape {h5_shape}')
+                zarr_data = h5_object_data_to_zarr_data(h5_data, h5f=h5f, label=label)
             else:
                 zarr_data = None
             object_codec = numcodecs.JSON()
@@ -199,3 +187,28 @@ def _make_json_serializable(val: Any, dtype: np.dtype, label: str, h5f: Union[h5
         return h5_to_zarr_attr(val, label=label, h5f=h5f)
     else:
         raise Exception(f'Cannot serialize item {val} with dtype {dtype} when serializing dataset {label} with compound dtype.')
+
+
+def h5_object_data_to_zarr_data(h5_data: Union[np.ndarray, list], *, h5f: Union[h5py.File, None], label: str) -> np.ndarray:
+    from ..LindiH5pyFile.LindiH5pyReference import LindiH5pyReference  # Avoid circular import
+    if isinstance(h5_data, list):
+        h5_data = np.array(h5_data)
+    zarr_data = np.empty(h5_data.shape, dtype='object')
+    h5_data_1d_view = h5_data.ravel()
+    zarr_data_1d_view = zarr_data.ravel()
+    for i, val in enumerate(h5_data_1d_view):
+        if isinstance(val, bytes):
+            zarr_data_1d_view[i] = val.decode()
+        elif isinstance(val, str):
+            zarr_data_1d_view[i] = val
+        elif isinstance(val, LindiH5pyReference):
+            zarr_data_1d_view[i] = {
+                '_REFERENCE': val._obj
+            }
+        elif isinstance(val, h5py.Reference):
+            if h5f is None:
+                raise Exception(f'h5f cannot be None when converting h5py.Reference to zarr attribute at {label}')
+            zarr_data_1d_view[i] = h5_ref_to_zarr_attr(val, h5f=h5f)
+        else:
+            raise Exception(f'Cannot handle value of type {type(val)} in dataset {label} with dtype {h5_data.dtype} and shape {h5_data.shape}')
+    return zarr_data

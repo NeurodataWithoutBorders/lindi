@@ -1,7 +1,10 @@
 from typing import Any, TYPE_CHECKING
 import h5py
 import zarr
+
 from ..LindiH5pyReference import LindiH5pyReference
+from ...conversion._util import _is_numeric_dtype
+from ...conversion.create_zarr_dataset_from_h5_data import h5_object_data_to_zarr_data
 
 if TYPE_CHECKING:
     from ..LindiH5pyDataset import LindiH5pyDataset  # pragma: no cover
@@ -28,9 +31,11 @@ class LindiH5pyDatasetWrite:
             zarr_array[0] = val
         else:
             dtype = zarr_array.dtype
-            if dtype.kind in ['i', 'u', 'f', 'b']:
+            if _is_numeric_dtype(dtype):
                 # this is the usual numeric case
                 zarr_array[selection] = val
+            elif dtype.kind == 'O':
+                zarr_array[selection] = h5_object_data_to_zarr_data(val, h5f=None, label='')
             else:
                 raise Exception(f'Unsupported dtype for slice setting {dtype} in {self.p.name}')
 
