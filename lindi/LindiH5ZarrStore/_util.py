@@ -20,7 +20,8 @@ def _get_chunk_byte_range(h5_dataset: h5py.Dataset, chunk_coords: tuple) -> tupl
     assert chunk_shape is not None
 
     chunk_coords_shape = [
-        (shape[i] + chunk_shape[i] - 1) // chunk_shape[i]
+        # the shape could be zero -- for example dandiset 000559 - acquisition/depth_video/data has shape [0, 0, 0]
+        (shape[i] + chunk_shape[i] - 1) // chunk_shape[i] if chunk_shape[i] != 0 else 0
         for i in range(len(shape))
     ]
     ndim = h5_dataset.ndim

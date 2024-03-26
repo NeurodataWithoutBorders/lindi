@@ -195,7 +195,8 @@ class LindiH5ZarrStore(Store):
                 shape = h5_item.shape
                 chunks = h5_item.chunks or shape
                 chunk_coords_shape = [
-                    (shape[i] + chunks[i] - 1) // chunks[i] for i in range(len(shape))
+                    (shape[i] + chunks[i] - 1) // chunks[i] if chunks[i] != 0 else 0
+                    for i in range(len(shape))
                 ]
             chunk_coords = tuple(int(x) for x in chunk_name_parts)
             for i, c in enumerate(chunk_coords):
@@ -403,7 +404,8 @@ class LindiH5ZarrStore(Store):
             shape = h5_item.shape
             chunks = h5_item.chunks
             chunk_coords_shape = [
-                (shape[i] + chunks[i] - 1) // chunks[i] for i in range(len(shape))
+                (shape[i] + chunks[i] - 1) // chunks[i] if chunks[i] != 0 else 0
+                for i in range(len(shape))
             ]
             num_chunks = np.prod(chunk_coords_shape)
             if num_chunks > self._opts.num_dataset_chunks_threshold:
@@ -536,7 +538,8 @@ class LindiH5ZarrStore(Store):
                 shape = zarray_dict["shape"]
                 chunks = zarray_dict.get("chunks", None)
                 chunk_coords_shape = [
-                    (shape[i] + chunks[i] - 1) // chunks[i]
+                    # the shape could be zero -- for example dandiset 000559 - acquisition/depth_video/data has shape [0, 0, 0]
+                    (shape[i] + chunks[i] - 1) // chunks[i] if chunks[i] != 0 else 0
                     for i in range(len(shape))
                 ]
                 # For example, chunk_names could be ['0', '1', '2', ...]
