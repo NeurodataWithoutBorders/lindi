@@ -24,7 +24,7 @@ def h5_to_zarr_attr(attr: Any, *, label: str = '', h5f: Union[h5py.File, None]):
     elif type(attr) in [int, np.int8, np.int16, np.int32, np.int64, np.uint8, np.uint16, np.uint32, np.uint64]:
         return int(attr)
     elif type(attr) in [float, np.float16, np.float32, np.float64, np.float128]:
-        return encode_nan_inf_ninf(attr)
+        return encode_nan_inf_ninf(float(attr))
     elif type(attr) in [complex, np.complex64, np.complex128, np.complex256]:
         raise Exception(f"Complex number is not supported at {label}")
     elif type(attr) in [bool, np.bool_]:
@@ -50,9 +50,9 @@ def h5_to_zarr_attr(attr: Any, *, label: str = '', h5f: Union[h5py.File, None]):
                 raise Exception(f"Not allowed for attribute: numpy array with dtype=object that contains non-string elements at {label}")
             return x
         elif attr.dtype.kind == 'U':
-            return attr.tolist()
+            return _decode_bytes_to_str_in_nested_list(attr.tolist())
         elif attr.dtype.kind == 'S':
-            return attr.tolist()
+            return _decode_bytes_to_str_in_nested_list(attr.tolist())
         else:
             raise Exception(f"Unexpected dtype for attribute numpy array: {attr.dtype} at {label}")
     elif isinstance(attr, LindiH5pyReference):
@@ -65,6 +65,17 @@ def h5_to_zarr_attr(attr: Any, *, label: str = '', h5f: Union[h5py.File, None]):
         return h5_ref_to_zarr_attr(attr, h5f=h5f)
     else:
         raise Exception(f"Unexpected type for h5 attribute: {type(attr)} at {label}")
+
+
+def _decode_bytes_to_str_in_nested_list(x):
+    if isinstance(x, bytes):
+        return x.decode('utf-8')
+    elif isinstance(x, str):
+        return x
+    elif isinstance(x, list):
+        return [_decode_bytes_to_str_in_nested_list(y) for y in x]
+    else:
+        raise Exception("Unexpected type in _decode_bytes_to_str")
 
 
 def zarr_to_h5_attr(attr: Any):
