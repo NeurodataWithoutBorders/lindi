@@ -29,10 +29,12 @@ def h5_to_zarr_attr(attr: Any, *, label: str = '', h5f: Union[h5py.File, None]):
         raise Exception(f"Complex number is not supported at {label}")
     elif type(attr) in [bool, np.bool_]:
         return bool(attr)
-    elif isinstance(attr, (bool, list, tuple, bytes, dict, set)):
+    elif isinstance(attr, (bool, list, tuple, dict, set)):
         raise Exception(f"Unexpected type for h5 attribute: {type(attr)} at {label}")
     elif isinstance(attr, str):
         return attr
+    elif isinstance(attr, bytes):
+        return attr.decode('utf-8')
     elif isinstance(attr, np.ndarray):
         if attr.dtype.kind in ['i', 'u']:
             return attr.tolist()  # this will be a nested list of type int
