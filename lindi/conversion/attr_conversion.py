@@ -58,7 +58,6 @@ def h5_to_zarr_attr(attr: Any, *, label: str = '', h5f: Union[h5py.File, None]):
             '_REFERENCE': attr._obj
         }
     elif isinstance(attr, h5py.Reference):
-        print('------------------------- attr', attr)
         if h5f is None:
             raise Exception(f"h5f cannot be None when converting h5py.Reference to zarr attribute at {label}")
         return h5_ref_to_zarr_attr(attr, h5f=h5f)
