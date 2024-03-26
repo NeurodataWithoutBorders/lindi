@@ -21,7 +21,7 @@ def encode_nan_inf_ninf(val):
         return [encode_nan_inf_ninf(v) for v in val]
     elif isinstance(val, dict):
         return {k: encode_nan_inf_ninf(v) for k, v in val.items()}
-    elif isinstance(val, float):
+    elif type(val) in [float, np.float16, np.float32, np.float64, np.float128]:
         if np.isnan(val):
             return 'NaN'
         elif val == float('inf'):
