@@ -483,6 +483,22 @@ def test_lindi_h5_zarr_store():
         assert 'scalar_dataset/1' not in store
 
 
+def test_numpy_array_of_byte_strings():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        filename = f"{tmpdir}/test.h5"
+        with h5py.File(filename, "w") as f:
+            f.create_dataset("X", data=np.array([b"abc", b"def", b"ghi"]))
+        h5f = h5py.File(filename, "r")
+        with LindiH5ZarrStore.from_file(filename, url=filename) as store:
+            rfs = store.to_reference_file_system()
+            h5f_2 = lindi.LindiH5pyFile.from_reference_file_system(rfs)
+            X1 = h5f['X']
+            assert isinstance(X1, h5py.Dataset)
+            X2 = h5f_2['X']
+            assert isinstance(X2, h5py.Dataset)
+            assert _lists_are_equal(X1[:].tolist(), X2[:].tolist())  # type: ignore
+
+
 def _lists_are_equal(a, b):
     if len(a) != len(b):
         return False
@@ -508,4 +524,4 @@ def _arrays_are_equal(a, b):
 
 
 if __name__ == '__main__':
-    test_arrays_of_compound_dtype()
+    test_numpy_array_of_byte_strings()

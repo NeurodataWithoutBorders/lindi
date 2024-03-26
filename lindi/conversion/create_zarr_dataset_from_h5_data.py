@@ -124,8 +124,18 @@ def create_zarr_dataset_from_h5_data(
                 data=zarr_data,
                 object_codec=object_codec
             )
-        elif h5_dtype.kind in 'SU':  # byte string or unicode string
-            raise Exception(f'Not yet implemented h5_dtype.kind=SU: dataset {label} with dtype {h5_dtype} and shape {h5_shape}')
+        elif h5_dtype.kind == 'S':  # byte string
+            if h5_data is None:
+                raise Exception(f'Data must be provided when converting dataset {label} with dtype {h5_dtype}')
+            return zarr_parent_group.create_dataset(
+                name,
+                shape=h5_shape,
+                chunks=h5_chunks,
+                dtype=h5_dtype,
+                data=h5_data
+            )
+        elif h5_dtype.kind == 'U':  # unicode string
+            raise Exception(f'Array of unicode strings not supported: dataset {label} with dtype {h5_dtype} and shape {h5_shape}')
         elif h5_dtype.kind == 'V' and h5_dtype.fields is not None:  # compound dtype
             if h5_data is None:
                 raise Exception(f'Data must be provided when converting compound dataset {label}')
