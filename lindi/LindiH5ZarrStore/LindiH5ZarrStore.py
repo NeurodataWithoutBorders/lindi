@@ -440,7 +440,7 @@ class LindiH5ZarrStore(Store):
             return []
 
     def to_file(self, file_name: str, *, file_type: Literal["zarr.json"] = "zarr.json"):
-        """Write a reference file system cooresponding to this store to a file.
+        """Write a reference file system corresponding to this store to a file.
 
         This can then be loaded using LindiH5pyFile.from_reference_file_system(file_name)
         """
@@ -452,7 +452,7 @@ class LindiH5ZarrStore(Store):
             json.dump(ret, f, indent=2)
 
     def to_reference_file_system(self) -> dict:
-        """Create a reference file system cooresponding to this store.
+        """Create a reference file system corresponding to this store.
 
         This can then be loaded using LindiH5pyFile.from_reference_file_system(obj)
         """
