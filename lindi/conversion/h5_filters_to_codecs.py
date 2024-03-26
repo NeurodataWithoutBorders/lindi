@@ -68,6 +68,9 @@ def h5_filters_to_codecs(h5obj: h5py.Dataset) -> Union[List[Codec], None]:
         elif str(filter_id) == "shuffle":
             # already handled before this loop
             pass
+        elif str(filter_id) == "fletcher32":
+            # added by lindi (not in kerchunk) -- required by dandiset 000117
+            filters.append(numcodecs.Fletcher32())
         else:
             raise RuntimeError(
                 f"{h5obj.name} uses filter id {filter_id} with properties {properties},"
