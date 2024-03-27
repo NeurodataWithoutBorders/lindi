@@ -14,13 +14,14 @@ from .LindiReferenceFileSystemStore import LindiReferenceFileSystemStore
 
 
 class LindiH5pyFile(h5py.File):
-    def __init__(self, _file_object: Union[h5py.File, zarr.Group]):
+    def __init__(self, _file_object: Union[h5py.File, zarr.Group], *, _zarr_store: Union[ZarrStore, None] = None):
         """
         Do not use this constructor directly. Instead, use:
         from_reference_file_system, from_zarr_store, from_zarr_group,
         or from_h5py_file
         """
         self._file_object = _file_object
+        self._zarr_store = _zarr_store
         self._the_group = LindiH5pyGroup(_file_object, self)
 
     @staticmethod
@@ -50,7 +51,7 @@ class LindiH5pyFile(h5py.File):
             raise Exception(f"Unhandled type for rfs: {type(rfs)}")
 
     @staticmethod
-    def from_zarr_store(zarr_store: ZarrStore, mode: Literal["r", "a"] = "r"):
+    def from_zarr_store(zarr_store: ZarrStore, mode: Literal["r", "a"] = "a"):
         """
         Create a LindiH5pyFile from a zarr store.
         """
@@ -58,14 +59,14 @@ class LindiH5pyFile(h5py.File):
         # does not need to be closed
         zarr_group = zarr.open(store=zarr_store, mode=mode)
         assert isinstance(zarr_group, zarr.Group)
-        return LindiH5pyFile.from_zarr_group(zarr_group)
+        return LindiH5pyFile.from_zarr_group(zarr_group, _zarr_store=zarr_store)
 
     @staticmethod
-    def from_zarr_group(zarr_group: zarr.Group):
+    def from_zarr_group(zarr_group: zarr.Group, *, _zarr_store: Union[ZarrStore, None] = None):
         """
         Create a LindiH5pyFile from a zarr group.
         """
-        return LindiH5pyFile(zarr_group)
+        return LindiH5pyFile(zarr_group, _zarr_store=_zarr_store)
 
     @staticmethod
     def from_h5py_file(h5py_file: h5py.File):
@@ -73,6 +74,15 @@ class LindiH5pyFile(h5py.File):
         Create a LindiH5pyFile from an h5py file.
         """
         return LindiH5pyFile(h5py_file)
+
+    def to_reference_file_system(self):
+        if self._zarr_store is None:
+            raise Exception("Cannot convert to reference file system without zarr store")
+        if not isinstance(self._zarr_store, LindiReferenceFileSystemStore):
+            raise Exception(f"Unexpected type for zarr store: {type(self._zarr_store)}")
+        rfs = self._zarr_store.rfs
+        rfs_copy = json.loads(json.dumps(rfs))
+        return rfs_copy
 
     @property
     def attrs(self):  # type: ignore

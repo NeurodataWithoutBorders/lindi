@@ -314,18 +314,6 @@ def test_reference_file_system_to_file():
 def test_lindi_reference_file_system_store():
     from lindi.LindiH5pyFile.LindiReferenceFileSystemStore import LindiReferenceFileSystemStore
 
-    # test that setting items is not allowed
-    rfs = {"refs": {"a": "a"}}
-    store = LindiReferenceFileSystemStore(rfs)
-    with pytest.raises(Exception):
-        store["b"] = "b"
-
-    # test that deleting items is not allowed
-    rfs = {"refs": {"a": "a"}}
-    store = LindiReferenceFileSystemStore(rfs)
-    with pytest.raises(Exception):
-        del store["a"]
-
     # test for invalid rfs
     rfs = {"rfs_misspelled": {"a": "a"}}  # misspelled
     with pytest.raises(Exception):
@@ -361,7 +349,7 @@ def test_lindi_reference_file_system_store():
     rfs = {"refs": {"a": "abc"}}
     store = LindiReferenceFileSystemStore(rfs)
     assert store.is_readable()
-    assert not store.is_writeable()
+    assert store.is_writeable()
     assert store.is_listable()
     assert not store.is_erasable()
     assert len(store) == 1

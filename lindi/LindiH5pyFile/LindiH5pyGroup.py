@@ -161,6 +161,9 @@ class LindiH5pyGroup(h5py.Group):
     def __setitem__(self, name, obj):
         return self._write.__setitem__(name, obj)
 
+    def __delitem__(self, name):
+        return self._write.__delitem__(name)
+
     @property
     def ref(self):
         return self._write.ref

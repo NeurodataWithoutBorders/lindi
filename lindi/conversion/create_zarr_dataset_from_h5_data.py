@@ -80,6 +80,19 @@ def create_zarr_dataset_from_h5_data(
                 return ds
             else:
                 raise Exception(f'Unsupported scalar value type: {type(scalar_value)}')
+        elif h5_dtype.kind == 'S':
+            # byte string
+            if h5_data is None:
+                raise Exception(f'Data must be provided for scalar dataset {label}')
+            scalar_value = h5_data[()] if isinstance(h5_data, h5py.Dataset) or isinstance(h5_data, np.ndarray) else h5_data
+            ds = zarr_parent_group.create_dataset(
+                name,
+                shape=(1,),
+                chunks=(1,),
+                data=[scalar_value]
+            )
+            ds.attrs['_SCALAR'] = True
+            return ds
         else:
             raise Exception(f'Cannot handle scalar dataset {label} with dtype {h5_dtype}')
     else:

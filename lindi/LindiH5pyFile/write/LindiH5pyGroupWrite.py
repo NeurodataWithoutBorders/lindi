@@ -97,6 +97,9 @@ class LindiH5pyGroupWrite:
         else:
             raise Exception(f'Unexpected type for obj in __setitem__: {type(obj)}')
 
+    def __delitem__(self, name):
+        del self.p._group_object[name]
+
     @property
     def ref(self):
         return LindiH5pyReference({
