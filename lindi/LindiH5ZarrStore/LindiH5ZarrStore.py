@@ -183,6 +183,8 @@ class LindiH5ZarrStore(Store):
             if external_array_link is not None:
                 # The chunk files do not exist for external array links
                 return False
+            if np.prod(h5_item.shape) == 0:
+                return False
             if h5_item.ndim == 0:
                 return key_name == "0"
             chunk_name_parts = key_name.split(".")
@@ -354,6 +356,12 @@ class LindiH5ZarrStore(Store):
                 raise Exception(
                     f"Chunk name {key_name} does not match dataset dimensions"
                 )
+
+        # In the case of shape 0, we raise an exception because we shouldn't be here
+        if np.prod(h5_item.shape) == 0:
+            raise Exception(
+                f"Chunk file {key_parent}/{key_name} is not present because the dataset has shape 0."
+            )
 
         inline_array = self._get_inline_array(key_parent, h5_item)
         if inline_array.is_inline:
@@ -592,6 +600,7 @@ class InlineArray:
         if self._is_inline:
             memory_store = MemoryStore()
             dummy_group = zarr.group(store=memory_store)
+            size_is_zero = np.prod(h5_dataset.shape) == 0
             create_zarr_dataset_from_h5_data(
                 zarr_parent_group=dummy_group,
                 name='X',
@@ -599,7 +608,7 @@ class InlineArray:
                 # single chunk because the rest of the code assumes a single
                 # chunk for inline data. The assumption is that the inline
                 # arrays are not going to be very large.
-                h5_chunks=h5_dataset.shape if h5_dataset.shape != () else None,
+                h5_chunks=h5_dataset.shape if h5_dataset.shape != () and not size_is_zero else None,
                 label=f'{h5_dataset.name}',
                 h5_shape=h5_dataset.shape,
                 h5_dtype=h5_dataset.dtype,
@@ -607,12 +616,16 @@ class InlineArray:
                 h5_data=h5_dataset[...]
             )
             self._zarray_bytes = reformat_json(memory_store['X/.zarray'])
-            if h5_dataset.ndim == 0:
-                chunk_fname = '0'
+            if not size_is_zero:
+                if h5_dataset.ndim == 0:
+                    chunk_fname = '0'
+                else:
+                    chunk_fname = '.'.join(['0'] * h5_dataset.ndim)
+                self._chunk_fname = chunk_fname
+                self._chunk_bytes = memory_store[f'X/{chunk_fname}']
             else:
-                chunk_fname = '.'.join(['0'] * h5_dataset.ndim)
-            self._chunk_fname = chunk_fname
-            self._chunk_bytes = memory_store[f'X/{chunk_fname}']
+                self._chunk_fname = None
+                self._chunk_bytes = None
         else:
             self._zarray_bytes = None
             self._chunk_fname = None
