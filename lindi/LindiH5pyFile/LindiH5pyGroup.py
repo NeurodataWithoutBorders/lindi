@@ -21,6 +21,10 @@ class LindiH5pyGroup(h5py.Group):
         self._group_object = _group_object
         self._file = _file
 
+        # The self._write object handles all the writing operations
+        from .write.LindiH5pyGroupWrite import LindiH5pyGroupWrite  # avoid circular import
+        self._write = LindiH5pyGroupWrite(self)
+
     def __getitem__(self, name):
         if isinstance(self._group_object, h5py.Group):
             if isinstance(name, (bytes, str)):
@@ -49,12 +53,12 @@ class LindiH5pyGroup(h5py.Group):
                 soft_link = x.attrs.get('_SOFT_LINK', None)
                 if soft_link is not None:
                     link_path = soft_link['path']
-                    target_grp = self._file.get(link_path)
-                    if not isinstance(target_grp, LindiH5pyGroup):
+                    target_item = self._file.get(link_path)
+                    if not isinstance(target_item, LindiH5pyGroup) and not isinstance(target_item, LindiH5pyDataset):
                         raise Exception(
-                            f"Expected a group at {link_path} but got {type(x)}"
+                            f"Expected a group or dataset at {link_path} but got {type(target_item)}"
                         )
-                    return target_grp
+                    return target_item
                 return LindiH5pyGroup(x, self._file)
             elif isinstance(x, zarr.Array):
                 return LindiH5pyDataset(x, self._file)
@@ -115,6 +119,12 @@ class LindiH5pyGroup(h5py.Group):
     def __contains__(self, name):
         return self._group_object.__contains__(name)
 
+    def __str__(self):
+        return f'<{self.__class__.__name__}: {self.name}>'
+
+    def __repr__(self):
+        return f'<{self.__class__.__name__}: {self.name}>'
+
     @property
     def id(self):
         if isinstance(self._group_object, h5py.Group):
@@ -136,4 +146,35 @@ class LindiH5pyGroup(h5py.Group):
             attrs_type = 'zarr'
         else:
             raise Exception(f'Unexpected group object type: {type(self._group_object)}')
-        return LindiH5pyAttributes(self._group_object.attrs, attrs_type=attrs_type)
+        return LindiH5pyAttributes(self._group_object.attrs, attrs_type=attrs_type, readonly=self._file.mode == 'r')
+
+    @property
+    def ref(self):
+        return self._write.ref
+
+    ##############################
+    # write
+    def create_group(self, name, track_order=None):
+        if self._file._mode not in ['r+']:
+            raise Exception('Cannot create group in read-only mode')
+        return self._write.create_group(name, track_order=track_order)
+
+    def require_group(self, name):
+        if self._file._mode not in ['r+']:
+            raise Exception('Cannot require group in read-only mode')
+        return self._write.require_group(name)
+
+    def create_dataset(self, name, shape=None, dtype=None, data=None, **kwds):
+        if self._file._mode not in ['r+']:
+            raise Exception('Cannot create dataset in read-only mode')
+        return self._write.create_dataset(name, shape=shape, dtype=dtype, data=data, **kwds)
+
+    def __setitem__(self, name, obj):
+        if self._file._mode not in ['r+']:
+            raise Exception('Cannot set item in read-only mode')
+        return self._write.__setitem__(name, obj)
+
+    def __delitem__(self, name):
+        if self._file._mode not in ['r+']:
+            raise Exception('Cannot delete item in read-only mode')
+        return self._write.__delitem__(name)

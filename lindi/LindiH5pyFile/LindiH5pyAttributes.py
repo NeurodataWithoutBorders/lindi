@@ -1,5 +1,8 @@
 from typing import Literal
 from .LindiH5pyReference import LindiH5pyReference
+from ..conversion.attr_conversion import zarr_to_h5_attr
+from ..conversion.nan_inf_ninf import decode_nan_inf_ninf
+from .write.LindiH5pyAttributesWrite import LindiH5pyAttributesWrite
 
 _special_attribute_keys = [
     "_SCALAR",
@@ -11,9 +14,12 @@ _special_attribute_keys = [
 
 
 class LindiH5pyAttributes:
-    def __init__(self, attrs, attrs_type: Literal["h5py", "zarr"]):
+    def __init__(self, attrs, attrs_type: Literal["h5py", "zarr"], readonly: bool):
         self._attrs = attrs
         self._attrs_type = attrs_type
+        self._readonly = readonly
+
+        self._write = LindiH5pyAttributesWrite(self)
 
     def get(self, key, default=None):
         if self._attrs_type == "h5py":
@@ -32,6 +38,8 @@ class LindiH5pyAttributes:
         if self._attrs_type == "h5py":
             return key in self._attrs
         elif self._attrs_type == "zarr":
+            if key in _special_attribute_keys:
+                return False
             return key in self._attrs
         else:
             raise ValueError(f"Unknown attrs_type: {self._attrs_type}")
@@ -46,14 +54,14 @@ class LindiH5pyAttributes:
 
             # Convert special float values to actual floats (NaN, Inf, -Inf)
             # Note that string versions of these values are not supported
-            val = _decode_nan_inf_ninf_in_attr_val(val)
+            val = decode_nan_inf_ninf(val)
 
-            return val
+            return zarr_to_h5_attr(val)
         else:
             raise ValueError(f"Unknown attrs_type: {self._attrs_type}")
 
     def __setitem__(self, key, value):
-        raise KeyError("Cannot set attributes on read-only object")
+        self._write.__setitem__(key, value)
 
     def __delitem__(self, key):
         raise KeyError("Cannot delete attributes on read-only object")
@@ -85,17 +93,5 @@ class LindiH5pyAttributes:
     def __str__(self):
         return str(self._attrs)
 
-
-def _decode_nan_inf_ninf_in_attr_val(val):
-    if isinstance(val, list):
-        return [_decode_nan_inf_ninf_in_attr_val(v) for v in val]
-    elif isinstance(val, dict):
-        return {k: _decode_nan_inf_ninf_in_attr_val(v) for k, v in val.items()}
-    elif val == 'NaN':
-        return float('nan')
-    elif val == 'Infinity':
-        return float('inf')
-    elif val == '-Infinity':
-        return float('-inf')
-    else:
-        return val
+    def keys(self):
+        return list(self)

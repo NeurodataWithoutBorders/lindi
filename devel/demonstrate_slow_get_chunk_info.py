@@ -22,7 +22,9 @@ def demonstrate_slow_get_chunk_info():
     print(f"shape: {shape}")  # (128000, 212, 322, 2)
     print(f"chunk_shape: {chunk_shape}")  # (3, 53, 81, 1)
     chunk_coord_shape = [
-        (shape[i] + chunk_shape[i] - 1) // chunk_shape[i] for i in range(len(shape))
+        # the shape could be zero -- for example dandiset 000559 - acquisition/depth_video/data has shape [0, 0, 0]
+        (shape[i] + chunk_shape[i] - 1) // chunk_shape[i] if chunk_shape[i] != 0 else 0
+        for i in range(len(shape))
     ]
     print(f"chunk_coord_shape: {chunk_coord_shape}")  # [42667, 4, 4, 2]
     num_chunks = np.prod(chunk_coord_shape)

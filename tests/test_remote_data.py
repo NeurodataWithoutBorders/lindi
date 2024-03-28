@@ -43,3 +43,7 @@ def test_remote_data_2():
     with pynwb.NWBHDF5IO(file=client, mode="r") as io:
         nwbfile = io.read()
         print(nwbfile)
+
+
+if __name__ == "__main__":
+    test_remote_data_1()

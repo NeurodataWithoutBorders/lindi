@@ -44,7 +44,7 @@ HDF5 references can appear within both attributes and datasets. For attributes, 
 
 ### `_COMPOUND_DTYPE: [['x', 'int32'], ['y', 'float64'], ...]`
 
-Zarr arrays can represent compound data types from HDF5 datasets. The `_COMPOUND_DTYPE` attribute on a Zarr array indicates this, listing each field's name and data type. The array data should be JSON encoded, aligning with the specified compound structure. The `h5py.Reference` type is also supported within these structures, enabling references within compound data types.
+Zarr arrays can represent compound data types from HDF5 datasets. The `_COMPOUND_DTYPE` attribute on a Zarr array indicates this, listing each field's name and data type. The array data should be JSON encoded, aligning with the specified compound structure. The `h5py.Reference` type is also supported within these structures (represented by the type string '<REFERENCE>').
 
 ## External Array Links
 

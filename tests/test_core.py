@@ -104,9 +104,12 @@ def test_arrays_of_compound_dtype():
         filename = f"{tmpdir}/test.h5"
         with h5py.File(filename, "w") as f:
             dt = np.dtype([("x", "i4"), ("y", "f8")])
-            f.create_dataset("dataset1", data=[(1, 3.14), (2, 6.28)], dtype=dt)
+            dataset1 = f.create_dataset("dataset1", data=[(1, 3.14), (2, 6.28)], dtype=dt)
             dt = np.dtype([("a", "i4"), ("b", "f8"), ("c", "S10")])
-            f.create_dataset("dataset2", data=[(1, 3.14, "abc"), (2, 6.28, "def")], dtype=dt)
+            dataset2 = f.create_dataset("dataset2", data=[(1, 3.14, "abc"), (2, 6.28, "def")], dtype=dt)
+            # how about references!
+            dt = np.dtype([("a", "i4"), ("b", "f8"), ("c", h5py.special_dtype(ref=h5py.Reference))])
+            f.create_dataset("dataset3", data=[(1, 3.14, dataset1.ref), (2, 6.28, dataset2.ref)], dtype=dt)
         h5f = h5py.File(filename, "r")
         with LindiH5ZarrStore.from_file(filename, url=filename) as store:
             rfs = store.to_reference_file_system()
@@ -126,6 +129,17 @@ def test_arrays_of_compound_dtype():
             assert _arrays_are_equal(ds2_1['a'][()], ds2_2['a'][()])  # type: ignore
             assert _arrays_are_equal(ds2_1['b'][()], ds2_2['b'][()])  # type: ignore
             assert _arrays_are_equal(ds2_1['c'][()], ds2_2['c'][()])  # type: ignore
+            ds3_1 = h5f['dataset3']
+            assert isinstance(ds3_1, h5py.Dataset)
+            ds3_2 = h5f_2['dataset3']
+            assert isinstance(ds3_2, h5py.Dataset)
+            assert ds3_1.dtype == ds3_2.dtype
+            assert ds3_1.dtype['c'] == ds3_2.dtype['c']
+            assert ds3_2.dtype['c'] == h5py.special_dtype(ref=h5py.Reference)
+            target1 = h5f[ds3_1['c'][0]]
+            assert isinstance(target1, h5py.Dataset)
+            target2 = h5f_2[ds3_2['c'][0]]
+            assert isinstance(target2, h5py.Dataset)
 
 
 def test_arrays_of_compound_dtype_with_references():
@@ -300,18 +314,6 @@ def test_reference_file_system_to_file():
 def test_lindi_reference_file_system_store():
     from lindi.LindiH5pyFile.LindiReferenceFileSystemStore import LindiReferenceFileSystemStore
 
-    # test that setting items is not allowed
-    rfs = {"refs": {"a": "a"}}
-    store = LindiReferenceFileSystemStore(rfs)
-    with pytest.raises(Exception):
-        store["b"] = "b"
-
-    # test that deleting items is not allowed
-    rfs = {"refs": {"a": "a"}}
-    store = LindiReferenceFileSystemStore(rfs)
-    with pytest.raises(Exception):
-        del store["a"]
-
     # test for invalid rfs
     rfs = {"rfs_misspelled": {"a": "a"}}  # misspelled
     with pytest.raises(Exception):
@@ -347,7 +349,7 @@ def test_lindi_reference_file_system_store():
     rfs = {"refs": {"a": "abc"}}
     store = LindiReferenceFileSystemStore(rfs)
     assert store.is_readable()
-    assert not store.is_writeable()
+    assert store.is_writeable()
     assert store.is_listable()
     assert not store.is_erasable()
     assert len(store) == 1
@@ -469,6 +471,22 @@ def test_lindi_h5_zarr_store():
         assert 'scalar_dataset/1' not in store
 
 
+def test_numpy_array_of_byte_strings():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        filename = f"{tmpdir}/test.h5"
+        with h5py.File(filename, "w") as f:
+            f.create_dataset("X", data=np.array([b"abc", b"def", b"ghi"]))
+        h5f = h5py.File(filename, "r")
+        with LindiH5ZarrStore.from_file(filename, url=filename) as store:
+            rfs = store.to_reference_file_system()
+            h5f_2 = lindi.LindiH5pyFile.from_reference_file_system(rfs)
+            X1 = h5f['X']
+            assert isinstance(X1, h5py.Dataset)
+            X2 = h5f_2['X']
+            assert isinstance(X2, h5py.Dataset)
+            assert _lists_are_equal(X1[:].tolist(), X2[:].tolist())  # type: ignore
+
+
 def _lists_are_equal(a, b):
     if len(a) != len(b):
         return False
@@ -494,4 +512,4 @@ def _arrays_are_equal(a, b):
 
 
 if __name__ == '__main__':
-    test_scalar_arrays()
+    test_numpy_array_of_byte_strings()
