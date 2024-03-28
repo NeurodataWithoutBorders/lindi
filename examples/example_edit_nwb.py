@@ -7,13 +7,13 @@ import pynwb
 url = 'https://kerchunk.neurosift.org/dandi/dandisets/000939/assets/11f512ba-5bcf-4230-a8cb-dc8d36db38cb/zarr.json'
 
 # Load the h5py-like client from the reference file system
-client = lindi.LindiH5pyFile.from_reference_file_system(url)
+client = lindi.LindiH5pyFile.from_reference_file_system(url, mode='r+')
 
 # modify the age of the subject
 subject = client['general']['subject']  # type: ignore
 assert isinstance(subject, h5py.Group)
 del subject['age']  # type: ignore
-subject.create_dataset('age', data=b'3')
+subject.create_dataset('age', data=b'3w')
 
 # Create a new reference file system
 rfs_new = client.to_reference_file_system()

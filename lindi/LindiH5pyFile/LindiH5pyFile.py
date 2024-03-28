@@ -14,7 +14,7 @@ from .LindiReferenceFileSystemStore import LindiReferenceFileSystemStore
 
 
 class LindiH5pyFile(h5py.File):
-    def __init__(self, _file_object: Union[h5py.File, zarr.Group], *, _zarr_store: Union[ZarrStore, None] = None):
+    def __init__(self, _file_object: Union[h5py.File, zarr.Group], *, _zarr_store: Union[ZarrStore, None] = None, _mode: Literal["r", "r+"] = "r"):
         """
         Do not use this constructor directly. Instead, use:
         from_reference_file_system, from_zarr_store, from_zarr_group,
@@ -22,12 +22,27 @@ class LindiH5pyFile(h5py.File):
         """
         self._file_object = _file_object
         self._zarr_store = _zarr_store
+        self._mode: Literal['r', 'r+'] = _mode
         self._the_group = LindiH5pyGroup(_file_object, self)
 
     @staticmethod
-    def from_reference_file_system(rfs: Union[dict, str]):
+    def from_reference_file_system(rfs: Union[dict, str], mode: Literal["r", "r+"] = "r"):
         """
         Create a LindiH5pyFile from a reference file system.
+
+        Parameters
+        ----------
+        rfs : Union[dict, str]
+            The reference file system. This can be a dictionary or a URL or path
+            to a .zarr.json file.
+        mode : Literal["r", "r+"], optional
+            The mode to open the file object in, by default "r" If the mode is
+            "r", the file object will be read-only. If the mode is "r+", the
+            file will be read-write. However, if the rfs is a string (URL or
+            path), the file itself will not be modified on changes, but the
+            internal in-memory representation will be modified. Use
+            to_reference_file_system() to export the updated reference file
+            system.
         """
         if isinstance(rfs, str):
             if rfs.startswith("http") or rfs.startswith("https"):
@@ -37,45 +52,80 @@ class LindiH5pyFile(h5py.File):
                     with open(filename, "r") as f:
                         data = json.load(f)
                     assert isinstance(data, dict)  # prevent infinite recursion
-                    return LindiH5pyFile.from_reference_file_system(data)
+                    return LindiH5pyFile.from_reference_file_system(data, mode=mode)
             else:
                 with open(rfs, "r") as f:
                     data = json.load(f)
                 assert isinstance(data, dict)  # prevent infinite recursion
-                return LindiH5pyFile.from_reference_file_system(data)
+                return LindiH5pyFile.from_reference_file_system(data, mode=mode)
         elif isinstance(rfs, dict):
             # This store does not need to be closed
             store = LindiReferenceFileSystemStore(rfs)
-            return LindiH5pyFile.from_zarr_store(store)
+            return LindiH5pyFile.from_zarr_store(store, mode=mode)
         else:
             raise Exception(f"Unhandled type for rfs: {type(rfs)}")
 
     @staticmethod
-    def from_zarr_store(zarr_store: ZarrStore, mode: Literal["r", "a"] = "a"):
+    def from_zarr_store(zarr_store: ZarrStore, mode: Literal["r", "r+"] = "r"):
         """
         Create a LindiH5pyFile from a zarr store.
+
+        Parameters
+        ----------
+        zarr_store : ZarrStore
+            The zarr store.
+        mode : Literal["r", "r+"], optional
+            The mode to open the file object in, by default "r". If the mode is
+            "r", the file object will be read-only. For write mode to work, the
+            zarr store will need to be writeable as well.
         """
         # note that even though the function is called "open", the zarr_group
         # does not need to be closed
         zarr_group = zarr.open(store=zarr_store, mode=mode)
         assert isinstance(zarr_group, zarr.Group)
-        return LindiH5pyFile.from_zarr_group(zarr_group, _zarr_store=zarr_store)
+        return LindiH5pyFile.from_zarr_group(zarr_group, _zarr_store=zarr_store, mode=mode)
 
     @staticmethod
-    def from_zarr_group(zarr_group: zarr.Group, *, _zarr_store: Union[ZarrStore, None] = None):
+    def from_zarr_group(zarr_group: zarr.Group, *, mode: Literal["r", "r+"] = "r", _zarr_store: Union[ZarrStore, None] = None):
         """
         Create a LindiH5pyFile from a zarr group.
+
+        Parameters
+        ----------
+        zarr_group : zarr.Group
+            The zarr group.
+        mode : Literal["r", "r+"], optional
+            The mode to open the file object in, by default "r". If the mode is
+            "r", the file object will be read-only. For write mode to work, the
+            zarr store will need to be writeable as well.
+        _zarr_store : Union[ZarrStore, None], optional
+            The zarr store, internally set for use with
+            to_reference_file_system().
+
+        See from_zarr_store().
         """
-        return LindiH5pyFile(zarr_group, _zarr_store=_zarr_store)
+        return LindiH5pyFile(zarr_group, _zarr_store=_zarr_store, _mode=mode)
 
     @staticmethod
     def from_h5py_file(h5py_file: h5py.File):
         """
         Create a LindiH5pyFile from an h5py file.
+
+        This is used mainly for testing and may be removed in the future.
+
+        Parameters
+        ----------
+        h5py_file : h5py.File
+            The h5py file.
         """
         return LindiH5pyFile(h5py_file)
 
     def to_reference_file_system(self):
+        """
+        Export the internal in-memory representation to a reference file system.
+        In order to use this, the file object needs to have been created using
+        from_reference_file_system().
+        """
         if self._zarr_store is None:
             raise Exception("Cannot convert to reference file system without zarr store")
         if not isinstance(self._zarr_store, LindiReferenceFileSystemStore):
@@ -108,15 +158,9 @@ class LindiH5pyFile(h5py.File):
     def driver(self):
         raise Exception("Getting driver is not allowed")
 
-    # @property
-    # def mode(self):
-    #     if isinstance(self._file_object, h5py.File):
-    #         return self._file_object.mode
-    #     elif isinstance(self._file_object, zarr.Group):
-    #         # hard-coded to read-only
-    #         return "r"
-    #     else:
-    #         raise Exception(f"Unhandled type: {type(self._file_object)}")
+    @property
+    def mode(self):
+        return self._mode
 
     @property
     def libver(self):
@@ -223,33 +267,27 @@ class LindiH5pyFile(h5py.File):
         return self._the_group.name
 
     @property
-    def mode(self):
-        if isinstance(self._file_object, h5py.File):
-            return self._file_object.mode
-        elif isinstance(self._file_object, zarr.Group):
-            if self._file_object.read_only:
-                return "r"
-            else:
-                return "r+"
-        else:
-            raise Exception(f"Unhandled type: {type(self._file_object)}")
+    def ref(self):
+        return self._the_group.ref
 
     ##############################
     # write
     def create_group(self, name, track_order=None):
+        if self._mode not in ['r+']:
+            raise Exception("Cannot create group in read-only mode")
         if track_order is not None:
             raise Exception("track_order is not supported (I don't know what it is)")
         return self._the_group.create_group(name)
 
     def require_group(self, name):
+        if self._mode not in ['r+']:
+            raise Exception("Cannot require group in read-only mode")
         return self._the_group.require_group(name)
 
     def create_dataset(self, name, shape=None, dtype=None, data=None, **kwds):
+        if self._mode not in ['r+']:
+            raise Exception("Cannot create dataset in read-only mode")
         return self._the_group.create_dataset(name, shape=shape, dtype=dtype, data=data, **kwds)
-
-    @property
-    def ref(self):
-        return self._the_group.ref
 
 
 def _download_file(url: str, filename: str) -> None:

@@ -7,7 +7,6 @@ import remfile
 from .LindiH5pyAttributes import LindiH5pyAttributes
 from .LindiH5pyReference import LindiH5pyReference
 
-from .write.LindiH5pyDatasetWrite import LindiH5pyDatasetWrite
 from ..conversion.decode_references import decode_references
 
 
@@ -62,6 +61,8 @@ class LindiH5pyDataset(h5py.Dataset):
         else:
             self._is_scalar = self._dataset_object.ndim == 0
 
+        # The self._write object handles all the writing operations
+        from .write.LindiH5pyDatasetWrite import LindiH5pyDatasetWrite  # avoid circular import
         self._write = LindiH5pyDatasetWrite(self)
 
     @property
@@ -209,14 +210,16 @@ class LindiH5pyDataset(h5py.Dataset):
             _external_hdf5_clients[url] = h5py.File(ff, "r")
         return _external_hdf5_clients[url]
 
-    ##############################
-    # Write
-    def __setitem__(self, args, val):
-        self._write.__setitem__(args, val)
-
     @property
     def ref(self):
         return self._write.ref
+
+    ##############################
+    # Write
+    def __setitem__(self, args, val):
+        if self._file._mode not in ['r+']:
+            raise Exception('Cannot set item on dataset in read-only mode.')
+        self._write.__setitem__(args, val)
 
 
 class LindiH5pyDatasetCompoundFieldSelection:

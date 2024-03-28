@@ -13,7 +13,7 @@ def test_zarr_write():
         dirname = f'{tmpdir}/test.zarr'
         store = zarr.DirectoryStore(dirname)
         zarr.group(store=store)
-        with lindi.LindiH5pyFile.from_zarr_store(store, mode='a') as h5f_backed_by_zarr:
+        with lindi.LindiH5pyFile.from_zarr_store(store, mode='r+') as h5f_backed_by_zarr:
             write_example_h5_data(h5f_backed_by_zarr)
 
         store2 = zarr.DirectoryStore(dirname)
