@@ -197,6 +197,42 @@ class LindiH5pyFile(h5py.File):
     def __repr__(self):
         return f'<LindiH5pyFile "{self._file_object}">'
 
+    def __bool__(self):
+        # This is called when checking if the file is open
+        if isinstance(self._file_object, h5py.File):
+            return self._file_object.__bool__()
+        elif isinstance(self._file_object, zarr.Group):
+            return True
+        else:
+            raise Exception(f"Unexpected type for file object: {type(self._file_object)}")
+
+    def __hash__(self):
+        # This is called for example when using a file as a key in a dictionary
+        if isinstance(self._file_object, h5py.File):
+            return self._file_object.__hash__()
+        else:
+            return id(self)
+
+    def copy(self, source, dest, name=None,
+             shallow=False, expand_soft=False, expand_external=False,
+             expand_refs=False, without_attrs=False):
+        if shallow:
+            raise Exception("shalle is not implemented for copy")
+        if expand_soft:
+            raise Exception("expand_soft is not implemented for copy")
+        if expand_external:
+            raise Exception("expand_external is not implemented for copy")
+        if expand_refs:
+            raise Exception("expand_refs is not implemented for copy")
+        if without_attrs:
+            raise Exception("without_attrs is not implemented for copy")
+        if name is None:
+            raise Exception("name must be provided for copy")
+        src_item = self._get_item(source)
+        if not isinstance(src_item, (h5py.Group, h5py.Dataset)):
+            raise Exception(f"Unexpected type for source in copy: {type(src_item)}")
+        _recursive_copy(src_item, dest, name=name)
+
     # Group methods
     def __getitem__(self, name):  # type: ignore
         return self._get_item(name)
@@ -298,3 +334,60 @@ def _download_file(url: str, filename: str) -> None:
     with urllib.request.urlopen(req) as response:
         with open(filename, "wb") as f:
             f.write(response.read())
+
+
+def _recursive_copy(src_item: Union[h5py.Group, h5py.Dataset], dest: h5py.File, name: str) -> None:
+    if isinstance(src_item, h5py.Group):
+        dst_item = dest.create_group(name)
+        for k, v in src_item.attrs.items():
+            dst_item.attrs[k] = v
+        for k, v in src_item.items():
+            _recursive_copy(v, dest, name=f'{name}/{k}')
+    elif isinstance(src_item, h5py.Dataset):
+        # Let's specially handle the case where the source and dest files
+        # are LindiH5pyFiles with reference file systems as the internal
+        # representation. In this case, we don't need to copy the actual
+        # data because we can copy the reference.
+        if isinstance(src_item.file, LindiH5pyFile) and isinstance(dest, LindiH5pyFile):
+            if src_item.name is None:
+                raise Exception("src_item.name is None")
+            src_item_name = _without_initial_slash(src_item.name)
+            src_zarr_store = src_item.file._zarr_store
+            dst_zarr_store = dest._zarr_store
+            if src_zarr_store is not None and dst_zarr_store is not None:
+                if isinstance(src_zarr_store, LindiReferenceFileSystemStore) and isinstance(dst_zarr_store, LindiReferenceFileSystemStore):
+                    src_rfs = src_zarr_store.rfs
+                    dst_rfs = dst_zarr_store.rfs
+                    src_ref_keys = list(src_rfs['refs'].keys())
+                    for src_ref_key in src_ref_keys:
+                        if src_ref_key.startswith(f'{src_item_name}/'):
+                            dst_ref_key = f'{name}/{src_ref_key[len(src_item_name) + 1:]}'
+                            # Even though it's not expected to be a problem, we
+                            # do a deep copy here because a problem resulting
+                            # from one rfs being modified affecting another
+                            # would be very difficult to debug.
+                            dst_rfs['refs'][dst_ref_key] = _deep_copy(src_rfs['refs'][src_ref_key])
+                    return
+
+        dst_item = dest.create_dataset(name, data=src_item[()])
+        for k, v in src_item.attrs.items():
+            dst_item.attrs[k] = v
+    else:
+        raise Exception(f"Unexpected type for src_item in _recursive_copy: {type(src_item)}")
+
+
+def _without_initial_slash(s: str) -> str:
+    if s.startswith('/'):
+        return s[1:]
+    return s
+
+
+def _deep_copy(obj):
+    if isinstance(obj, dict):
+        return {k: _deep_copy(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [_deep_copy(v) for v in obj]
+    elif isinstance(obj, tuple):
+        return tuple(_deep_copy(v) for v in obj)
+    else:
+        return obj

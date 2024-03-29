@@ -39,6 +39,10 @@ class LindiReferenceFileSystemStore(ZarrStore):
     being returned. Otherwise, the string is utf-8 encoded and returned as is.
     Note that a file that actually begins with "base64:" should be represented
     by a base64 encoded string, to avoid ambiguity.
+
+    It is okay for rfs to be modified outside of this class, and the changes
+    will be reflected immediately in the store. This can be used by experimental
+    tools such as lindi-cloud.
     """
     def __init__(self, rfs: dict, mode: Literal["r", "r+"] = "r+"):
         """

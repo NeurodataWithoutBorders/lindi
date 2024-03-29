@@ -130,7 +130,11 @@ class LindiH5pyGroup(h5py.Group):
         if isinstance(self._group_object, h5py.Group):
             return LindiH5pyGroupId(self._group_object.id)
         elif isinstance(self._group_object, zarr.Group):
-            return LindiH5pyGroupId(None)
+            # This is commented out for now because pynwb gets the id of a group
+            # in at least one place. But that could be avoided in the future, at
+            # which time, we could uncomment this.
+            # print('WARNING: Accessing low-level id of LindiH5pyGroup. This should be avoided.')
+            return LindiH5pyGroupId('')
         else:
             raise Exception(f'Unexpected group object type: {type(self._group_object)}')
 

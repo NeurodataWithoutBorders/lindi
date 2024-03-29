@@ -25,7 +25,6 @@ def test_variety():
             f["group1"].attrs["test_attr2"] = "attribute-of-group1"
         h5f = h5py.File(filename, "r")
         h5f_wrapped = lindi.LindiH5pyFile.from_h5py_file(h5f)
-        assert h5f_wrapped.id  # for coverage
         with LindiH5ZarrStore.from_file(filename, url=filename) as store:
             rfs = store.to_reference_file_system()
             h5f_rfs = lindi.LindiH5pyFile.from_reference_file_system(rfs)
@@ -512,4 +511,4 @@ def _arrays_are_equal(a, b):
 
 
 if __name__ == '__main__':
-    test_numpy_array_of_byte_strings()
+    pass
