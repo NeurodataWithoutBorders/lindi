@@ -54,6 +54,24 @@ def write_example_h5_data(h5f: h5py.File):
     compound_dtype = np.dtype([('x', np.int32), ('y', np.float64)])
     group1.create_dataset('dset_compound', data=np.array([(1, 2.2), (3, 4.4)], dtype=compound_dtype))
 
+    group_to_delete = h5f.create_group('group_to_delete')
+    group_to_delete.attrs['attr_str'] = 'hello'
+    group_to_delete.attrs['attr_int'] = 42
+    group_to_delete.create_dataset('dset_to_delete', data=np.array([1, 2, 3], dtype=np.int8))
+    del h5f['group_to_delete']
+
+    another_group_to_delete = group1.create_group('another_group_to_delete')
+    another_group_to_delete.attrs['attr_str'] = 'hello'
+    another_group_to_delete.attrs['attr_int'] = 42
+    another_group_to_delete.create_dataset('dset_to_delete', data=np.array([1, 2, 3], dtype=np.int8))
+    del group1['another_group_to_delete']
+
+    yet_another_group_to_delete = group1.create_group('yet_another_group_to_delete')
+    yet_another_group_to_delete.attrs['attr_str'] = 'hello'
+    yet_another_group_to_delete.attrs['attr_int'] = 42
+    yet_another_group_to_delete.create_dataset('dset_to_delete', data=np.array([1, 2, 3], dtype=np.int8))
+    del h5f['group1/yet_another_group_to_delete']
+
 
 def compare_example_h5_data(h5f: h5py.File, tmpdir: str):
     with h5py.File(f'{tmpdir}/for_comparison.h5', 'w') as h5f2:

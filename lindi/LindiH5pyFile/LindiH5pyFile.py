@@ -233,6 +233,12 @@ class LindiH5pyFile(h5py.File):
             raise Exception(f"Unexpected type for source in copy: {type(src_item)}")
         _recursive_copy(src_item, dest, name=name)
 
+    def __delitem__(self, name):
+        parent_key = '/'.join(name.split('/')[:-1])
+        grp = self[parent_key]
+        assert isinstance(grp, LindiH5pyGroup)
+        del grp[name.split('/')[-1]]
+
     # Group methods
     def __getitem__(self, name):  # type: ignore
         return self._get_item(name)

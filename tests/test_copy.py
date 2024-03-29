@@ -59,8 +59,8 @@ def test_copy_group():
                 h5f.copy("X", h5f_2, "Z")
             h5f_2.copy("X", h5f_2, "Z")
             assert "Z" in h5f_2
-            assert h5f_2["Z"].attrs['attr1'] == 'value1'
-            assert "A" in h5f_2["Z"]
+            assert h5f_2["Z"].attrs['attr1'] == 'value1'  # type: ignore
+            assert "A" in h5f_2["Z"]  # type: ignore
             assert _arrays_are_equal(h5f["X/A"][()], h5f_2["Z/A"][()])  # type: ignore
             rfs_copy = store.to_reference_file_system()
             h5f_3 = lindi.LindiH5pyFile.from_reference_file_system(rfs_copy, mode="r+")
