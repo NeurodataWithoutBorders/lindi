@@ -16,6 +16,7 @@ def test_fletcher32():
         client = lindi.LindiH5pyFile.from_reference_file_system(rfs)
         ds0 = client['dset']
         assert isinstance(ds0, h5py.Dataset)
+        assert ds0.fletcher32
         data = ds0[...]
         assert isinstance(data, np.ndarray)
         assert data.dtype == np.dtype('int32')
