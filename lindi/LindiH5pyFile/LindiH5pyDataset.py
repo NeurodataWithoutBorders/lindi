@@ -137,6 +137,18 @@ class LindiH5pyDataset(h5py.Dataset):
             raise Exception(f'Unexpected dataset object type: {type(self._dataset_object)}')
         return LindiH5pyAttributes(self._dataset_object.attrs, attrs_type=attrs_type, readonly=self._file.mode == 'r')
 
+    @property
+    def fletcher32(self):
+        if isinstance(self._dataset_object, h5py.Dataset):
+            return self._dataset_object.fletcher32
+        elif isinstance(self._dataset_object, zarr.Array):
+            for f in self._dataset_object.filters:
+                if f.__class__.__name__ == 'Fletcher32':
+                    return True
+            return False
+        else:
+            raise Exception(f'Unexpected dataset object type: {type(self._dataset_object)}')
+
     def __repr__(self):  # type: ignore
         return f"<{self.__class__.__name__}: {self.name}>"
 
