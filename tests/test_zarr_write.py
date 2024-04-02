@@ -104,7 +104,6 @@ def _assert_datasets_equal(h5d1: h5py.Dataset, h5d2: h5py.Dataset):
     print(f'Comparing datasets: {h5d1.name}')
     assert h5d1.shape == h5d2.shape, f'h5d1.shape: {h5d1.shape}, h5d2.shape: {h5d2.shape}'
     assert h5d1.dtype == h5d2.dtype, f'h5d1.dtype: {h5d1.dtype}, h5d2.dtype: {h5d2.dtype}'
-    assert h5d1.dtype == h5d2.dtype, f'h5d1.dtype: {h5d1.dtype}, h5d2.dtype: {h5d2.dtype}'
     if h5d1.dtype.kind == 'V':
         for name in h5d1.dtype.names:
             data1 = h5d1[name][()]
