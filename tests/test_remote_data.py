@@ -59,7 +59,7 @@ def test_remote_data_rfs_copy():
     }}
     client2 = lindi.LindiH5pyFile.from_reference_file_system(rfs2)
 
-    # This first dataset has is a 2D array with chunks
+    # This first dataset is a 2D array with chunks
     ds = client['processing/behavior/Position/position/data']
     assert isinstance(ds, lindi.LindiH5pyDataset)
     assert ds.shape == (494315, 2)
