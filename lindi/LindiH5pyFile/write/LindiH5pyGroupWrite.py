@@ -1,7 +1,8 @@
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Union, Literal
 import h5py
 import numpy as np
 import zarr
+from numcodecs.abc import Codec
 
 from ..LindiH5pyDataset import LindiH5pyDataset
 from ..LindiH5pyReference import LindiH5pyReference
@@ -39,7 +40,16 @@ class LindiH5pyGroupWrite:
             return ret
         return self.create_group(name)
 
-    def create_dataset(self, name, shape=None, dtype=None, data=None, **kwds):
+    def create_dataset(
+        self,
+        name,
+        shape=None,
+        dtype=None,
+        data=None,
+        *,
+        _zarr_compressor: Union[Codec, Literal['default']] = 'default',
+        **kwds
+    ):
         chunks = None
         for k, v in kwds.items():
             if k == 'chunks':
@@ -48,6 +58,8 @@ class LindiH5pyGroupWrite:
                 raise Exception(f'Unsupported kwds in create_dataset: {k}')
 
         if isinstance(self.p._group_object, h5py.Group):
+            if _zarr_compressor != 'default':
+                raise Exception('zarr_compressor is not supported when _group_object is h5py.Group')
             return LindiH5pyDataset(
                 self._group_object.create_dataset(name, shape=shape, dtype=dtype, data=data, chunks=chunks),  # type: ignore
                 self.p._file
@@ -77,7 +89,8 @@ class LindiH5pyGroupWrite:
                 h5_shape=shape,
                 h5_dtype=dtype,
                 h5_data=data,
-                h5f=None
+                h5f=None,
+                zarr_compressor=_zarr_compressor
             )
             return LindiH5pyDataset(ds, self.p._file)
         else:

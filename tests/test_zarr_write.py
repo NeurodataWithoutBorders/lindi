@@ -6,6 +6,7 @@ import h5py
 import lindi
 from lindi.conversion.attr_conversion import h5_to_zarr_attr
 import pytest
+import numcodecs
 
 
 def test_zarr_write():
@@ -19,6 +20,28 @@ def test_zarr_write():
         store2 = zarr.DirectoryStore(dirname)
         with lindi.LindiH5pyFile.from_zarr_store(store2) as h5f_backed_by_zarr:
             compare_example_h5_data(h5f_backed_by_zarr, tmpdir=tmpdir)
+
+
+def test_zarr_write_with_zstd_compressor():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        dirname = f'{tmpdir}/test.zarr'
+        store = zarr.DirectoryStore(dirname)
+        zarr.group(store=store)
+        with lindi.LindiH5pyFile.from_zarr_store(store, mode='r+') as h5f_backed_by_zarr:
+            h5f_backed_by_zarr.create_dataset_with_zarr_compressor(
+                'dset_float32',
+                data=np.array([1, 2, 3], dtype=np.float32),
+                compressor=numcodecs.Zstd(),  # this compressor not supported in hdf5
+            )
+
+        store2 = zarr.DirectoryStore(dirname)
+        with lindi.LindiH5pyFile.from_zarr_store(store2) as h5f_backed_by_zarr:
+            dset = h5f_backed_by_zarr['dset_float32']
+            assert isinstance(dset, h5py.Dataset)
+            if not _arrays_are_equal(dset[()], np.array([1, 2, 3], dtype=np.float32)):
+                print(dset[()])
+                print(np.array([1, 2, 3], dtype=np.float32))
+                raise Exception('Data mismatch')
 
 
 def write_example_h5_data(h5f: h5py.File):
