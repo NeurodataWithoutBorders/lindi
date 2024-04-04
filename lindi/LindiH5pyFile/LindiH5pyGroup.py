@@ -200,9 +200,10 @@ class LindiH5pyGroup(h5py.Group):
         compressor: Union[Codec, Literal['default']] = 'default',
         **kwds
     ):
-        if self._file._mode not in ['r+']:
+        if self._readonly:
             raise Exception('Cannot create dataset in read-only mode')
-        return self._write.create_dataset(name, shape=shape, dtype=dtype, data=data, _zarr_compressor=compressor, **kwds)
+        assert self._writer is not None
+        return self._writer.create_dataset(name, shape=shape, dtype=dtype, data=data, _zarr_compressor=compressor, **kwds)
 
     def __setitem__(self, name, obj):
         if self._readonly:
