@@ -12,16 +12,22 @@ if TYPE_CHECKING:
     from .LindiH5pyFile import LindiH5pyFile  # pragma: no cover
 
 
-class LindiH5pyGroupId:
-    def __init__(self, _h5py_group_id):
-        self._h5py_group_id = _h5py_group_id
-
-
 class LindiH5pyGroup(h5py.Group):
     def __init__(self, _group_object: Union[h5py.Group, zarr.Group], _file: "LindiH5pyFile"):
         self._group_object = _group_object
         self._file = _file
         self._readonly = _file.mode not in ['r+']
+
+        # In h5py, the id property is an object that exposes low-level
+        # operations specific to the HDF5 library. LINDI aims to override the
+        # high-level methods such that the low-level operations on id are not
+        # needed. However, sometimes packages (e.g., pynwb) use the id as a
+        # unique identifier for purposes of caching. Therefore, we make the id
+        # to be a string that is unique for each object. If any of the low-level
+        # operations are attempted on this id string, then an exception will be
+        # raised, which will usually indicate that one of the high-level methods
+        # should be overridden.
+        self._id = f'{id(self._file)}/{self._group_object.name}'
 
         # The self._write object handles all the writing operations
         from .writers.LindiH5pyGroupWriter import LindiH5pyGroupWriter  # avoid circular import
@@ -132,16 +138,8 @@ class LindiH5pyGroup(h5py.Group):
 
     @property
     def id(self):
-        if isinstance(self._group_object, h5py.Group):
-            return LindiH5pyGroupId(self._group_object.id)
-        elif isinstance(self._group_object, zarr.Group):
-            # This is commented out for now because pynwb gets the id of a group
-            # in at least one place. But that could be avoided in the future, at
-            # which time, we could uncomment this.
-            # print('WARNING: Accessing low-level id of LindiH5pyGroup. This should be avoided.')
-            return LindiH5pyGroupId('')
-        else:
-            raise Exception(f'Unexpected group object type: {type(self._group_object)}')
+        # see comment above
+        return self._id
 
     @property
     def file(self):
