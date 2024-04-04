@@ -12,7 +12,7 @@ if TYPE_CHECKING:
 from ...conversion.create_zarr_dataset_from_h5_data import create_zarr_dataset_from_h5_data
 
 
-class LindiH5pyGroupWrite:
+class LindiH5pyGroupWriter:
     def __init__(self, p: 'LindiH5pyGroup'):
         self.p = p
 

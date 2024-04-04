@@ -11,7 +11,7 @@ if TYPE_CHECKING:
     from ..LindiH5pyDataset import LindiH5pyDataset  # pragma: no cover
 
 
-class LindiH5pyDatasetWrite:
+class LindiH5pyDatasetWriter:
     def __init__(self, p: 'LindiH5pyDataset'):
         self.p = p
 

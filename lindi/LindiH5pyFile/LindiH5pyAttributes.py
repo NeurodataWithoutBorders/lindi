@@ -2,7 +2,7 @@ from typing import Literal
 from .LindiH5pyReference import LindiH5pyReference
 from ..conversion.attr_conversion import zarr_to_h5_attr
 from ..conversion.nan_inf_ninf import decode_nan_inf_ninf
-from .write.LindiH5pyAttributesWrite import LindiH5pyAttributesWrite
+from .writers.LindiH5pyAttributesWriter import LindiH5pyAttributesWriter
 
 _special_attribute_keys = [
     "_SCALAR",
@@ -19,7 +19,10 @@ class LindiH5pyAttributes:
         self._attrs_type = attrs_type
         self._readonly = readonly
 
-        self._write = LindiH5pyAttributesWrite(self)
+        if self._readonly:
+            self._writer = None
+        else:
+            self._writer = LindiH5pyAttributesWriter(self)
 
     def get(self, key, default=None):
         if self._attrs_type == "h5py":
@@ -61,7 +64,10 @@ class LindiH5pyAttributes:
             raise ValueError(f"Unknown attrs_type: {self._attrs_type}")
 
     def __setitem__(self, key, value):
-        self._write.__setitem__(key, value)
+        if self._readonly:
+            raise ValueError("Cannot set items on read-only object")
+        assert self._writer is not None
+        self._writer.__setitem__(key, value)
 
     def __delitem__(self, key):
         raise KeyError("Cannot delete attributes on read-only object")

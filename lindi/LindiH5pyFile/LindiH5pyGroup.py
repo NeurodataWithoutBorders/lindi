@@ -20,10 +20,14 @@ class LindiH5pyGroup(h5py.Group):
     def __init__(self, _group_object: Union[h5py.Group, zarr.Group], _file: "LindiH5pyFile"):
         self._group_object = _group_object
         self._file = _file
+        self._readonly = _file.mode not in ['r+']
 
         # The self._write object handles all the writing operations
-        from .write.LindiH5pyGroupWrite import LindiH5pyGroupWrite  # avoid circular import
-        self._write = LindiH5pyGroupWrite(self)
+        from .writers.LindiH5pyGroupWriter import LindiH5pyGroupWriter  # avoid circular import
+        if self._readonly:
+            self._writer = None
+        else:
+            self._writer = LindiH5pyGroupWriter(self)
 
     def __getitem__(self, name):
         if isinstance(self._group_object, h5py.Group):
@@ -154,31 +158,39 @@ class LindiH5pyGroup(h5py.Group):
 
     @property
     def ref(self):
-        return self._write.ref
+        if self._readonly:
+            raise ValueError("Cannot get ref on read-only object")
+        assert self._writer is not None
+        return self._writer.ref
 
     ##############################
     # write
     def create_group(self, name, track_order=None):
-        if self._file._mode not in ['r+']:
+        if self._readonly:
             raise Exception('Cannot create group in read-only mode')
-        return self._write.create_group(name, track_order=track_order)
+        assert self._writer is not None
+        return self._writer.create_group(name, track_order=track_order)
 
     def require_group(self, name):
-        if self._file._mode not in ['r+']:
+        if self._readonly:
             raise Exception('Cannot require group in read-only mode')
-        return self._write.require_group(name)
+        assert self._writer is not None
+        return self._writer.require_group(name)
 
     def create_dataset(self, name, shape=None, dtype=None, data=None, **kwds):
-        if self._file._mode not in ['r+']:
+        if self._readonly:
             raise Exception('Cannot create dataset in read-only mode')
-        return self._write.create_dataset(name, shape=shape, dtype=dtype, data=data, **kwds)
+        assert self._writer is not None
+        return self._writer.create_dataset(name, shape=shape, dtype=dtype, data=data, **kwds)
 
     def __setitem__(self, name, obj):
-        if self._file._mode not in ['r+']:
+        if self._readonly:
             raise Exception('Cannot set item in read-only mode')
-        return self._write.__setitem__(name, obj)
+        assert self._writer is not None
+        return self._writer.__setitem__(name, obj)
 
     def __delitem__(self, name):
-        if self._file._mode not in ['r+']:
+        if self._readonly:
             raise Exception('Cannot delete item in read-only mode')
-        return self._write.__delitem__(name)
+        assert self._writer is not None
+        return self._writer.__delitem__(name)
