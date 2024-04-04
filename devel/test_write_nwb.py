@@ -99,7 +99,7 @@ dirname = f'{tmpdir}/test.nwb'
 store = zarr.DirectoryStore(dirname)
 # create a top-level group
 root = zarr.group(store=store, overwrite=True)
-client = lindi.LindiH5pyFile.from_zarr_store(store, mode='a')
+client = lindi.LindiH5pyFile.from_zarr_store(store, mode='r+')
 with NWBHDF5IO(file=client, mode='w') as io:
     io.write(nwbfile)  # type: ignore
 

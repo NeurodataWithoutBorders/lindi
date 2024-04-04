@@ -15,7 +15,7 @@ def example_create_zarr_nwb():
 
     store = zarr.DirectoryStore(zarr_dirname)
     zarr.group(store=store)  # create a root group
-    with lindi.LindiH5pyFile.from_zarr_store(store, mode='a') as client:
+    with lindi.LindiH5pyFile.from_zarr_store(store, mode='r+') as client:
         with pynwb.NWBHDF5IO(file=client, mode='r+') as io:
             io.write(nwbfile)  # type: ignore
 
