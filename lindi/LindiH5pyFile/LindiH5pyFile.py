@@ -331,6 +331,11 @@ class LindiH5pyFile(h5py.File):
             raise Exception("Cannot create dataset in read-only mode")
         return self._the_group.create_dataset(name, shape=shape, dtype=dtype, data=data, **kwds)
 
+    def require_dataset(self, name, shape, dtype, exact=False, **kwds):
+        if self._mode not in ['r+']:
+            raise Exception("Cannot require dataset in read-only mode")
+        return self._the_group.require_dataset(name, shape, dtype, exact=exact, **kwds)
+
 
 def _download_file(url: str, filename: str) -> None:
     headers = {

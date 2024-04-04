@@ -20,6 +20,28 @@ def test_zarr_write():
             compare_example_h5_data(h5f_backed_by_zarr, tmpdir=tmpdir)
 
 
+def test_require_dataset():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        dirname = f'{tmpdir}/test.zarr'
+        store = zarr.DirectoryStore(dirname)
+        zarr.group(store=store)
+        with lindi.LindiH5pyFile.from_zarr_store(store, mode='r+') as h5f_backed_by_zarr:
+            h5f_backed_by_zarr.create_dataset('dset_int8', data=np.array([1, 2, 3], dtype=np.int8))
+            h5f_backed_by_zarr.create_dataset('dset_int16', data=np.array([1, 2, 3], dtype=np.int16))
+            h5f_backed_by_zarr.require_dataset('dset_int8', shape=(3,), dtype=np.int8)
+            with pytest.raises(Exception):
+                h5f_backed_by_zarr.require_dataset('dset_int8', shape=(4,), dtype=np.int8)
+            with pytest.raises(Exception):
+                h5f_backed_by_zarr.require_dataset('dset_int8', shape=(3,), dtype=np.int16, exact=True)
+            h5f_backed_by_zarr.require_dataset('dset_int8', shape=(3,), dtype=np.int16, exact=False)
+            with pytest.raises(Exception):
+                h5f_backed_by_zarr.require_dataset('dset_int16', shape=(3,), dtype=np.int8, exact=False)
+            ds = h5f_backed_by_zarr.require_dataset('dset_float32', shape=(3,), dtype=np.float32)
+            ds[:] = np.array([1.1, 2.2, 3.3])
+            with pytest.raises(Exception):
+                h5f_backed_by_zarr.require_dataset('dset_float32', shape=(3,), dtype=np.float64, exact=True)
+
+
 def write_example_h5_data(h5f: h5py.File):
     h5f.attrs['attr_str'] = 'hello'
     h5f.attrs['attr_int'] = 42
@@ -80,4 +102,4 @@ def compare_example_h5_data(h5f: h5py.File, tmpdir: str):
 
 
 if __name__ == '__main__':
-    test_zarr_write()
+    test_require_dataset()

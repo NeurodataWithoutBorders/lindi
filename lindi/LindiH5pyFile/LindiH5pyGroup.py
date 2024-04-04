@@ -183,6 +183,12 @@ class LindiH5pyGroup(h5py.Group):
         assert self._writer is not None
         return self._writer.create_dataset(name, shape=shape, dtype=dtype, data=data, **kwds)
 
+    def require_dataset(self, name, shape, dtype, exact=False, **kwds):
+        if self._readonly:
+            raise Exception('Cannot require dataset in read-only mode')
+        assert self._writer is not None
+        return self._writer.require_dataset(name, shape, dtype, exact=exact, **kwds)
+
     def __setitem__(self, name, obj):
         if self._readonly:
             raise Exception('Cannot set item in read-only mode')
