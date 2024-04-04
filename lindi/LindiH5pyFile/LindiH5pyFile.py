@@ -37,13 +37,13 @@ class LindiH5pyFile(h5py.File):
             The reference file system. This can be a dictionary or a URL or path
             to a .zarr.json file.
         mode : Literal["r", "r+"], optional
-            The mode to open the file object in, by default "r" If the mode is
+            The mode to open the file object in, by default "r". If the mode is
             "r", the file object will be read-only. If the mode is "r+", the
             file will be read-write. However, if the rfs is a string (URL or
             path), the file itself will not be modified on changes, but the
             internal in-memory representation will be modified. Use
             to_reference_file_system() to export the updated reference file
-            system.
+            system to the same file or a new file.
         """
         if isinstance(rfs, str):
             if rfs.startswith("http") or rfs.startswith("https"):
@@ -218,7 +218,7 @@ class LindiH5pyFile(h5py.File):
              shallow=False, expand_soft=False, expand_external=False,
              expand_refs=False, without_attrs=False):
         if shallow:
-            raise Exception("shalle is not implemented for copy")
+            raise Exception("shallow is not implemented for copy")
         if expand_soft:
             raise Exception("expand_soft is not implemented for copy")
         if expand_external:
@@ -331,6 +331,11 @@ class LindiH5pyFile(h5py.File):
         if self._mode not in ['r+']:
             raise Exception("Cannot create dataset in read-only mode")
         return self._the_group.create_dataset(name, shape=shape, dtype=dtype, data=data, **kwds)
+
+    def require_dataset(self, name, shape, dtype, exact=False, **kwds):
+        if self._mode not in ['r+']:
+            raise Exception("Cannot require dataset in read-only mode")
+        return self._the_group.require_dataset(name, shape, dtype, exact=exact, **kwds)
 
     def create_dataset_with_zarr_compressor(
         self,

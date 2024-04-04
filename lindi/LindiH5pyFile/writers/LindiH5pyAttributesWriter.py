@@ -4,7 +4,7 @@ if TYPE_CHECKING:
     from ..LindiH5pyAttributes import LindiH5pyAttributes  # pragma: no cover
 
 
-class LindiH5pyAttributesWrite:
+class LindiH5pyAttributesWriter:
     def __init__(self, p: 'LindiH5pyAttributes'):
         self.p = p
 

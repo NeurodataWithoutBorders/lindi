@@ -30,6 +30,7 @@ class LindiH5pyDataset(h5py.Dataset):
     def __init__(self, _dataset_object: Union[h5py.Dataset, zarr.Array], _file: "LindiH5pyFile"):
         self._dataset_object = _dataset_object
         self._file = _file
+        self._readonly = _file.mode not in ['r+']
 
         # See if we have the _COMPOUND_DTYPE attribute, which signifies that
         # this is a compound dtype
@@ -37,6 +38,8 @@ class LindiH5pyDataset(h5py.Dataset):
             compound_dtype_obj = _dataset_object.attrs.get("_COMPOUND_DTYPE", None)
             if compound_dtype_obj is not None:
                 assert isinstance(compound_dtype_obj, list)
+                # compound_dtype_obj is a list of tuples (name, dtype)
+                # where dtype == "<REFERENCE>" if it represents an HDF5 reference
                 for i in range(len(compound_dtype_obj)):
                     if compound_dtype_obj[i][1] == '<REFERENCE>':
                         compound_dtype_obj[i][1] = h5py.special_dtype(ref=h5py.Reference)
@@ -62,8 +65,12 @@ class LindiH5pyDataset(h5py.Dataset):
             self._is_scalar = self._dataset_object.ndim == 0
 
         # The self._write object handles all the writing operations
-        from .write.LindiH5pyDatasetWrite import LindiH5pyDatasetWrite  # avoid circular import
-        self._write = LindiH5pyDatasetWrite(self)
+        from .writers.LindiH5pyDatasetWriter import LindiH5pyDatasetWriter  # avoid circular import
+
+        if self._readonly:
+            self._writer = None
+        else:
+            self._writer = LindiH5pyDatasetWriter(self)
 
     @property
     def id(self):
@@ -224,14 +231,18 @@ class LindiH5pyDataset(h5py.Dataset):
 
     @property
     def ref(self):
-        return self._write.ref
+        if self._readonly:
+            raise ValueError("Cannot get ref on read-only object")
+        assert self._writer is not None
+        return self._writer.ref
 
     ##############################
     # Write
     def __setitem__(self, args, val):
-        if self._file._mode not in ['r+']:
-            raise Exception('Cannot set item on dataset in read-only mode.')
-        self._write.__setitem__(args, val)
+        if self._readonly:
+            raise ValueError("Cannot set items on read-only object")
+        assert self._writer is not None
+        self._writer.__setitem__(args, val)
 
 
 class LindiH5pyDatasetCompoundFieldSelection:

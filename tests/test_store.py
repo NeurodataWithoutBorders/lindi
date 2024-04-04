@@ -1,6 +1,7 @@
 import h5py
 import tempfile
 import lindi
+from utils import lists_are_equal
 
 
 def test_store():
@@ -14,11 +15,11 @@ def test_store():
         with lindi.LindiH5ZarrStore.from_file(filename, url=filename) as store:
             store.to_file(f"{tmpdir}/test.zarr.json")  # for coverage
             a = store.listdir('')
-            assert _lists_are_equal(a, ['dataset1', 'group1'], ordered=False)
+            assert _lists_are_equal_as_sets(a, ['dataset1', 'group1'])
             b = store.listdir('group1')
-            assert _lists_are_equal(b, ['group2', 'dataset2'], ordered=False)
+            assert _lists_are_equal_as_sets(b, ['group2', 'dataset2'])
             c = store.listdir('group1/group2')
-            assert _lists_are_equal(c, [], ordered=False)
+            assert _lists_are_equal_as_sets(c, [])
             assert '.zattrs' in store
             assert '.zgroup' in store
             assert 'dataset1' not in store
@@ -41,18 +42,10 @@ def test_store():
             assert 'group1/dataset2/0' in store
             client = lindi.LindiH5pyFile.from_zarr_store(store)
             X = client["dataset1"][:]  # type: ignore
-            assert _lists_are_equal(X, [1, 2, 3], ordered=True)
+            assert lists_are_equal(X, [1, 2, 3])
             Y = client["group1/dataset2"][:]  # type: ignore
-            assert _lists_are_equal(Y, [4, 5, 6], ordered=True)
+            assert lists_are_equal(Y, [4, 5, 6])
 
 
-def _lists_are_equal(a, b, ordered: bool):
-    if ordered:
-        if len(a) != len(b):
-            return False
-        for i in range(len(a)):
-            if a[i] != b[i]:
-                return False
-        return True
-    else:
-        return set(a) == set(b)
+def _lists_are_equal_as_sets(a, b):
+    return set(a) == set(b)

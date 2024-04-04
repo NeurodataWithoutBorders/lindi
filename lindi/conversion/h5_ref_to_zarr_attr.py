@@ -34,17 +34,9 @@ def h5_ref_to_zarr_attr(ref: h5py.Reference, *, h5f: h5py.File):
     another field in the value containing the region info. See
     https://hdmf-zarr.readthedocs.io/en/latest/storage.html#sec-zarr-storage-references-region
     """
-    file_id = h5f.id
+    dref_obj = h5f[ref]
+    deref_objname = dref_obj.name
 
-    # The get_name call can actually be quite slow. A possible way around this
-    # is to do an initial pass through the file and build a map of object IDs to
-    # paths. This would need to happen elsewhere in the code.
-    deref_objname = h5py.h5r.get_name(ref, file_id)
-    if deref_objname is None:
-        raise ValueError(f"Could not dereference object with reference {ref}")
-    deref_objname = deref_objname.decode("utf-8")
-
-    dref_obj = h5f[deref_objname]
     object_id = dref_obj.attrs.get("object_id", None)
 
     # Here we assume that the file has a top-level attribute called "object_id".

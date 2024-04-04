@@ -13,7 +13,7 @@ if TYPE_CHECKING:
 from ...conversion.create_zarr_dataset_from_h5_data import create_zarr_dataset_from_h5_data
 
 
-class LindiH5pyGroupWrite:
+class LindiH5pyGroupWriter:
     def __init__(self, p: 'LindiH5pyGroup'):
         self.p = p
 
@@ -95,6 +95,22 @@ class LindiH5pyGroupWrite:
             return LindiH5pyDataset(ds, self.p._file)
         else:
             raise Exception(f'Unexpected group object type: {type(self.p._group_object)}')
+
+    def require_dataset(self, name, shape, dtype, exact=False, **kwds):
+        if name in self.p:
+            ret = self.p[name]
+            if not isinstance(ret, LindiH5pyDataset):
+                raise Exception(f'Expected a dataset at {name} but got {type(ret)}')
+            if ret.shape != shape:
+                raise Exception(f'Expected shape {shape} but got {ret.shape}')
+            if exact:
+                if ret.dtype != dtype:
+                    raise Exception(f'Expected dtype {dtype} but got {ret.dtype}')
+            else:
+                if not np.can_cast(ret.dtype, dtype):
+                    raise Exception(f'Cannot cast dtype {ret.dtype} to {dtype}')
+            return ret
+        return self.create_dataset(name, *(shape, dtype), **kwds)
 
     def __setitem__(self, name, obj):
         if isinstance(obj, h5py.SoftLink):
