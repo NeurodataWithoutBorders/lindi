@@ -23,7 +23,7 @@ def h5_to_zarr_attr(attr: Any, *, label: str = '', h5f: Union[h5py.File, None]):
         raise Exception(f"Unexpected h5 attribute: None at {label}")
     elif type(attr) in [int, np.int8, np.int16, np.int32, np.int64, np.uint8, np.uint16, np.uint32, np.uint64]:
         return int(attr)
-    elif type(attr) in [float, np.float16, np.float32, np.float64]:
+    elif isinstance(attr, (float, np.floating)):
         return encode_nan_inf_ninf(float(attr))
     elif isinstance(attr, complex) or (isinstance(attr, np.ndarray) and np.issubdtype(attr.dtype, np.complexfloating)):
         raise Exception(f"Complex number is not supported at {label}")
