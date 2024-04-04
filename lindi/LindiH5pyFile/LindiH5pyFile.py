@@ -36,7 +36,7 @@ class LindiH5pyFile(h5py.File):
             The reference file system. This can be a dictionary or a URL or path
             to a .zarr.json file.
         mode : Literal["r", "r+"], optional
-            The mode to open the file object in (default: "r"). If the mode is
+            The mode to open the file object in, by default "r". If the mode is
             "r", the file object will be read-only. If the mode is "r+", the
             file will be read-write. However, if the rfs is a string (URL or
             path), the file itself will not be modified on changes, but the
