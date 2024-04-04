@@ -38,6 +38,8 @@ class LindiH5pyDataset(h5py.Dataset):
             compound_dtype_obj = _dataset_object.attrs.get("_COMPOUND_DTYPE", None)
             if compound_dtype_obj is not None:
                 assert isinstance(compound_dtype_obj, list)
+                # compound_dtype_obj is a list of tuples (name, dtype)
+                # where dtype == "<REFERENCE>" if it represents an HDF5 reference
                 for i in range(len(compound_dtype_obj)):
                     if compound_dtype_obj[i][1] == '<REFERENCE>':
                         compound_dtype_obj[i][1] = h5py.special_dtype(ref=h5py.Reference)

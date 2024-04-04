@@ -42,7 +42,7 @@ class LindiH5pyFile(h5py.File):
             path), the file itself will not be modified on changes, but the
             internal in-memory representation will be modified. Use
             to_reference_file_system() to export the updated reference file
-            system.
+            system to the same file or a new file.
         """
         if isinstance(rfs, str):
             if rfs.startswith("http") or rfs.startswith("https"):

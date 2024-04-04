@@ -58,7 +58,7 @@ class LindiH5pyGroup(h5py.Group):
                 if soft_link is not None:
                     link_path = soft_link['path']
                     target_item = self._file.get(link_path)
-                    if not isinstance(target_item, LindiH5pyGroup) and not isinstance(target_item, LindiH5pyDataset):
+                    if not isinstance(target_item, (LindiH5pyGroup, LindiH5pyDataset)):
                         raise Exception(
                             f"Expected a group or dataset at {link_path} but got {type(target_item)}"
                         )
