@@ -217,7 +217,7 @@ class LindiH5pyFile(h5py.File):
              shallow=False, expand_soft=False, expand_external=False,
              expand_refs=False, without_attrs=False):
         if shallow:
-            raise Exception("shalle is not implemented for copy")
+            raise Exception("shallow is not implemented for copy")
         if expand_soft:
             raise Exception("expand_soft is not implemented for copy")
         if expand_external:
