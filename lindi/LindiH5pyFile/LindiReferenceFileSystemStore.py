@@ -94,7 +94,7 @@ class LindiReferenceFileSystemStore(ZarrStore):
             else:
                 return x.encode("utf-8")
         elif isinstance(x, dict):
-            return json.dumps(x, sort_keys=True).encode("utf-8")
+            return json.dumps(x).encode("utf-8")
         elif isinstance(x, list):
             if len(x) != 3:
                 raise Exception("list must have 3 elements")  # pragma: no cover
