@@ -4,6 +4,7 @@ import h5py
 import tempfile
 import lindi
 from lindi import LindiH5ZarrStore
+from utils import arrays_are_equal, lists_are_equal
 
 
 def test_variety():
@@ -33,12 +34,12 @@ def test_variety():
                 assert h5f_2.attrs["float1"] == h5f.attrs["float1"]
                 assert h5f_2.attrs["str1"] == h5f.attrs["str1"]
                 assert h5f_2.attrs["bytes1"] == h5f.attrs["bytes1"]
-                assert _lists_are_equal(h5f_2.attrs["list1"], h5f.attrs["list1"])
-                assert _lists_are_equal(h5f_2.attrs["tuple1"], h5f.attrs["tuple1"])
-                assert _arrays_are_equal(np.array(h5f_2.attrs["array1"]), h5f.attrs["array1"])
+                assert lists_are_equal(h5f_2.attrs["list1"], h5f.attrs["list1"])
+                assert lists_are_equal(h5f_2.attrs["tuple1"], h5f.attrs["tuple1"])
+                assert arrays_are_equal(np.array(h5f_2.attrs["array1"]), h5f.attrs["array1"])
                 assert h5f_2["dataset1"].attrs["test_attr1"] == h5f["dataset1"].attrs["test_attr1"]  # type: ignore
                 assert h5f_2["dataset1"].id
-                assert _arrays_are_equal(h5f_2["dataset1"][()], h5f["dataset1"][()])  # type: ignore
+                assert arrays_are_equal(h5f_2["dataset1"][()], h5f["dataset1"][()])  # type: ignore
                 assert h5f_2["group1"].attrs["test_attr2"] == h5f["group1"].attrs["test_attr2"]  # type: ignore
                 target_1 = h5f[h5f.attrs["dataset1_ref"]]
                 target_2 = h5f_2[h5f_2.attrs["dataset1_ref"]]
@@ -85,17 +86,17 @@ def test_soft_links():
                 assert isinstance(ds1, h5py.Dataset)
                 ds2 = h5f_2['soft_link']['dataset1']  # type: ignore
                 assert isinstance(ds2, h5py.Dataset)
-                assert _arrays_are_equal(ds1[()], ds2[()])
+                assert arrays_are_equal(ds1[()], ds2[()])
                 ds1 = h5f['soft_link/dataset1']
                 assert isinstance(ds1, h5py.Dataset)
                 ds2 = h5f_2['soft_link/dataset1']
                 assert isinstance(ds2, h5py.Dataset)
-                assert _arrays_are_equal(ds1[()], ds2[()])
+                assert arrays_are_equal(ds1[()], ds2[()])
                 ds1 = h5f['group_target/dataset1']
                 assert isinstance(ds1, h5py.Dataset)
                 ds2 = h5f_2['group_target/dataset1']
                 assert isinstance(ds2, h5py.Dataset)
-                assert _arrays_are_equal(ds1[()], ds2[()])
+                assert arrays_are_equal(ds1[()], ds2[()])
 
 
 def test_arrays_of_compound_dtype():
@@ -118,16 +119,16 @@ def test_arrays_of_compound_dtype():
             ds1_2 = h5f_2['dataset1']
             assert isinstance(ds1_2, h5py.Dataset)
             assert ds1_1.dtype == ds1_2.dtype
-            assert _arrays_are_equal(ds1_1['x'][()], ds1_2['x'][()])  # type: ignore
-            assert _arrays_are_equal(ds1_1['y'][()], ds1_2['y'][()])  # type: ignore
+            assert arrays_are_equal(ds1_1['x'][()], ds1_2['x'][()])  # type: ignore
+            assert arrays_are_equal(ds1_1['y'][()], ds1_2['y'][()])  # type: ignore
             ds2_1 = h5f['dataset2']
             assert isinstance(ds2_1, h5py.Dataset)
             ds2_2 = h5f_2['dataset2']
             assert isinstance(ds2_2, h5py.Dataset)
             assert ds2_1.dtype == ds2_2.dtype
-            assert _arrays_are_equal(ds2_1['a'][()], ds2_2['a'][()])  # type: ignore
-            assert _arrays_are_equal(ds2_1['b'][()], ds2_2['b'][()])  # type: ignore
-            assert _arrays_are_equal(ds2_1['c'][()], ds2_2['c'][()])  # type: ignore
+            assert arrays_are_equal(ds2_1['a'][()], ds2_2['a'][()])  # type: ignore
+            assert arrays_are_equal(ds2_1['b'][()], ds2_2['b'][()])  # type: ignore
+            assert arrays_are_equal(ds2_1['c'][()], ds2_2['c'][()])  # type: ignore
             ds3_1 = h5f['dataset3']
             assert isinstance(ds3_1, h5py.Dataset)
             ds3_2 = h5f_2['dataset3']
@@ -157,7 +158,7 @@ def test_arrays_of_compound_dtype_with_references():
             ds1_2 = h5f_2['dataset1']
             assert isinstance(ds1_2, h5py.Dataset)
             assert ds1_1.dtype == ds1_2.dtype
-            assert _arrays_are_equal(ds1_1['x'][()], ds1_2['x'][()])  # type: ignore
+            assert arrays_are_equal(ds1_1['x'][()], ds1_2['x'][()])  # type: ignore
             ref1 = ds1_1['y'][0]
             ref2 = ds1_2['y'][0]
             assert isinstance(ref1, h5py.Reference)
@@ -166,7 +167,7 @@ def test_arrays_of_compound_dtype_with_references():
             assert isinstance(target1, h5py.Dataset)
             target2 = h5f_2[ref2]
             assert isinstance(target2, h5py.Dataset)
-            assert _arrays_are_equal(target1[()], target2[()])
+            assert arrays_are_equal(target1[()], target2[()])
 
 
 def test_scalar_arrays():
@@ -219,7 +220,7 @@ def test_arrays_of_strings():
             assert isinstance(X1, h5py.Dataset)
             X2 = h5f_2['X']
             assert isinstance(X2, h5py.Dataset)
-            assert _lists_are_equal(X1[:].tolist(), [x.encode() for x in X2[:]])  # type: ignore
+            assert lists_are_equal(X1[:].tolist(), [x.encode() for x in X2[:]])  # type: ignore
 
 
 def test_numpy_arrays():
@@ -273,13 +274,13 @@ def test_nan_inf_attributes():
             assert isinstance(nanval, float) and np.isnan(nanval)
             assert X1.attrs["inf"] == np.inf
             assert X1.attrs["ninf"] == -np.inf
-            assert _lists_are_equal(X1.attrs['float_list'], [np.nan, np.inf, -np.inf, 23])
+            assert lists_are_equal(X1.attrs['float_list'], [np.nan, np.inf, -np.inf, 23])
 
             nanval = X2.attrs["nan"]
             assert isinstance(nanval, float) and np.isnan(nanval)
             assert X2.attrs["inf"] == np.inf
             assert X2.attrs["ninf"] == -np.inf
-            assert _lists_are_equal(X2.attrs['float_list'], [np.nan, np.inf, -np.inf, 23])
+            assert lists_are_equal(X2.attrs['float_list'], [np.nan, np.inf, -np.inf, 23])
 
         for test_string in ["NaN", "Infinity", "-Infinity", "Not-illegal"]:
             filename = f"{tmpdir}/illegal_string.h5"
@@ -307,7 +308,7 @@ def test_reference_file_system_to_file():
             client = lindi.LindiH5pyFile.from_reference_file_system(rfs_fname)
             X = client["X"]
             assert isinstance(X, lindi.LindiH5pyDataset)
-            assert _lists_are_equal(X[()], [1, 2, 3])
+            assert lists_are_equal(X[()], [1, 2, 3])
 
 
 def test_lindi_reference_file_system_store():
@@ -483,31 +484,7 @@ def test_numpy_array_of_byte_strings():
             assert isinstance(X1, h5py.Dataset)
             X2 = h5f_2['X']
             assert isinstance(X2, h5py.Dataset)
-            assert _lists_are_equal(X1[:].tolist(), X2[:].tolist())  # type: ignore
-
-
-def _lists_are_equal(a, b):
-    if len(a) != len(b):
-        return False
-    for aa, bb in zip(a, b):
-        if aa != bb:
-            if np.isnan(aa) and np.isnan(bb):
-                # nan != nan, but we want to consider them equal
-                continue
-            return False
-    return True
-
-
-def _arrays_are_equal(a, b):
-    if a.shape != b.shape:
-        return False
-    if a.dtype != b.dtype:
-        return False
-    # if this is numeric data we need to use allclose so that we can handle NaNs
-    if np.issubdtype(a.dtype, np.number):
-        return np.allclose(a, b, equal_nan=True)
-    else:
-        return np.array_equal(a, b)
+            assert lists_are_equal(X1[:].tolist(), X2[:].tolist())  # type: ignore
 
 
 if __name__ == '__main__':

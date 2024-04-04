@@ -1,7 +1,7 @@
 import json
 import pytest
 import lindi
-from test_core import _arrays_are_equal
+from utils import arrays_are_equal
 
 
 @pytest.mark.network
@@ -73,7 +73,7 @@ def test_remote_data_rfs_copy():
 
     ds2 = client2['copied_data1']
     assert isinstance(ds2, lindi.LindiH5pyDataset)
-    assert _arrays_are_equal(ds[()], ds2[()])  # make sure the data is the same
+    assert arrays_are_equal(ds[()], ds2[()])  # make sure the data is the same
 
     # This next dataset has an _EXTERNAL_ARRAY_LINK which means it has a pointer
     # to a dataset in a remote h5py
@@ -88,7 +88,7 @@ def test_remote_data_rfs_copy():
 
     ds2 = client2['copied_data2']
     assert isinstance(ds2, lindi.LindiH5pyDataset)
-    assert _arrays_are_equal(ds[100000:100010], ds2[100000:100010])
+    assert arrays_are_equal(ds[100000:100010], ds2[100000:100010])
 
 
 if __name__ == "__main__":
