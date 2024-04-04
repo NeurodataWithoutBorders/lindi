@@ -39,8 +39,12 @@ class LindiReferenceFileSystemStore(ZarrStore):
     being returned. Otherwise, the string is utf-8 encoded and returned as is.
     Note that a file that actually begins with "base64:" should be represented
     by a base64 encoded string, to avoid ambiguity.
+
+    It is okay for rfs to be modified outside of this class, and the changes
+    will be reflected immediately in the store. This can be used by experimental
+    tools such as lindi-cloud.
     """
-    def __init__(self, rfs: dict, mode: Literal["r"] = "r"):
+    def __init__(self, rfs: dict, mode: Literal["r", "r+"] = "r+"):
         """
         Create a LindiReferenceFileSystemStore.
 
@@ -94,13 +98,19 @@ class LindiReferenceFileSystemStore(ZarrStore):
         else:
             # should not happen given checks in __init__, but self.rfs is mutable
             # and contains mutable lists
-            raise Exception(f"Problem with {key}: value must be a string or a list")
+            raise Exception(f"Problem with {key}: value {x} must be a string or a list")
 
     def __setitem__(self, key: str, value):
-        raise Exception("Setting items is not allowed")
+        try:
+            # try to ascii encode the value
+            value = value.decode("ascii")
+        except UnicodeDecodeError:
+            # if that fails, base64 encode it
+            value = "base64:" + base64.b64encode(value).decode("ascii")
+        self.rfs["refs"][key] = value
 
     def __delitem__(self, key: str):
-        raise Exception("Deleting items is not allowed")
+        del self.rfs["refs"][key]
 
     def __iter__(self):
         return iter(self.rfs["refs"])
@@ -110,10 +120,10 @@ class LindiReferenceFileSystemStore(ZarrStore):
 
     # These methods are overridden from BaseStore
     def is_readable(self):
-        return self.mode in ["r"]
+        return self.mode in ["r", "r+"]
 
     def is_writeable(self):
-        return False
+        return self.mode in ["r+"]
 
     def is_listable(self):
         return True

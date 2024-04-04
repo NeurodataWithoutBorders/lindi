@@ -7,6 +7,8 @@ import remfile
 from .LindiH5pyAttributes import LindiH5pyAttributes
 from .LindiH5pyReference import LindiH5pyReference
 
+from ..conversion.decode_references import decode_references
+
 
 if TYPE_CHECKING:
     from .LindiH5pyFile import LindiH5pyFile  # pragma: no cover
@@ -28,15 +30,28 @@ class LindiH5pyDataset(h5py.Dataset):
     def __init__(self, _dataset_object: Union[h5py.Dataset, zarr.Array], _file: "LindiH5pyFile"):
         self._dataset_object = _dataset_object
         self._file = _file
+        self._readonly = _file.mode not in ['r+']
 
         # See if we have the _COMPOUND_DTYPE attribute, which signifies that
         # this is a compound dtype
         if isinstance(_dataset_object, zarr.Array):
             compound_dtype_obj = _dataset_object.attrs.get("_COMPOUND_DTYPE", None)
             if compound_dtype_obj is not None:
+                assert isinstance(compound_dtype_obj, list)
+                # compound_dtype_obj is a list of tuples (name, dtype)
+                # where dtype == "<REFERENCE>" if it represents an HDF5 reference
+                for i in range(len(compound_dtype_obj)):
+                    if compound_dtype_obj[i][1] == '<REFERENCE>':
+                        compound_dtype_obj[i][1] = h5py.special_dtype(ref=h5py.Reference)
                 # If we have a compound dtype, then create the numpy dtype
                 self._compound_dtype = np.dtype(
-                    [(compound_dtype_obj[i][0], compound_dtype_obj[i][1]) for i in range(len(compound_dtype_obj))]
+                    [
+                        (
+                            compound_dtype_obj[i][0],
+                            compound_dtype_obj[i][1]
+                        )
+                        for i in range(len(compound_dtype_obj))
+                    ]
                 )
             else:
                 self._compound_dtype = None
@@ -48,6 +63,14 @@ class LindiH5pyDataset(h5py.Dataset):
             self._is_scalar = self._dataset_object.attrs.get("_SCALAR", False)
         else:
             self._is_scalar = self._dataset_object.ndim == 0
+
+        # The self._write object handles all the writing operations
+        from .writers.LindiH5pyDatasetWriter import LindiH5pyDatasetWriter  # avoid circular import
+
+        if self._readonly:
+            self._writer = None
+        else:
+            self._writer = LindiH5pyDatasetWriter(self)
 
     @property
     def id(self):
@@ -119,7 +142,25 @@ class LindiH5pyDataset(h5py.Dataset):
             attrs_type = 'zarr'
         else:
             raise Exception(f'Unexpected dataset object type: {type(self._dataset_object)}')
-        return LindiH5pyAttributes(self._dataset_object.attrs, attrs_type=attrs_type)
+        return LindiH5pyAttributes(self._dataset_object.attrs, attrs_type=attrs_type, readonly=self._file.mode == 'r')
+
+    @property
+    def fletcher32(self):
+        if isinstance(self._dataset_object, h5py.Dataset):
+            return self._dataset_object.fletcher32
+        elif isinstance(self._dataset_object, zarr.Array):
+            for f in self._dataset_object.filters:
+                if f.__class__.__name__ == 'Fletcher32':
+                    return True
+            return False
+        else:
+            raise Exception(f'Unexpected dataset object type: {type(self._dataset_object)}')
+
+    def __repr__(self):  # type: ignore
+        return f"<{self.__class__.__name__}: {self.name}>"
+
+    def __str__(self):
+        return f"<{self.__class__.__name__}: {self.name}>"
 
     def __getitem__(self, args, new_dtype=None):
         if isinstance(self._dataset_object, h5py.Dataset):
@@ -128,7 +169,6 @@ class LindiH5pyDataset(h5py.Dataset):
             if new_dtype is not None:
                 raise Exception("new_dtype is not supported for zarr.Array")
             ret = self._get_item_for_zarr(self._dataset_object, args)
-            ret = _resolve_references(ret)
         else:
             raise Exception(f"Unexpected type: {type(self._dataset_object)}")
         return ret
@@ -178,7 +218,7 @@ class LindiH5pyDataset(h5py.Dataset):
             if selection != ():
                 raise TypeError(f'Cannot slice a scalar dataset with {selection}')
             return zarr_array[0]
-        return zarr_array[selection]
+        return decode_references(zarr_array[selection])
 
     def _get_external_hdf5_client(self, url: str) -> h5py.File:
         if url not in _external_hdf5_clients:
@@ -189,25 +229,20 @@ class LindiH5pyDataset(h5py.Dataset):
             _external_hdf5_clients[url] = h5py.File(ff, "r")
         return _external_hdf5_clients[url]
 
+    @property
+    def ref(self):
+        if self._readonly:
+            raise ValueError("Cannot get ref on read-only object")
+        assert self._writer is not None
+        return self._writer.ref
 
-def _resolve_references(x: Any):
-    if isinstance(x, dict):
-        # x should only be a dict when x represents a converted reference
-        if '_REFERENCE' in x:
-            return LindiH5pyReference(x['_REFERENCE'])
-        else:  # pragma: no cover
-            raise Exception(f"Unexpected dict in selection: {x}")
-    elif isinstance(x, list):
-        # Replace any references in the list with the resolved ref in-place
-        for i, v in enumerate(x):
-            x[i] = _resolve_references(v)
-    elif isinstance(x, np.ndarray):
-        if x.dtype == object or x.dtype is None:
-            # Replace any references in the object array with the resolved ref in-place
-            view_1d = x.reshape(-1)
-            for i in range(len(view_1d)):
-                view_1d[i] = _resolve_references(view_1d[i])
-    return x
+    ##############################
+    # Write
+    def __setitem__(self, args, val):
+        if self._readonly:
+            raise ValueError("Cannot set items on read-only object")
+        assert self._writer is not None
+        self._writer.__setitem__(args, val)
 
 
 class LindiH5pyDatasetCompoundFieldSelection:
@@ -271,4 +306,4 @@ class LindiH5pyDatasetCompoundFieldSelection:
         return self._data.size
 
     def __getitem__(self, selection):
-        return self._data[selection]
+        return decode_references(self._data[selection])
