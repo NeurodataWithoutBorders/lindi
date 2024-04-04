@@ -20,6 +20,14 @@ class LindiH5pyGroup(h5py.Group):
     def __init__(self, _group_object: Union[h5py.Group, zarr.Group], _file: "LindiH5pyFile"):
         self._group_object = _group_object
         self._file = _file
+        self._readonly = _file.mode not in ['r+']
+
+        # The self._write object handles all the writing operations
+        from .writers.LindiH5pyGroupWriter import LindiH5pyGroupWriter  # avoid circular import
+        if self._readonly:
+            self._writer = None
+        else:
+            self._writer = LindiH5pyGroupWriter(self)
 
     def __getitem__(self, name):
         if isinstance(self._group_object, h5py.Group):
@@ -49,12 +57,12 @@ class LindiH5pyGroup(h5py.Group):
                 soft_link = x.attrs.get('_SOFT_LINK', None)
                 if soft_link is not None:
                     link_path = soft_link['path']
-                    target_grp = self._file.get(link_path)
-                    if not isinstance(target_grp, LindiH5pyGroup):
+                    target_item = self._file.get(link_path)
+                    if not isinstance(target_item, (LindiH5pyGroup, LindiH5pyDataset)):
                         raise Exception(
-                            f"Expected a group at {link_path} but got {type(x)}"
+                            f"Expected a group or dataset at {link_path} but got {type(target_item)}"
                         )
-                    return target_grp
+                    return target_item
                 return LindiH5pyGroup(x, self._file)
             elif isinstance(x, zarr.Array):
                 return LindiH5pyDataset(x, self._file)
@@ -115,12 +123,22 @@ class LindiH5pyGroup(h5py.Group):
     def __contains__(self, name):
         return self._group_object.__contains__(name)
 
+    def __str__(self):
+        return f'<{self.__class__.__name__}: {self.name}>'
+
+    def __repr__(self):
+        return f'<{self.__class__.__name__}: {self.name}>'
+
     @property
     def id(self):
         if isinstance(self._group_object, h5py.Group):
             return LindiH5pyGroupId(self._group_object.id)
         elif isinstance(self._group_object, zarr.Group):
-            return LindiH5pyGroupId(None)
+            # This is commented out for now because pynwb gets the id of a group
+            # in at least one place. But that could be avoided in the future, at
+            # which time, we could uncomment this.
+            # print('WARNING: Accessing low-level id of LindiH5pyGroup. This should be avoided.')
+            return LindiH5pyGroupId('')
         else:
             raise Exception(f'Unexpected group object type: {type(self._group_object)}')
 
@@ -136,4 +154,49 @@ class LindiH5pyGroup(h5py.Group):
             attrs_type = 'zarr'
         else:
             raise Exception(f'Unexpected group object type: {type(self._group_object)}')
-        return LindiH5pyAttributes(self._group_object.attrs, attrs_type=attrs_type)
+        return LindiH5pyAttributes(self._group_object.attrs, attrs_type=attrs_type, readonly=self._file.mode == 'r')
+
+    @property
+    def ref(self):
+        if self._readonly:
+            raise ValueError("Cannot get ref on read-only object")
+        assert self._writer is not None
+        return self._writer.ref
+
+    ##############################
+    # write
+    def create_group(self, name, track_order=None):
+        if self._readonly:
+            raise Exception('Cannot create group in read-only mode')
+        assert self._writer is not None
+        return self._writer.create_group(name, track_order=track_order)
+
+    def require_group(self, name):
+        if self._readonly:
+            raise Exception('Cannot require group in read-only mode')
+        assert self._writer is not None
+        return self._writer.require_group(name)
+
+    def create_dataset(self, name, shape=None, dtype=None, data=None, **kwds):
+        if self._readonly:
+            raise Exception('Cannot create dataset in read-only mode')
+        assert self._writer is not None
+        return self._writer.create_dataset(name, shape=shape, dtype=dtype, data=data, **kwds)
+
+    def require_dataset(self, name, shape, dtype, exact=False, **kwds):
+        if self._readonly:
+            raise Exception('Cannot require dataset in read-only mode')
+        assert self._writer is not None
+        return self._writer.require_dataset(name, shape, dtype, exact=exact, **kwds)
+
+    def __setitem__(self, name, obj):
+        if self._readonly:
+            raise Exception('Cannot set item in read-only mode')
+        assert self._writer is not None
+        return self._writer.__setitem__(name, obj)
+
+    def __delitem__(self, name):
+        if self._readonly:
+            raise Exception('Cannot delete item in read-only mode')
+        assert self._writer is not None
+        return self._writer.__delitem__(name)

@@ -24,7 +24,7 @@ class DandiFileSegmentReader(FileSegmentReader):
         # renewing periodically. remfile.File will accept such an object, and
         # will call .get_url() as needed.
         dandi_file = DandiFile(url)
-        self.remfile = remfile.File(dandi_file, verbose=True)
+        self.remfile = remfile.File(dandi_file, verbose=False)
 
     def read(self, offset: int, length: int):
         self.remfile.seek(offset)

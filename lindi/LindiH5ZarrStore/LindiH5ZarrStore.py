@@ -7,14 +7,17 @@ import zarr
 import remfile
 from zarr.storage import Store, MemoryStore
 import h5py
-from ._zarr_info_for_h5_dataset import _zarr_info_for_h5_dataset
 from ._util import (
     _read_bytes,
     _get_chunk_byte_range,
     _get_byte_range_for_contiguous_dataset,
+    _join,
+    _get_chunk_names_for_dataset
 )
-from ._h5_attr_to_zarr_attr import _h5_attr_to_zarr_attr
-from ._utils import _join, _get_chunk_names_for_dataset, _reformat_json
+from ..conversion.attr_conversion import h5_to_zarr_attr
+from ..conversion.reformat_json import reformat_json
+from ..conversion.h5_filters_to_codecs import h5_filters_to_codecs
+from ..conversion.create_zarr_dataset_from_h5_data import create_zarr_dataset_from_h5_data
 
 
 @dataclass
@@ -66,9 +69,8 @@ class LindiH5ZarrStore(Store):
 
         # Some datasets do not correspond to traditional chunked datasets. For
         # those datasets, we need to store the inline data so that we can return
-        # it when the chunk is requested. We store the inline data in a
-        # dictionary with the dataset name as the key. The values are the bytes.
-        self._inline_data_for_arrays: Dict[str, bytes] = {}
+        # it when the chunk is requested.
+        self._inline_arrays: Dict[str, InlineArray] = {}
 
         self._external_array_links: Dict[str, Union[dict, None]] = {}
 
@@ -136,6 +138,12 @@ class LindiH5ZarrStore(Store):
             # Otherwise, we assume it is a chunk file
             return self._get_chunk_file_bytes(key_parent=key_parent, key_name=key_name)
 
+    def get(self, key, default=None):
+        try:
+            return self.__getitem__(key)
+        except KeyError:
+            return default
+
     def __contains__(self, key):
         """Check if a key is in the store (used by zarr)."""
         # it would be nice if we didn't have to repeat the logic from __getitem__
@@ -175,16 +183,23 @@ class LindiH5ZarrStore(Store):
             if external_array_link is not None:
                 # The chunk files do not exist for external array links
                 return False
+            if np.prod(h5_item.shape) == 0:
+                return False
             if h5_item.ndim == 0:
                 return key_name == "0"
             chunk_name_parts = key_name.split(".")
             if len(chunk_name_parts) != h5_item.ndim:
                 return False
-            shape = h5_item.shape
-            chunks = h5_item.chunks or shape
-            chunk_coords_shape = [
-                (shape[i] + chunks[i] - 1) // chunks[i] for i in range(len(shape))
-            ]
+            inline_array = self._get_inline_array(key, h5_item)
+            if inline_array.is_inline:
+                chunk_coords_shape = (1,) * h5_item.ndim
+            else:
+                shape = h5_item.shape
+                chunks = h5_item.chunks or shape
+                chunk_coords_shape = [
+                    (shape[i] + chunks[i] - 1) // chunks[i] if chunks[i] != 0 else 0
+                    for i in range(len(shape))
+                ]
             chunk_coords = tuple(int(x) for x in chunk_name_parts)
             for i, c in enumerate(chunk_coords):
                 if c < 0 or c >= chunk_coords_shape[i]:
@@ -222,7 +237,7 @@ class LindiH5ZarrStore(Store):
                 # if it's a soft link, we return a special attribute and ignore
                 # the rest of the attributes because they should be stored in
                 # the target of the soft link
-                return _reformat_json(json.dumps({
+                return reformat_json(json.dumps({
                     "_SOFT_LINK": {
                         "path": link.path
                     }
@@ -234,28 +249,18 @@ class LindiH5ZarrStore(Store):
         memory_store = MemoryStore()
         dummy_group = zarr.group(store=memory_store)
         for k, v in h5_item.attrs.items():
-            v2 = _h5_attr_to_zarr_attr(v, label=f"{parent_key} {k}", h5f=self._h5f)
+            v2 = h5_to_zarr_attr(v, label=f"{parent_key} {k}", h5f=self._h5f)
             if v2 is not None:
                 dummy_group.attrs[k] = v2
         if isinstance(h5_item, h5py.Dataset):
-            if h5_item.ndim == 0:
-                dummy_group.attrs["_SCALAR"] = True
-            if h5_item.dtype.kind == "V":  # compound type
-                compound_dtype = [
-                    [name, str(h5_item.dtype[name])]
-                    for name in h5_item.dtype.names
-                ]
-                # For example: [['x', 'uint32'], ['y', 'uint32'], ['weight', 'float32']]
-                dummy_group.attrs["_COMPOUND_DTYPE"] = compound_dtype
+            inline_array = self._get_inline_array(parent_key, h5_item)
+            for k, v in inline_array.additional_zarr_attrs.items():
+                dummy_group.attrs[k] = v
             external_array_link = self._get_external_array_link(parent_key, h5_item)
             if external_array_link is not None:
                 dummy_group.attrs["_EXTERNAL_ARRAY_LINK"] = external_array_link
-        zattrs_content = _reformat_json(memory_store.get(".zattrs"))
-        if zattrs_content is not None:
-            return zattrs_content
-        else:
-            # No attributes, so we return an empty JSON object
-            return "{}".encode("utf-8")
+        zattrs_content = reformat_json(memory_store.get(".zattrs") or "{}".encode("utf-8"))
+        return zattrs_content
 
     def _get_zgroup_bytes(self, parent_key: str):
         """Get the .zgroup JSON text for a group"""
@@ -268,7 +273,13 @@ class LindiH5ZarrStore(Store):
         # from it.
         memory_store = MemoryStore()
         zarr.group(store=memory_store)
-        return _reformat_json(memory_store.get(".zgroup"))
+        return reformat_json(memory_store.get(".zgroup"))
+
+    def _get_inline_array(self, key: str, h5_dataset: h5py.Dataset):
+        if key in self._inline_arrays:
+            return self._inline_arrays[key]
+        self._inline_arrays[key] = InlineArray(h5_dataset)
+        return self._inline_arrays[key]
 
     def _get_zarray_bytes(self, parent_key: str):
         """Get the .zarray JSON text for a dataset"""
@@ -278,9 +289,12 @@ class LindiH5ZarrStore(Store):
         if not isinstance(h5_item, h5py.Dataset):
             raise Exception(f"Item {parent_key} is not a dataset")
         # get the shape, chunks, dtype, and filters from the h5 dataset
-        info = _zarr_info_for_h5_dataset(h5_item)
-        if info.inline_data is not None:
-            self._inline_data_for_arrays[parent_key] = info.inline_data
+        inline_array = self._get_inline_array(parent_key, h5_item)
+        if inline_array.is_inline:
+            return inline_array.zarray_bytes
+
+        filters = h5_filters_to_codecs(h5_item)
+
         # We create a dummy zarr dataset with the appropriate shape, chunks,
         # dtype, and filters and then copy the .zarray JSON text from it
         memory_store = MemoryStore()
@@ -290,16 +304,18 @@ class LindiH5ZarrStore(Store):
         # to get the .zarray JSON text from the dummy group.
         dummy_group.create_dataset(
             name="dummy_array",
-            shape=info.shape,
-            chunks=info.chunks,
-            dtype=info.dtype,
+            shape=h5_item.shape,
+            # It's important to not have chunks be None here because that would
+            # let zarr choose an optimal chunking, whereas we need this to reflect
+            # the actual chunking in the HDF5 file.
+            chunks=h5_item.chunks if h5_item.chunks is not None else h5_item.shape,
+            dtype=h5_item.dtype,
             compressor=None,
             order="C",
-            fill_value=info.fill_value,
-            filters=info.filters,
-            object_codec=info.object_codec,
+            fill_value=h5_item.fillvalue,
+            filters=filters
         )
-        zarray_text = _reformat_json(memory_store.get("dummy_array/.zarray"))
+        zarray_text = reformat_json(memory_store.get("dummy_array/.zarray"))
 
         return zarray_text
 
@@ -341,18 +357,19 @@ class LindiH5ZarrStore(Store):
                     f"Chunk name {key_name} does not match dataset dimensions"
                 )
 
-        # Check whether we have inline data for this array. This would be set
-        # when we created the .zarray JSON text for the dataset. Note that this
-        # means that the .zarray file needs to be read before the chunk files,
-        # which should always be the case (I assume).
-        if key_parent in self._inline_data_for_arrays:
-            x = self._inline_data_for_arrays[key_parent]
-            if isinstance(x, bytes):
-                return None, None, x
-            else:
+        # In the case of shape 0, we raise an exception because we shouldn't be here
+        if np.prod(h5_item.shape) == 0:
+            raise Exception(
+                f"Chunk file {key_parent}/{key_name} is not present because the dataset has shape 0."
+            )
+
+        inline_array = self._get_inline_array(key_parent, h5_item)
+        if inline_array.is_inline:
+            if key_name != inline_array.chunk_fname:
                 raise Exception(
-                    f"Inline data for dataset {key_parent} is not bytes. It is {type(x)}"
+                    f"Chunk name {key_name} does not match dataset dimensions for inline array {key_parent}"
                 )
+            return None, None, inline_array.chunk_bytes
 
         # If this is a scalar, then the data should have been inline
         if h5_item.ndim == 0:
@@ -366,7 +383,7 @@ class LindiH5ZarrStore(Store):
         for i, c in enumerate(chunk_coords):
             if c < 0 or c >= h5_item.shape[i]:
                 raise Exception(
-                    f"Chunk coordinates {chunk_coords} out of range for dataset {key_parent}"
+                    f"Chunk coordinates {chunk_coords} out of range for dataset {key_parent} with dtype {h5_item.dtype}"
                 )
         if h5_item.chunks is not None:
             # Get the byte range in the file for the chunk.
@@ -376,7 +393,7 @@ class LindiH5ZarrStore(Store):
             # coordinates are (0, 0, 0, ...)
             if chunk_coords != (0,) * h5_item.ndim:
                 raise Exception(
-                    f"Chunk coordinates {chunk_coords} are not (0, 0, 0, ...) for contiguous dataset {key_parent}"
+                    f"Chunk coordinates {chunk_coords} are not (0, 0, 0, ...) for contiguous dataset {key_parent} with dtype {h5_item.dtype} and shape {h5_item.shape}"
                 )
             # Get the byte range in the file for the contiguous dataset
             byte_offset, byte_count = _get_byte_range_for_contiguous_dataset(h5_item)
@@ -395,7 +412,8 @@ class LindiH5ZarrStore(Store):
             shape = h5_item.shape
             chunks = h5_item.chunks
             chunk_coords_shape = [
-                (shape[i] + chunks[i] - 1) // chunks[i] for i in range(len(shape))
+                (shape[i] + chunks[i] - 1) // chunks[i] if chunks[i] != 0 else 0
+                for i in range(len(shape))
             ]
             num_chunks = np.prod(chunk_coords_shape)
             if num_chunks > self._opts.num_dataset_chunks_threshold:
@@ -509,8 +527,8 @@ class LindiH5ZarrStore(Store):
                         _process_dataset(_join(key, k))
 
         def _process_dataset(key):
-            # Add the .zattrs and .zarray files for the dataset
-            zattrs_bytes = self.get(f"{key}/.zattrs")
+            # Add the .zattrs and .zarray files for the dataset=
+            zattrs_bytes = self[f"{key}/.zattrs"]
             assert zattrs_bytes is not None
             if zattrs_bytes != b"{}":  # don't include empty zattrs
                 _add_ref(f"{key}/.zattrs", zattrs_bytes)
@@ -528,7 +546,8 @@ class LindiH5ZarrStore(Store):
                 shape = zarray_dict["shape"]
                 chunks = zarray_dict.get("chunks", None)
                 chunk_coords_shape = [
-                    (shape[i] + chunks[i] - 1) // chunks[i]
+                    # the shape could be zero -- for example dandiset 000559 - acquisition/depth_video/data has shape [0, 0, 0]
+                    (shape[i] + chunks[i] - 1) // chunks[i] if chunks[i] != 0 else 0
                     for i in range(len(shape))
                 ]
                 # For example, chunk_names could be ['0', '1', '2', ...]
@@ -556,3 +575,78 @@ class LindiH5ZarrStore(Store):
         # Process the groups recursively starting with the root group
         _process_group("", self._h5f)
         return ret
+
+
+class InlineArray:
+    def __init__(self, h5_dataset: h5py.Dataset):
+        self._additional_zarr_attributes = {}
+        if h5_dataset.shape == ():
+            self._additional_zarr_attributes["_SCALAR"] = True
+            self._is_inline = True
+            ...
+        elif h5_dataset.dtype.kind in ['i', 'u', 'f']:  # integer or float
+            self._is_inline = False
+        else:
+            self._is_inline = True
+            if h5_dataset.dtype.kind == "V" and h5_dataset.dtype.fields is not None:  # compound type
+                compound_dtype = []
+                for name in h5_dataset.dtype.names:
+                    tt = h5_dataset.dtype[name]
+                    if tt == h5py.special_dtype(ref=h5py.Reference):
+                        tt = "<REFERENCE>"
+                    compound_dtype.append((name, str(tt)))
+                # For example: [['x', 'uint32'], ['y', 'uint32'], ['weight', 'float32']]
+                self._additional_zarr_attributes["_COMPOUND_DTYPE"] = compound_dtype
+        if self._is_inline:
+            memory_store = MemoryStore()
+            dummy_group = zarr.group(store=memory_store)
+            size_is_zero = np.prod(h5_dataset.shape) == 0
+            create_zarr_dataset_from_h5_data(
+                zarr_parent_group=dummy_group,
+                name='X',
+                # For inline data it's important for now that we enforce a
+                # single chunk because the rest of the code assumes a single
+                # chunk for inline data. The assumption is that the inline
+                # arrays are not going to be very large.
+                h5_chunks=h5_dataset.shape if h5_dataset.shape != () and not size_is_zero else None,
+                label=f'{h5_dataset.name}',
+                h5_shape=h5_dataset.shape,
+                h5_dtype=h5_dataset.dtype,
+                h5f=h5_dataset.file,
+                h5_data=h5_dataset[...]
+            )
+            self._zarray_bytes = reformat_json(memory_store['X/.zarray'])
+            if not size_is_zero:
+                if h5_dataset.ndim == 0:
+                    chunk_fname = '0'
+                else:
+                    chunk_fname = '.'.join(['0'] * h5_dataset.ndim)
+                self._chunk_fname = chunk_fname
+                self._chunk_bytes = memory_store[f'X/{chunk_fname}']
+            else:
+                self._chunk_fname = None
+                self._chunk_bytes = None
+        else:
+            self._zarray_bytes = None
+            self._chunk_fname = None
+            self._chunk_bytes = None
+
+    @property
+    def is_inline(self):
+        return self._is_inline
+
+    @property
+    def additional_zarr_attrs(self):
+        return self._additional_zarr_attributes
+
+    @property
+    def zarray_bytes(self):
+        return self._zarray_bytes
+
+    @property
+    def chunk_fname(self):
+        return self._chunk_fname
+
+    @property
+    def chunk_bytes(self):
+        return self._chunk_bytes

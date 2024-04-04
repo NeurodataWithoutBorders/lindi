@@ -1,4 +1,4 @@
-from typing import Union
+from typing import Union, Literal
 import json
 import tempfile
 import urllib.request
@@ -14,19 +14,35 @@ from .LindiReferenceFileSystemStore import LindiReferenceFileSystemStore
 
 
 class LindiH5pyFile(h5py.File):
-    def __init__(self, _file_object: Union[h5py.File, zarr.Group]):
+    def __init__(self, _file_object: Union[h5py.File, zarr.Group], *, _zarr_store: Union[ZarrStore, None] = None, _mode: Literal["r", "r+"] = "r"):
         """
         Do not use this constructor directly. Instead, use:
         from_reference_file_system, from_zarr_store, from_zarr_group,
         or from_h5py_file
         """
         self._file_object = _file_object
+        self._zarr_store = _zarr_store
+        self._mode: Literal['r', 'r+'] = _mode
         self._the_group = LindiH5pyGroup(_file_object, self)
 
     @staticmethod
-    def from_reference_file_system(rfs: Union[dict, str]):
+    def from_reference_file_system(rfs: Union[dict, str], mode: Literal["r", "r+"] = "r"):
         """
         Create a LindiH5pyFile from a reference file system.
+
+        Parameters
+        ----------
+        rfs : Union[dict, str]
+            The reference file system. This can be a dictionary or a URL or path
+            to a .zarr.json file.
+        mode : Literal["r", "r+"], optional
+            The mode to open the file object in, by default "r". If the mode is
+            "r", the file object will be read-only. If the mode is "r+", the
+            file will be read-write. However, if the rfs is a string (URL or
+            path), the file itself will not be modified on changes, but the
+            internal in-memory representation will be modified. Use
+            to_reference_file_system() to export the updated reference file
+            system to the same file or a new file.
         """
         if isinstance(rfs, str):
             if rfs.startswith("http") or rfs.startswith("https"):
@@ -36,43 +52,87 @@ class LindiH5pyFile(h5py.File):
                     with open(filename, "r") as f:
                         data = json.load(f)
                     assert isinstance(data, dict)  # prevent infinite recursion
-                    return LindiH5pyFile.from_reference_file_system(data)
+                    return LindiH5pyFile.from_reference_file_system(data, mode=mode)
             else:
                 with open(rfs, "r") as f:
                     data = json.load(f)
                 assert isinstance(data, dict)  # prevent infinite recursion
-                return LindiH5pyFile.from_reference_file_system(data)
+                return LindiH5pyFile.from_reference_file_system(data, mode=mode)
         elif isinstance(rfs, dict):
             # This store does not need to be closed
             store = LindiReferenceFileSystemStore(rfs)
-            return LindiH5pyFile.from_zarr_store(store)
+            return LindiH5pyFile.from_zarr_store(store, mode=mode)
         else:
             raise Exception(f"Unhandled type for rfs: {type(rfs)}")
 
     @staticmethod
-    def from_zarr_store(zarr_store: ZarrStore):
+    def from_zarr_store(zarr_store: ZarrStore, mode: Literal["r", "r+"] = "r"):
         """
         Create a LindiH5pyFile from a zarr store.
+
+        Parameters
+        ----------
+        zarr_store : ZarrStore
+            The zarr store.
+        mode : Literal["r", "r+"], optional
+            The mode to open the file object in, by default "r". If the mode is
+            "r", the file object will be read-only. For write mode to work, the
+            zarr store will need to be writeable as well.
         """
         # note that even though the function is called "open", the zarr_group
         # does not need to be closed
-        zarr_group = zarr.open(store=zarr_store, mode="r")
+        zarr_group = zarr.open(store=zarr_store, mode=mode)
         assert isinstance(zarr_group, zarr.Group)
-        return LindiH5pyFile.from_zarr_group(zarr_group)
+        return LindiH5pyFile.from_zarr_group(zarr_group, _zarr_store=zarr_store, mode=mode)
 
     @staticmethod
-    def from_zarr_group(zarr_group: zarr.Group):
+    def from_zarr_group(zarr_group: zarr.Group, *, mode: Literal["r", "r+"] = "r", _zarr_store: Union[ZarrStore, None] = None):
         """
         Create a LindiH5pyFile from a zarr group.
+
+        Parameters
+        ----------
+        zarr_group : zarr.Group
+            The zarr group.
+        mode : Literal["r", "r+"], optional
+            The mode to open the file object in, by default "r". If the mode is
+            "r", the file object will be read-only. For write mode to work, the
+            zarr store will need to be writeable as well.
+        _zarr_store : Union[ZarrStore, None], optional
+            The zarr store, internally set for use with
+            to_reference_file_system().
+
+        See from_zarr_store().
         """
-        return LindiH5pyFile(zarr_group)
+        return LindiH5pyFile(zarr_group, _zarr_store=_zarr_store, _mode=mode)
 
     @staticmethod
     def from_h5py_file(h5py_file: h5py.File):
         """
         Create a LindiH5pyFile from an h5py file.
+
+        This is used mainly for testing and may be removed in the future.
+
+        Parameters
+        ----------
+        h5py_file : h5py.File
+            The h5py file.
         """
         return LindiH5pyFile(h5py_file)
+
+    def to_reference_file_system(self):
+        """
+        Export the internal in-memory representation to a reference file system.
+        In order to use this, the file object needs to have been created using
+        from_reference_file_system().
+        """
+        if self._zarr_store is None:
+            raise Exception("Cannot convert to reference file system without zarr store")
+        if not isinstance(self._zarr_store, LindiReferenceFileSystemStore):
+            raise Exception(f"Unexpected type for zarr store: {type(self._zarr_store)}")
+        rfs = self._zarr_store.rfs
+        rfs_copy = json.loads(json.dumps(rfs))
+        return rfs_copy
 
     @property
     def attrs(self):  # type: ignore
@@ -82,7 +142,7 @@ class LindiH5pyFile(h5py.File):
             attrs_type = 'zarr'
         else:
             raise Exception(f'Unexpected file object type: {type(self._file_object)}')
-        return LindiH5pyAttributes(self._file_object.attrs, attrs_type=attrs_type)
+        return LindiH5pyAttributes(self._file_object.attrs, attrs_type=attrs_type, readonly=self.mode == "r")
 
     @property
     def filename(self):
@@ -98,15 +158,9 @@ class LindiH5pyFile(h5py.File):
     def driver(self):
         raise Exception("Getting driver is not allowed")
 
-    # @property
-    # def mode(self):
-    #     if isinstance(self._file_object, h5py.File):
-    #         return self._file_object.mode
-    #     elif isinstance(self._file_object, zarr.Group):
-    #         # hard-coded to read-only
-    #         return "r"
-    #     else:
-    #         raise Exception(f"Unhandled type: {type(self._file_object)}")
+    @property
+    def mode(self):
+        return self._mode
 
     @property
     def libver(self):
@@ -137,8 +191,53 @@ class LindiH5pyFile(h5py.File):
     def __exit__(self, *args):
         self.close()
 
+    def __str__(self):
+        return f'<LindiH5pyFile "{self._file_object}">'
+
     def __repr__(self):
         return f'<LindiH5pyFile "{self._file_object}">'
+
+    def __bool__(self):
+        # This is called when checking if the file is open
+        if isinstance(self._file_object, h5py.File):
+            return self._file_object.__bool__()
+        elif isinstance(self._file_object, zarr.Group):
+            return True
+        else:
+            raise Exception(f"Unexpected type for file object: {type(self._file_object)}")
+
+    def __hash__(self):
+        # This is called for example when using a file as a key in a dictionary
+        if isinstance(self._file_object, h5py.File):
+            return self._file_object.__hash__()
+        else:
+            return id(self)
+
+    def copy(self, source, dest, name=None,
+             shallow=False, expand_soft=False, expand_external=False,
+             expand_refs=False, without_attrs=False):
+        if shallow:
+            raise Exception("shallow is not implemented for copy")
+        if expand_soft:
+            raise Exception("expand_soft is not implemented for copy")
+        if expand_external:
+            raise Exception("expand_external is not implemented for copy")
+        if expand_refs:
+            raise Exception("expand_refs is not implemented for copy")
+        if without_attrs:
+            raise Exception("without_attrs is not implemented for copy")
+        if name is None:
+            raise Exception("name must be provided for copy")
+        src_item = self._get_item(source)
+        if not isinstance(src_item, (h5py.Group, h5py.Dataset)):
+            raise Exception(f"Unexpected type for source in copy: {type(src_item)}")
+        _recursive_copy(src_item, dest, name=name)
+
+    def __delitem__(self, name):
+        parent_key = '/'.join(name.split('/')[:-1])
+        grp = self[parent_key]
+        assert isinstance(grp, LindiH5pyGroup)
+        del grp[name.split('/')[-1]]
 
     # Group methods
     def __getitem__(self, name):  # type: ignore
@@ -209,6 +308,34 @@ class LindiH5pyFile(h5py.File):
     def name(self):
         return self._the_group.name
 
+    @property
+    def ref(self):
+        return self._the_group.ref
+
+    ##############################
+    # write
+    def create_group(self, name, track_order=None):
+        if self._mode not in ['r+']:
+            raise Exception("Cannot create group in read-only mode")
+        if track_order is not None:
+            raise Exception("track_order is not supported (I don't know what it is)")
+        return self._the_group.create_group(name)
+
+    def require_group(self, name):
+        if self._mode not in ['r+']:
+            raise Exception("Cannot require group in read-only mode")
+        return self._the_group.require_group(name)
+
+    def create_dataset(self, name, shape=None, dtype=None, data=None, **kwds):
+        if self._mode not in ['r+']:
+            raise Exception("Cannot create dataset in read-only mode")
+        return self._the_group.create_dataset(name, shape=shape, dtype=dtype, data=data, **kwds)
+
+    def require_dataset(self, name, shape, dtype, exact=False, **kwds):
+        if self._mode not in ['r+']:
+            raise Exception("Cannot require dataset in read-only mode")
+        return self._the_group.require_dataset(name, shape, dtype, exact=exact, **kwds)
+
 
 def _download_file(url: str, filename: str) -> None:
     headers = {
@@ -218,3 +345,60 @@ def _download_file(url: str, filename: str) -> None:
     with urllib.request.urlopen(req) as response:
         with open(filename, "wb") as f:
             f.write(response.read())
+
+
+def _recursive_copy(src_item: Union[h5py.Group, h5py.Dataset], dest: h5py.File, name: str) -> None:
+    if isinstance(src_item, h5py.Group):
+        dst_item = dest.create_group(name)
+        for k, v in src_item.attrs.items():
+            dst_item.attrs[k] = v
+        for k, v in src_item.items():
+            _recursive_copy(v, dest, name=f'{name}/{k}')
+    elif isinstance(src_item, h5py.Dataset):
+        # Let's specially handle the case where the source and dest files
+        # are LindiH5pyFiles with reference file systems as the internal
+        # representation. In this case, we don't need to copy the actual
+        # data because we can copy the reference.
+        if isinstance(src_item.file, LindiH5pyFile) and isinstance(dest, LindiH5pyFile):
+            if src_item.name is None:
+                raise Exception("src_item.name is None")
+            src_item_name = _without_initial_slash(src_item.name)
+            src_zarr_store = src_item.file._zarr_store
+            dst_zarr_store = dest._zarr_store
+            if src_zarr_store is not None and dst_zarr_store is not None:
+                if isinstance(src_zarr_store, LindiReferenceFileSystemStore) and isinstance(dst_zarr_store, LindiReferenceFileSystemStore):
+                    src_rfs = src_zarr_store.rfs
+                    dst_rfs = dst_zarr_store.rfs
+                    src_ref_keys = list(src_rfs['refs'].keys())
+                    for src_ref_key in src_ref_keys:
+                        if src_ref_key.startswith(f'{src_item_name}/'):
+                            dst_ref_key = f'{name}/{src_ref_key[len(src_item_name) + 1:]}'
+                            # Even though it's not expected to be a problem, we
+                            # do a deep copy here because a problem resulting
+                            # from one rfs being modified affecting another
+                            # would be very difficult to debug.
+                            dst_rfs['refs'][dst_ref_key] = _deep_copy(src_rfs['refs'][src_ref_key])
+                    return
+
+        dst_item = dest.create_dataset(name, data=src_item[()])
+        for k, v in src_item.attrs.items():
+            dst_item.attrs[k] = v
+    else:
+        raise Exception(f"Unexpected type for src_item in _recursive_copy: {type(src_item)}")
+
+
+def _without_initial_slash(s: str) -> str:
+    if s.startswith('/'):
+        return s[1:]
+    return s
+
+
+def _deep_copy(obj):
+    if isinstance(obj, dict):
+        return {k: _deep_copy(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [_deep_copy(v) for v in obj]
+    elif isinstance(obj, tuple):
+        return tuple(_deep_copy(v) for v in obj)
+    else:
+        return obj
