@@ -97,25 +97,31 @@ class LindiStagingStore(ZarrStore):
         self,
         *,
         on_store_blob: StoreFileFunc,
-        on_store_rfs: StoreFileFunc,
+        on_store_main: StoreFileFunc,
         consolidate_chunks: bool = True
     ):
         """
         Consolidate the chunks in the staging area, upload them to a storage
         system, updating the references in the base store, and then upload the
-        updated reference file system.
+        updated reference file system .json file.
 
         Parameters
         ----------
         on_store_blob : StoreFileFunc
-            A function that takes a string path to a file, stores it somewhere,
-            and returns a string URL (or local path).
-        on_store_rfs : StoreFileFunc
-            A function that takes a string path to a file, stores it somewhere,
-            and returns a string URL (or local path).
+            A function that takes a string path to a blob file, stores it
+            somewhere, and returns a string URL (or local path).
+        on_store_main : StoreFileFunc
+            A function that takes a string path to the main .json file, stores
+            it somewhere, and returns a string URL (or local path).
         consolidate_chunks : bool
             If True (the default), consolidate the chunks in the staging area
             before uploading.
+
+        Returns
+        -------
+        str
+            The URL (or local path) of the uploaded reference file system .json
+            file.
         """
         if consolidate_chunks:
             self.consolidate_chunks()
@@ -133,7 +139,7 @@ class LindiStagingStore(ZarrStore):
             rfs_fname = f"{tmpdir}/rfs.json"
             with open(rfs_fname, 'w') as f:
                 json.dump(rfs, f, indent=2, sort_keys=True)
-            return on_store_rfs(rfs_fname)
+            return on_store_main(rfs_fname)
 
     def consolidate_chunks(self):
         """

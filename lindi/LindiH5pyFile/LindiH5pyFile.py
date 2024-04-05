@@ -345,6 +345,15 @@ class LindiH5pyFile(h5py.File):
             raise Exception("Cannot require dataset in read-only mode")
         return self._the_group.require_dataset(name, shape, dtype, exact=exact, **kwds)
 
+    ##############################
+    # staging store
+    @property
+    def staging_store(self):
+        store = self._zarr_store
+        if not isinstance(store, LindiStagingStore):
+            return None
+        return store
+
 
 def _download_file(url: str, filename: str) -> None:
     headers = {
