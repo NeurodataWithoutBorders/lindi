@@ -3,9 +3,9 @@ name = "lindi"
 version = "0.2.0"
 description = ""
 authors = [
-    { name = "Jeremy Magland", email = "jmagland@flatironinstitute.org" },
-    { name = "Ryan Ly", email = "rly@lbl.gov" },
-    { name = "Oliver Ruebel", email = "oruebel@lbl.gov" }
+    "Jeremy Magland <jmagland@flatironinstitute.org>",
+    "Ryan Ly <rly@lbl.gov>",
+    "Oliver Ruebel <oruebel@lbl.gov>"
 ]
 readme = "README.md"
 
