@@ -14,11 +14,6 @@ if TYPE_CHECKING:
     from .LindiH5pyFile import LindiH5pyFile  # pragma: no cover
 
 
-class LindiH5pyDatasetId:
-    def __init__(self, _h5py_dataset_id):
-        self._h5py_dataset_id = _h5py_dataset_id
-
-
 # This is a global list of external hdf5 clients, which are used by
 # possibly multiple LindiH5pyFile objects. The key is the URL of the
 # external hdf5 file, and the value is the h5py.File object.
@@ -31,6 +26,9 @@ class LindiH5pyDataset(h5py.Dataset):
         self._dataset_object = _dataset_object
         self._file = _file
         self._readonly = _file.mode not in ['r+']
+
+        # see comment in LindiH5pyGroup
+        self._id = f'{id(self._file)}/{self._dataset_object.name}'
 
         # See if we have the _COMPOUND_DTYPE attribute, which signifies that
         # this is a compound dtype
@@ -74,10 +72,8 @@ class LindiH5pyDataset(h5py.Dataset):
 
     @property
     def id(self):
-        if isinstance(self._dataset_object, h5py.Dataset):
-            return LindiH5pyDatasetId(self._dataset_object.id)
-        else:
-            return LindiH5pyDatasetId(None)
+        # see comment in LindiH5pyGroup
+        return self._id
 
     @property
     def shape(self):  # type: ignore
