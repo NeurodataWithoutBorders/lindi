@@ -28,6 +28,9 @@ class LindiH5pyFile(h5py.File):
         self._mode: Literal['r', 'r+'] = _mode
         self._the_group = LindiH5pyGroup(_file_object, self)
 
+        # see comment in LindiH5pyGroup
+        self._id = f'{id(self._file_object)}/'
+
     @staticmethod
     def from_reference_file_system(rfs: Union[dict, str], mode: Literal["r", "r+"] = "r", staging_area: Union[StagingArea, None] = None):
         """
@@ -308,7 +311,8 @@ class LindiH5pyFile(h5py.File):
 
     @property
     def id(self):
-        return self._the_group.id
+        # see comment in LindiH5pyGroup
+        return self._id
 
     @property
     def file(self):
