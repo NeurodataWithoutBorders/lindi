@@ -269,7 +269,8 @@ class LindiH5ZarrStore(Store):
             raise Exception("Store is closed")
         h5_item = self._h5f.get('/' + parent_key, None)
         if not isinstance(h5_item, h5py.Group):
-            raise Exception(f"Item {parent_key} is not a group")
+            # Important to raise a KeyError here because that's what zarr expects
+            raise KeyError(f"Item {parent_key} is not a group")
         # We create a dummy zarr group and then get the .zgroup JSON text
         # from it.
         memory_store = MemoryStore()
@@ -288,7 +289,8 @@ class LindiH5ZarrStore(Store):
             raise Exception("Store is closed")
         h5_item = self._h5f.get('/' + parent_key, None)
         if not isinstance(h5_item, h5py.Dataset):
-            raise Exception(f"Item {parent_key} is not a dataset")
+            # Important to raise a KeyError here because that's what zarr expects
+            raise KeyError(f"Item {parent_key} is not a dataset")
         # get the shape, chunks, dtype, and filters from the h5 dataset
         inline_array = self._get_inline_array(parent_key, h5_item)
         if inline_array.is_inline:

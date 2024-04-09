@@ -1,8 +1,12 @@
 [tool.poetry]
 name = "lindi"
-version = "0.1.1"
+version = "0.2.0"
 description = ""
-authors = []
+authors = [
+    "Jeremy Magland <jmagland@flatironinstitute.org>",
+    "Ryan Ly <rly@lbl.gov>",
+    "Oliver Ruebel <oruebel@lbl.gov>"
+]
 readme = "README.md"
 
 [tool.poetry.dependencies]
