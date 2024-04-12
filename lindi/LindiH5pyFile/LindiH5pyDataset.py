@@ -152,6 +152,15 @@ class LindiH5pyDataset(h5py.Dataset):
         else:
             raise Exception(f'Unexpected dataset object type: {type(self._dataset_object)}')
 
+    @property
+    def chunks(self):
+        if isinstance(self._dataset_object, h5py.Dataset):
+            return self._dataset_object.chunks
+        elif isinstance(self._dataset_object, zarr.Array):
+            return self._dataset_object.chunks
+        else:
+            raise Exception(f'Unexpected dataset object type: {type(self._dataset_object)}')
+
     def __repr__(self):  # type: ignore
         return f"<{self.__class__.__name__}: {self.name}>"
 
