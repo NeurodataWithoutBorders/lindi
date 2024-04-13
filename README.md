@@ -14,7 +14,7 @@ LINDI provides:
 
 - A specification for representing arbitrary HDF5 files as Zarr stores. This handles scalar datasets, references, soft links, and compound data types for datasets.
 - A Zarr wrapper for remote or local HDF5 files (LindiH5ZarrStore).
-- A mechanism for creating .zarr.json (or .nwb.json) files that reference data chunks in external files, inspired by [kerchunk](https://github.com/fsspec/kerchunk).
+- A mechanism for creating .lindi.json (or .nwb.lindi.json) files that reference data chunks in external files, inspired by [kerchunk](https://github.com/fsspec/kerchunk).
 - An h5py-like interface for reading from and writing to these data sources that can be used with [pynwb](https://pynwb.readthedocs.io/en/stable/).
 - A mechanism for uploading and downloading these data sources to and from cloud storage, including DANDI.
 
@@ -35,13 +35,13 @@ pip install -e .
 
 ## Use cases
 
-* Represent a remote NWB/HDF5 file as a .nwb.json file.
-* Read a local or remote .nwb.json file using pynwb or other tools.
-* Edit a .nwb.json file using pynwb or other tools.
-* Add datasets to a .nwb.json file using a local staging area.
-* Upload a .nwb.json file to a cloud storage service such as DANDI.
+* Represent a remote NWB/HDF5 file as a .nwb.lindi.json file.
+* Read a local or remote .nwb.lindi.json file using pynwb or other tools.
+* Edit a .nwb.lindi.json file using pynwb or other tools.
+* Add datasets to a .nwb.lindi.json file using a local staging area.
+* Upload a .nwb.lindi.json file to a cloud storage service such as DANDI.
 
-### Represent a remote NWB/HDF5 file as a .nwb.json file
+### Represent a remote NWB/HDF5 file as a .nwb.lindi.json file
 
 ```python
 import json
@@ -58,7 +58,7 @@ store = lindi.LindiH5ZarrStore.from_file(h5_url)
 rfs = store.to_reference_file_system()
 
 # Save it to a file for later use
-with open("example.zarr.json", "w") as f:
+with open("example.lindi.json", "w") as f:
     json.dump(rfs, f, indent=2)
 
 # Create an h5py-like client from the reference file system
@@ -70,13 +70,13 @@ with pynwb.NWBHDF5IO(file=client, mode="r") as io:
     print(nwbfile)
 ```
 
-### Read a local or remote .nwb.json file using pynwb or other tools
+### Read a local or remote .nwb.lindi.json file using pynwb or other tools
 
 ```python
 import pynwb
 import lindi
 
-# URL of the remote .zarr.json file
+# URL of the remote .lindi.json file
 url = 'https://kerchunk.neurosift.org/dandi/dandisets/000939/assets/11f512ba-5bcf-4230-a8cb-dc8d36db38cb/zarr.json'
 
 # Load the h5py-like client for the reference file system
@@ -88,13 +88,13 @@ with pynwb.NWBHDF5IO(file=client, mode="r") as io:
     print(nwbfile)
 ```
 
-### Edit a .nwb.json file using pynwb or other tools
+### Edit a .nwb.lindi.json file using pynwb or other tools
 
 ```python
 import json
 import lindi
 
-# URL of the remote .zarr.json file
+# URL of the remote .lindi.json file
 url = 'https://lindi.neurosift.org/dandi/dandisets/000939/assets/11f512ba-5bcf-4230-a8cb-dc8d36db38cb/zarr.json'
 
 # Load the h5py-like client for the reference file system
@@ -104,18 +104,18 @@ client = lindi.LindiH5pyFile.from_reference_file_system(url, mode="r+")
 # Edit an attribute
 client.attrs['new_attribute'] = 'new_value'
 
-# Save the changes to a new .nwb.json file
+# Save the changes to a new .nwb.lindi.json file
 rfs_new = client.to_reference_file_system()
-with open('new.nwb.json', 'w') as f:
+with open('new.nwb.lindi.json', 'w') as f:
     f.write(json.dumps(rfs_new, indent=2, sort_keys=True))
 ```
 
-### Add datasets to a .nwb.json file using a local staging area
+### Add datasets to a .nwb.lindi.json file using a local staging area
 
 ```python
 import lindi
 
-# URL of the remote .zarr.json file
+# URL of the remote .lindi.json file
 url = 'https://lindi.neurosift.org/dandi/dandisets/000939/assets/11f512ba-5bcf-4230-a8cb-dc8d36db38cb/zarr.json'
 
 # Load the h5py-like client for the reference file system
@@ -127,13 +127,12 @@ with lindi.StagingArea.create(base_dir='lindi_staging') as staging_area:
         staging_area=staging_area
     )
     # add datasets to client using pynwb or other tools
-    # upload the changes to the remote .nwb.json file
+    # upload the changes to the remote .nwb.lindi.json file
 ```
 
-### Upload a .nwb.json file to a cloud storage service such as DANDI
+### Upload a .nwb.lindi.json file to a cloud storage service such as DANDI
 
 See [this example](https://github.com/magland/lindi-dandi/blob/main/devel/lindi_test_2.py).
-
 
 ## For developers
 
