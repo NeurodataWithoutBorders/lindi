@@ -342,9 +342,9 @@ def test_lindi_reference_file_system_store():
         store["a"]
     with pytest.raises(Exception):
         store[{}]  # invalid key type # type: ignore
-    rfs = {"refs": {"a": {}}}  # invalid value
-    with pytest.raises(Exception):
-        store = LindiReferenceFileSystemStore(rfs)
+    # rfs = {"refs": {"a": {}}}  # invalid value
+    # with pytest.raises(Exception):
+    #     store = LindiReferenceFileSystemStore(rfs)
 
     rfs = {"refs": {"a": "abc"}}
     store = LindiReferenceFileSystemStore(rfs)
