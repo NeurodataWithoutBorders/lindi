@@ -171,6 +171,9 @@ class LindiStagingStore(ZarrStore):
             if len(refs_keys_for_this_dir) <= 1:
                 continue
 
+            # sort so that the files are in order 0.0.0, 0.0.1, 0.0.2, ...
+            files = _sort_by_chunk_key(files)
+
             print(f'Consolidating {len(files)} files in {root}')
 
             offset = 0
@@ -204,6 +207,30 @@ class LindiStagingStore(ZarrStore):
             # remove the old files
             for fname in files:
                 os.remove(f"{root}/{fname}")
+
+
+def _sort_by_chunk_key(files: list) -> list:
+    # first verify that all the files have the same number of parts
+    num_parts = None
+    for fname in files:
+        parts = fname.split('.')
+        if num_parts is None:
+            num_parts = len(parts)
+        elif len(parts) != num_parts:
+            raise ValueError(f"Files have different numbers of parts: {files}")
+    # Verify that all the parts are integers
+    for fname in files:
+        parts = fname.split('.')
+        for p in parts:
+            try:
+                int(p)
+            except ValueError:
+                raise ValueError(f"File part is not an integer: {fname}")
+
+    def _chunk_key(fname: str) -> tuple:
+        parts = fname.split('.')
+        return tuple(int(p) for p in parts)
+    return sorted(files, key=_chunk_key)
 
 
 def _upload_directory_of_blobs(
