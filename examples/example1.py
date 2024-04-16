@@ -22,3 +22,9 @@ client = lindi.LindiH5pyFile.from_reference_file_system(rfs)
 with pynwb.NWBHDF5IO(file=client, mode="r") as io:
     nwbfile = io.read()
     print(nwbfile)
+
+    print('Electrode group at shank0:')
+    print(nwbfile.electrode_groups["shank0"])  # type: ignore
+
+    print('Electrode group at index 0:')
+    print(nwbfile.electrodes.group[0])  # type: ignore

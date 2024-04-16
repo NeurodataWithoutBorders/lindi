@@ -49,3 +49,7 @@ def test_store():
 
 def _lists_are_equal_as_sets(a, b):
     return set(a) == set(b)
+
+
+if __name__ == "__main__":
+    test_store()
