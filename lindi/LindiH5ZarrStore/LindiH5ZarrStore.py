@@ -18,6 +18,7 @@ from ..conversion.attr_conversion import h5_to_zarr_attr
 from ..conversion.reformat_json import reformat_json
 from ..conversion.h5_filters_to_codecs import h5_filters_to_codecs
 from ..conversion.create_zarr_dataset_from_h5_data import create_zarr_dataset_from_h5_data
+from ..LindiH5pyFile.LindiReferenceFileSystemStore import LindiReferenceFileSystemStore
 
 
 @dataclass
@@ -576,6 +577,8 @@ class LindiH5ZarrStore(Store):
 
         # Process the groups recursively starting with the root group
         _process_group("", self._h5f)
+
+        LindiReferenceFileSystemStore.replace_meta_file_contents_with_dicts(ret)
         return ret
 
 
