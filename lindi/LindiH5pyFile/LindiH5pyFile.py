@@ -34,7 +34,7 @@ class LindiH5pyFile(h5py.File):
         ----------
         rfs : Union[dict, str]
             The reference file system. This can be a dictionary or a URL or path
-            to a .zarr.json file.
+            to a .lindi.json file.
         mode : Literal["r", "r+"], optional
             The mode to open the file object in, by default "r". If the mode is
             "r", the file object will be read-only. If the mode is "r+", the
@@ -47,7 +47,7 @@ class LindiH5pyFile(h5py.File):
         if isinstance(rfs, str):
             if rfs.startswith("http") or rfs.startswith("https"):
                 with tempfile.TemporaryDirectory() as tmpdir:
-                    filename = f"{tmpdir}/temp.zarr.json"
+                    filename = f"{tmpdir}/temp.lindi.json"
                     _download_file(rfs, filename)
                     with open(filename, "r") as f:
                         data = json.load(f)

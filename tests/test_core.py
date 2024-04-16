@@ -303,7 +303,7 @@ def test_reference_file_system_to_file():
         with h5py.File(filename, "w") as f:
             f.create_dataset("X", data=[1, 2, 3])
         with LindiH5ZarrStore.from_file(filename, url=filename) as store:
-            rfs_fname = f'{tmpdir}/test.zarr.json'
+            rfs_fname = f'{tmpdir}/test.lindi.json'
             store.to_file(rfs_fname)
             client = lindi.LindiH5pyFile.from_reference_file_system(rfs_fname)
             X = client["X"]

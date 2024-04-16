@@ -12,7 +12,7 @@ store = lindi.LindiH5ZarrStore.from_file(h5_url)
 rfs = store.to_reference_file_system()
 
 # Save it to a file for later use
-with open("example.zarr.json", "w") as f:
+with open("example.nwb.lindi.json", "w") as f:
     json.dump(rfs, f, indent=2)
 
 # Create an h5py-like client from the reference file system

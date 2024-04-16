@@ -18,7 +18,7 @@ def test_remote_data_1():
     rfs = store.to_reference_file_system()
 
     # Save it to a file for later use
-    with open("example.zarr.json", "w") as f:
+    with open("example.nwb.lindi.json", "w") as f:
         json.dump(rfs, f, indent=2)
 
     # Create an h5py-like client from the reference file system
@@ -34,7 +34,7 @@ def test_remote_data_1():
 def test_remote_data_2():
     import pynwb
 
-    # Define the URL for a remote .zarr.json file
+    # Define the URL for a remote .nwb.lindi.json file
     url = 'https://lindi.neurosift.org/dandi/dandisets/000939/assets/11f512ba-5bcf-4230-a8cb-dc8d36db38cb/zarr.json'
 
     # Load the h5py-like client from the reference file system

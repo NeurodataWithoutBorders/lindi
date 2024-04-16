@@ -13,7 +13,7 @@ def test_store():
             group1.create_group("group2")
             group1.create_dataset("dataset2", data=[4, 5, 6])
         with lindi.LindiH5ZarrStore.from_file(filename, url=filename) as store:
-            store.to_file(f"{tmpdir}/test.zarr.json")  # for coverage
+            store.to_file(f"{tmpdir}/test.lindi.json")  # for coverage
             a = store.listdir('')
             assert _lists_are_equal_as_sets(a, ['dataset1', 'group1'])
             b = store.listdir('group1')
