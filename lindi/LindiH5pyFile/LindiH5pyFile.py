@@ -136,6 +136,7 @@ class LindiH5pyFile(h5py.File):
             raise Exception(f"Unexpected type for zarr store: {type(self._zarr_store)}")
         rfs = self._zarr_store.rfs
         rfs_copy = json.loads(json.dumps(rfs))
+        LindiReferenceFileSystemStore.replace_meta_file_contents_with_dicts(rfs_copy)
         return rfs_copy
 
     @property
@@ -399,7 +400,7 @@ def _recursive_copy(src_item: Union[h5py.Group, h5py.Dataset], dest: h5py.File, 
                             dst_rfs['refs'][dst_ref_key] = _deep_copy(src_rfs['refs'][src_ref_key])
                     return
 
-        dst_item = dest.create_dataset(name, data=src_item[()])
+        dst_item = dest.create_dataset(name, data=src_item[()], chunks=src_item.chunks)
         for k, v in src_item.attrs.items():
             dst_item.attrs[k] = v
     else:
