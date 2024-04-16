@@ -80,7 +80,7 @@ def create_zarr_dataset_from_h5_data(
                 return ds
             else:
                 raise Exception(f'Unsupported scalar value type: {type(scalar_value)}')
-        elif h5_dtype.kind == 'S':
+        elif h5_dtype.kind == 'S' or h5_dtype.kind == 'U':
             # byte string
             if h5_data is None:
                 raise Exception(f'Data must be provided for scalar dataset {label}')
