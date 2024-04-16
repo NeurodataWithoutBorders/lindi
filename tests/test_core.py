@@ -1,3 +1,4 @@
+import json
 import pytest
 import numpy as np
 import h5py
@@ -342,9 +343,23 @@ def test_lindi_reference_file_system_store():
         store["a"]
     with pytest.raises(Exception):
         store[{}]  # invalid key type # type: ignore
-    rfs = {"refs": {"a": {}}}  # invalid value
+    rfs = {"refs": {"a": 83}}  # invalid value
     with pytest.raises(Exception):
         store = LindiReferenceFileSystemStore(rfs)
+    rfs = {"refs": {"a": {"test": 1}}}
+    store = LindiReferenceFileSystemStore(rfs)
+    assert json.loads(store["a"]) == {"test": 1}
+    rfs = {"refs": {".zattrs": "{\"test\": 2}"}}
+    store = LindiReferenceFileSystemStore(rfs)
+    assert json.loads(store[".zattrs"]) == {"test": 2}
+    rfs = {"refs": {".zattrs": "{\"test\": 3}"}}
+    LindiReferenceFileSystemStore.replace_meta_file_contents_with_dicts(rfs)
+    assert isinstance(rfs["refs"][".zattrs"], dict)
+    store = LindiReferenceFileSystemStore(rfs)
+    assert json.loads(store[".zattrs"]) == {"test": 3}
+    rfs = {"refs": {".zattrs_xxx": "{\"test\": 5}"}}
+    LindiReferenceFileSystemStore.replace_meta_file_contents_with_dicts(rfs)
+    assert isinstance(rfs["refs"][".zattrs_xxx"], str)
 
     rfs = {"refs": {"a": "abc"}}
     store = LindiReferenceFileSystemStore(rfs)
