@@ -140,9 +140,12 @@ class LindiH5pyFile(h5py.File):
         """
         if self._zarr_store is None:
             raise Exception("Cannot convert to reference file system without zarr store")
-        if not isinstance(self._zarr_store, LindiReferenceFileSystemStore):
+        zarr_store = self._zarr_store
+        if isinstance(zarr_store, LindiStagingStore):
+            zarr_store = zarr_store._base_store
+        if not isinstance(zarr_store, LindiReferenceFileSystemStore):
             raise Exception(f"Unexpected type for zarr store: {type(self._zarr_store)}")
-        rfs = self._zarr_store.rfs
+        rfs = zarr_store.rfs
         rfs_copy = json.loads(json.dumps(rfs))
         LindiReferenceFileSystemStore.replace_meta_file_contents_with_dicts(rfs_copy)
         return rfs_copy
