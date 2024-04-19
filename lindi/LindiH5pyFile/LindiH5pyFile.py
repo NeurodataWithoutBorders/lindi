@@ -31,7 +31,7 @@ class LindiH5pyFile(h5py.File):
         self._id = f'{id(self._zarr_group)}/'
 
     @staticmethod
-    def from_reference_file_system(rfs: Union[dict, str], mode: Literal["r", "r+"] = "r", staging_area: Union[StagingArea, None] = None):
+    def from_reference_file_system(rfs: Union[dict, str, None], mode: Literal["r", "r+"] = "r", staging_area: Union[StagingArea, None] = None):
         """
         Create a LindiH5pyFile from a reference file system.
 
@@ -49,6 +49,14 @@ class LindiH5pyFile(h5py.File):
             to_reference_file_system() to export the updated reference file
             system to the same file or a new file.
         """
+        if rfs is None:
+            rfs = {
+                'refs': {
+                    '.zgroup': {
+                        'zarr_format': 2
+                    }
+                }
+            }
         if staging_area is not None:
             if mode not in ['r+']:
                 raise Exception("Staging area cannot be used in read-only mode")

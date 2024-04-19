@@ -47,8 +47,6 @@ def create_zarr_dataset_from_h5_data(
         The codec compressor to use when writing the dataset. If default, the
         default compressor will be used.
     """
-    if h5_dtype is None:
-        raise Exception(f'No dtype in h5_to_zarr_dataset_prep for dataset {label}')
     if len(h5_shape) == 0:
         # scalar dataset
         # zarr doesn't support scalar datasets, so we make an array of shape (1,)
@@ -60,6 +58,8 @@ def create_zarr_dataset_from_h5_data(
 
         if zarr_compressor != 'default':
             raise Exception('zarr_compressor is not supported for scalar datasets')
+
+        assert np.issubdtype(h5_dtype, np.generic)
 
         if _is_numeric_dtype(h5_dtype) or h5_dtype in [bool, np.bool_]:
             # Handle the simple numeric types
@@ -90,8 +90,6 @@ def create_zarr_dataset_from_h5_data(
                 raise Exception(f'Unsupported scalar value type: {type(scalar_value)}')
         elif h5_dtype.kind == 'S' or h5_dtype.kind == 'U':
             # byte string
-            if h5_data is None:
-                raise Exception(f'Data must be provided for scalar dataset {label}')
             scalar_value = h5_data[()] if isinstance(h5_data, h5py.Dataset) or isinstance(h5_data, np.ndarray) else h5_data
             ds = zarr_parent_group.create_dataset(
                 name,
@@ -102,13 +100,13 @@ def create_zarr_dataset_from_h5_data(
             ds.attrs['_SCALAR'] = True
             return ds
         else:
-            raise Exception(f'Cannot handle scalar dataset {label} with dtype {h5_dtype}')
+            raise Exception(f'Cannot handle scalar dataset {label} with dtype {h5_dtype}')  # pragma: no cover
     else:
         # not a scalar dataset
 
-        if isinstance(h5_data, list):
-            # If we have a list, then we need to convert it to an array
-            h5_data = np.array(h5_data)
+        assert not isinstance(h5_data, list)  # Should have already been converted to an array
+
+        assert np.issubdtype(h5_dtype, np.generic)
 
         if _is_numeric_dtype(h5_dtype) or h5_dtype in [bool, np.bool_]:  # integer, unsigned integer, float, bool
             # This is the normal case of a chunked dataset with a numeric (or boolean) dtype
@@ -119,7 +117,7 @@ def create_zarr_dataset_from_h5_data(
                 # entire dataset as a single chunk.
                 total_size = np.prod(h5_shape) if len(h5_shape) > 0 else 1
                 if total_size > 1000 * 1000:
-                    raise Exception(f'Chunks must be specified explicitly when writing dataset of shape {h5_shape}')
+                    raise Exception(f'Chunks must be specified explicitly when writing dataset of shape {h5_shape}')  # pragma: no cover
             # Note that we are not using the same filters as in the h5py dataset
             return zarr_parent_group.create_dataset(
                 name,
@@ -200,7 +198,7 @@ def create_zarr_dataset_from_h5_data(
             ds.attrs['_COMPOUND_DTYPE'] = compound_dtype
             return ds
         else:
-            raise Exception(f'Not yet implemented (3): dataset {label} with dtype {h5_dtype} and shape {h5_shape}')
+            raise Exception(f'Not yet implemented (3): dataset {label} with dtype {h5_dtype} and shape {h5_shape}')  # pragma: no cover
 
 
 @dataclass
@@ -226,13 +224,12 @@ def _make_json_serializable(val: Any, dtype: np.dtype, label: str, h5f: Union[h5
     elif dtype == h5py.Reference:
         return h5_to_zarr_attr(val, label=label, h5f=h5f)
     else:
-        raise Exception(f'Cannot serialize item {val} with dtype {dtype} when serializing dataset {label} with compound dtype.')
+        raise Exception(f'Cannot serialize item {val} with dtype {dtype} when serializing dataset {label} with compound dtype.')  # pragma: no cover
 
 
 def h5_object_data_to_zarr_data(h5_data: Union[np.ndarray, list], *, h5f: Union[h5py.File, None], label: str) -> np.ndarray:
     from ..LindiH5pyFile.LindiH5pyReference import LindiH5pyReference  # Avoid circular import
-    if isinstance(h5_data, list):
-        h5_data = np.array(h5_data)
+    assert not isinstance(h5_data, list)  # Should have already been converted to an array
     zarr_data = np.empty(h5_data.shape, dtype='object')
     h5_data_1d_view = h5_data.ravel()
     zarr_data_1d_view = zarr_data.ravel()

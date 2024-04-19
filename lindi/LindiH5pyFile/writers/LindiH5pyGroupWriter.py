@@ -86,44 +86,34 @@ class LindiH5pyGroupWriter:
         else:
             raise Exception(f'Unexpected type for compression: {type(compression)}')
 
-        if isinstance(self.p._zarr_group, h5py.Group):
-            if _zarr_compressor != 'default':
-                raise Exception('zarr_compressor is not supported when _group_object is h5py.Group')
-            return LindiH5pyDataset(
-                self._group_object.create_dataset(name, shape=shape, dtype=dtype, data=data, chunks=chunks),  # type: ignore
-                self.p._file
-            )
-        elif isinstance(self.p._zarr_group, zarr.Group):
-            if isinstance(data, list):
-                data = np.array(data)
-            if shape is None:
-                if data is None:
-                    raise Exception('shape or data must be provided')
-                if isinstance(data, np.ndarray):
-                    shape = data.shape
-                else:
-                    shape = ()
-            if dtype is None:
-                if data is None:
-                    raise Exception('dtype or data must be provided')
-                if isinstance(data, np.ndarray):
-                    dtype = data.dtype
-                else:
-                    dtype = np.dtype(type(data))
-            ds = create_zarr_dataset_from_h5_data(
-                zarr_parent_group=self.p._zarr_group,
-                name=name,
-                label=(self.p.name or '') + '/' + name,
-                h5_chunks=chunks,
-                h5_shape=shape,
-                h5_dtype=dtype,
-                h5_data=data,
-                h5f=None,
-                zarr_compressor=_zarr_compressor
-            )
-            return LindiH5pyDataset(ds, self.p._file)
-        else:
-            raise Exception(f'Unexpected group object type: {type(self.p._zarr_group)}')
+        if isinstance(data, list):
+            data = np.array(data)
+        if shape is None:
+            if data is None:
+                raise Exception('shape or data must be provided')
+            if isinstance(data, np.ndarray):
+                shape = data.shape
+            else:
+                shape = ()
+        if dtype is None:
+            if data is None:
+                raise Exception('dtype or data must be provided')
+            if isinstance(data, np.ndarray):
+                dtype = data.dtype
+            else:
+                dtype = np.dtype(type(data))
+        ds = create_zarr_dataset_from_h5_data(
+            zarr_parent_group=self.p._zarr_group,
+            name=name,
+            label=(self.p.name or '') + '/' + name,
+            h5_chunks=chunks,
+            h5_shape=shape,
+            h5_dtype=dtype,
+            h5_data=data,
+            h5f=None,
+            zarr_compressor=_zarr_compressor
+        )
+        return LindiH5pyDataset(ds, self.p._file)
 
     def require_dataset(self, name, shape, dtype, exact=False, **kwds):
         if name in self.p:

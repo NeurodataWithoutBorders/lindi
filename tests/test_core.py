@@ -552,5 +552,93 @@ def test_numpy_array_of_byte_strings():
             assert lists_are_equal(X1[:].tolist(), X2[:].tolist())  # type: ignore
 
 
+def test_fail_create_dataset_without_shape_or_data():
+    client = lindi.LindiH5pyFile.from_reference_file_system(None, mode='r+')
+    with pytest.raises(Exception):
+        client.create_dataset("scalar_dataset", dtype='i4')
+
+
+def test_fail_create_scalar_dataset_without_data():
+    client = lindi.LindiH5pyFile.from_reference_file_system(None, mode='r+')
+    with pytest.raises(Exception):
+        client.create_dataset("scalar_dataset", shape=(), dtype='i4')
+
+
+def test_fail_create_compound_dtype_dataset_without_data():
+    dt = np.dtype([("x", "i4"), ("y", "f8")])
+    client = lindi.LindiH5pyFile.from_reference_file_system(None, mode='r+')
+    with pytest.raises(Exception):
+        client.create_dataset("dataset1", shape=(2,), dtype=dt)
+
+
+def test_fail_create_dataset_with_compression():
+    # scalar
+    client = lindi.LindiH5pyFile.from_reference_file_system(None, mode='r+')
+    with pytest.raises(Exception):
+        client.create_dataset("scalar_dataset", data=3, compression='gzip')
+    # object type
+    client = lindi.LindiH5pyFile.from_reference_file_system(None, mode='r+')
+    with pytest.raises(Exception):
+        client.create_dataset("scalar_dataset", data=object(), compression='gzip')
+    # string
+    client = lindi.LindiH5pyFile.from_reference_file_system(None, mode='r+')
+    with pytest.raises(Exception):
+        client.create_dataset("scalar_dataset", data=['abc', 'def'], compression='gzip')
+    # bytes
+    client = lindi.LindiH5pyFile.from_reference_file_system(None, mode='r+')
+    with pytest.raises(Exception):
+        client.create_dataset("scalar_dataset", data=[b'abc', b'def'], compression='gzip')
+    # compound dtype
+    dt = np.dtype([("x", "i4"), ("y", "f8")])
+    client = lindi.LindiH5pyFile.from_reference_file_system(None, mode='r+')
+    with pytest.raises(Exception):
+        client.create_dataset("dataset1", data=[(1, 3.14), (2, 6.28)], dtype=dt, compression='gzip')
+
+
+def test_fail_create_array_of_unicode_strings():
+    client = lindi.LindiH5pyFile.from_reference_file_system(None, mode='r+')
+    with pytest.raises(Exception):
+        client.create_dataset("scalar_dataset", data=['abc', 'def'])
+
+
+def test_fail_create_scalar_dataset_with_unsupported_type():
+    client = lindi.LindiH5pyFile.from_reference_file_system(None, mode='r+')
+    with pytest.raises(Exception):
+        client.create_dataset("scalar_dataset", data=object())
+
+
+def test_create_dataset():
+    client = lindi.LindiH5pyFile.from_reference_file_system(None, mode='r+')
+    client.create_dataset("scalar_int", data=3)
+    client.create_dataset("scalar_float", data=3.14)
+    client.create_dataset("scalar_str", data="abc")
+    client.create_dataset("scalar_bytes", data=b"def")
+    client.create_dataset("from_list", data=[1, 2, 3])
+
+    rfs = client.to_reference_file_system()
+    client2 = lindi.LindiH5pyFile.from_reference_file_system(rfs)
+    assert client2["scalar_int"][()] == 3  # type: ignore
+    assert client2["scalar_float"][()] == 3.14  # type: ignore
+    assert client2["scalar_str"][()] == "abc"  # type: ignore
+    assert client2["scalar_bytes"][()] == b"def"  # type: ignore
+    assert lists_are_equal(client2["from_list"][:].tolist(), [1, 2, 3])  # type: ignore
+
+
+def test_create_compound_dtype_dataset():
+    client = lindi.LindiH5pyFile.from_reference_file_system(None, mode='r+')
+    # with int, float, str, bytes, bool
+    dt = np.dtype([("x", "i4"), ("y", "f8"), ("z", "U10"), ("w", "S10"), ("b", "bool")])
+    client.create_dataset("dataset1", data=np.array([(1, 3.14, "abc", b"def", True)], dtype=dt))
+    rfs = client.to_reference_file_system()
+    client2 = lindi.LindiH5pyFile.from_reference_file_system(rfs)
+    ds = client2["dataset1"]
+    assert isinstance(ds, h5py.Dataset)
+    assert ds['x'][0] == 1
+    assert ds['y'][0] == 3.14
+    assert ds['z'][0] == "abc"
+    assert ds['w'][0] == b"def"
+    assert ds['b'][0]
+
+
 if __name__ == '__main__':
-    pass
+    test_create_compound_dtype_dataset()
