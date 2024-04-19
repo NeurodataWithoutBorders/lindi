@@ -304,8 +304,8 @@ def test_reference_file_system_to_file():
         with h5py.File(filename, "w") as f:
             f.create_dataset("X", data=[1, 2, 3])
         with LindiH5ZarrStore.from_file(filename, url=filename) as store:
-            rfs_fname = f'{tmpdir}/test.zarr.json'
-            store.to_file(rfs_fname)
+            rfs_fname = f'{tmpdir}/test.lindi.json'
+            store.write_reference_file_system(rfs_fname)
             client = lindi.LindiH5pyFile.from_reference_file_system(rfs_fname)
             X = client["X"]
             assert isinstance(X, lindi.LindiH5pyDataset)
@@ -477,7 +477,7 @@ def test_lindi_h5_zarr_store():
         with pytest.raises(Exception, match=store_is_closed_msg):
             store.to_reference_file_system()
         with pytest.raises(Exception, match=store_is_closed_msg):
-            store.to_file("test.json")
+            store.write_reference_file_system("test.lindi.json")
         with pytest.raises(Exception, match=store_is_closed_msg):
             store._get_chunk_file_bytes_data("dataset1", "0")
 
@@ -497,16 +497,12 @@ def test_lindi_h5_zarr_store():
             store["nonexistent/0"]
 
         # Key error
-        store = LindiH5ZarrStore.from_file(filename)
+        store = LindiH5ZarrStore.from_file(filename, url='.')
         with pytest.raises(KeyError):
             store['']
         assert '' not in store
         with pytest.raises(KeyError):
             store["nonexistent/.zattrs"]
-
-        # Unsupported file type
-        with pytest.raises(Exception, match="Unsupported file type: zarr"):
-            store.to_file("test.json", file_type="zarr")  # type: ignore
 
         # URL is not set
         store = LindiH5ZarrStore.from_file(filename, url=None)
