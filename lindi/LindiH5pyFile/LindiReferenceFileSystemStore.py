@@ -34,14 +34,32 @@ class LindiReferenceFileSystemStore(ZarrStore):
     to be the data of the file, which may be base64 encoded (see below). If the
     value is a list, it is assumed to have three elements: the URL of the file
     (or path of a local file), the byte offset of the data within the file, and
-    the byte length of the data. If the value is a dict, it represents a json
-    file, and the content of the file is the json representation of the dict.
+    the byte length of the data. Note that we do not permit the case of a list
+    of a single (url) element supported by fsspec, because it is good to be able
+    to know the size of the chunks without making a request to the file. If the
+    value is a dict, it represents a json file, and the content of the file is
+    the json representation of the dict.
 
     If the value for a file is a string, it may be prefixed with "base64:". If
     it is, the string is assumed to be base64 encoded and is decoded before
     being returned. Otherwise, the string is utf-8 encoded and returned as is.
     Note that a file that actually begins with "base64:" should be represented
     by a base64 encoded string, to avoid ambiguity.
+
+    We also support the use of templates as in fsspec, but do not support the
+    full jinja2 templating. There may be an optional "templates" key in the
+    dictionary, which is a dictionary of template strings. For example,
+    {
+        "templates": {"u1": "https://some/url", "u2": "https://some/other/url"},
+        "refs": {
+            ... "/some/key/0": [
+                "{{u1}}" 0, 100
+            ],
+            ...
+        }
+    }
+    In this case, the "{{u1}}" will be replaced with the value of the "u1"
+    template string.
 
     It is okay for rfs to be modified outside of this class, and the changes
     will be reflected immediately in the store. This can be used by experimental
@@ -80,6 +98,12 @@ class LindiReferenceFileSystemStore(ZarrStore):
             else:
                 raise Exception(f"Problem with {k}: value must be a string or a list")
 
+        # validate templates
+        if "templates" in rfs:
+            for k, v in rfs["templates"].items():
+                if not isinstance(v, str):
+                    raise Exception(f"Problem with templates: value for {k} must be a string")
+
         self.rfs = rfs
         self.mode = mode
 
@@ -101,6 +125,9 @@ class LindiReferenceFileSystemStore(ZarrStore):
             url = x[0]
             offset = x[1]
             length = x[2]
+            if '{{' in url and 'templates' in self.rfs:
+                for k, v in self.rfs["templates"].items():
+                    url = url.replace("{{" + k + "}}", v)
             val = _read_bytes_from_url(url, offset, length)
             return val
         else:
@@ -146,7 +173,7 @@ class LindiReferenceFileSystemStore(ZarrStore):
         return False
 
     @staticmethod
-    def replace_meta_file_contents_with_dicts(rfs: dict) -> None:
+    def replace_meta_file_contents_with_dicts_in_rfs(rfs: dict) -> None:
         """
         Utility function for replacing the contents of the .zattrs, .zgroup, and
         .zarray files in an rfs with the json representation of the contents.
@@ -157,6 +184,37 @@ class LindiReferenceFileSystemStore(ZarrStore):
         for k, v in rfs['refs'].items():
             if k.endswith('.zattrs') or k.endswith('.zgroup') or k.endswith('.zarray') or k.endswith('zarr.json'):  # note: zarr.json is for zarr v3
                 rfs['refs'][k] = json.loads(store[k].decode('utf-8'))
+
+    @staticmethod
+    def use_templates_in_rfs(rfs: dict) -> None:
+        """
+        Utility for replacing URLs in an rfs with template strings. Only URLs
+        that occur 5 or more times are replaced with template strings. The
+        templates are added to the "templates" key of the rfs. The template
+        strings are of the form "{{u1}}", "{{u2}}", etc.
+        """
+        url_counts: Dict[str, int] = {}
+        for k, v in rfs['refs'].items():
+            if isinstance(v, list):
+                url = v[0]
+                if '{{' not in url:
+                    url_counts[url] = url_counts.get(url, 0) + 1
+        urls_with_many_occurrences = sorted([url for url, count in url_counts.items() if count >= 5])
+        new_templates = rfs.get('templates', {})
+        template_names_for_urls: Dict[str, str] = {}
+        for url in urls_with_many_occurrences:
+            i = 1
+            while f'u{i}' in new_templates:
+                i += 1
+            new_templates[f'u{i}'] = url
+            template_names_for_urls[url] = f'u{i}'
+        if new_templates:
+            rfs['templates'] = new_templates
+        for k, v in rfs['refs'].items():
+            if isinstance(v, list):
+                url = v[0]
+                if url in template_names_for_urls:
+                    v[0] = '{{' + template_names_for_urls[url] + '}}'
 
 
 # Keep a global cache of file segment readers that apply to all instances of

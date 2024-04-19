@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Union, Any, Dict
+from typing import TYPE_CHECKING, Any, Dict
 import numpy as np
 import h5py
 import zarr
@@ -22,45 +22,39 @@ _external_hdf5_clients: Dict[str, h5py.File] = {}
 
 
 class LindiH5pyDataset(h5py.Dataset):
-    def __init__(self, _dataset_object: Union[h5py.Dataset, zarr.Array], _file: "LindiH5pyFile"):
-        self._dataset_object = _dataset_object
+    def __init__(self, _zarr_array: zarr.Array, _file: "LindiH5pyFile"):
+        self._zarr_array = _zarr_array
         self._file = _file
         self._readonly = _file.mode not in ['r+']
 
         # see comment in LindiH5pyGroup
-        self._id = f'{id(self._file)}/{self._dataset_object.name}'
+        self._id = f'{id(self._file)}/{self._zarr_array.name}'
 
         # See if we have the _COMPOUND_DTYPE attribute, which signifies that
         # this is a compound dtype
-        if isinstance(_dataset_object, zarr.Array):
-            compound_dtype_obj = _dataset_object.attrs.get("_COMPOUND_DTYPE", None)
-            if compound_dtype_obj is not None:
-                assert isinstance(compound_dtype_obj, list)
-                # compound_dtype_obj is a list of tuples (name, dtype)
-                # where dtype == "<REFERENCE>" if it represents an HDF5 reference
-                for i in range(len(compound_dtype_obj)):
-                    if compound_dtype_obj[i][1] == '<REFERENCE>':
-                        compound_dtype_obj[i][1] = h5py.special_dtype(ref=h5py.Reference)
-                # If we have a compound dtype, then create the numpy dtype
-                self._compound_dtype = np.dtype(
-                    [
-                        (
-                            compound_dtype_obj[i][0],
-                            compound_dtype_obj[i][1]
-                        )
-                        for i in range(len(compound_dtype_obj))
-                    ]
-                )
-            else:
-                self._compound_dtype = None
+        compound_dtype_obj = _zarr_array.attrs.get("_COMPOUND_DTYPE", None)
+        if compound_dtype_obj is not None:
+            assert isinstance(compound_dtype_obj, list)
+            # compound_dtype_obj is a list of tuples (name, dtype)
+            # where dtype == "<REFERENCE>" if it represents an HDF5 reference
+            for i in range(len(compound_dtype_obj)):
+                if compound_dtype_obj[i][1] == '<REFERENCE>':
+                    compound_dtype_obj[i][1] = h5py.special_dtype(ref=h5py.Reference)
+            # If we have a compound dtype, then create the numpy dtype
+            self._compound_dtype = np.dtype(
+                [
+                    (
+                        compound_dtype_obj[i][0],
+                        compound_dtype_obj[i][1]
+                    )
+                    for i in range(len(compound_dtype_obj))
+                ]
+            )
         else:
             self._compound_dtype = None
 
         # Check whether this is a scalar dataset
-        if isinstance(_dataset_object, zarr.Array):
-            self._is_scalar = self._dataset_object.attrs.get("_SCALAR", False)
-        else:
-            self._is_scalar = self._dataset_object.ndim == 0
+        self._is_scalar = self._zarr_array.attrs.get("_SCALAR", False)
 
         # The self._write object handles all the writing operations
         from .writers.LindiH5pyDatasetWriter import LindiH5pyDatasetWriter  # avoid circular import
@@ -79,19 +73,19 @@ class LindiH5pyDataset(h5py.Dataset):
     def shape(self):  # type: ignore
         if self._is_scalar:
             return ()
-        return self._dataset_object.shape
+        return self._zarr_array.shape
 
     @property
     def size(self):
         if self._is_scalar:
             return 1
-        return self._dataset_object.size
+        return self._zarr_array.size
 
     @property
     def dtype(self):
         if self._compound_dtype is not None:
             return self._compound_dtype
-        ret = self._dataset_object.dtype
+        ret = self._zarr_array.dtype
         if ret.kind == 'O':
             if not ret.metadata:
                 # The following correction is needed because of
@@ -103,12 +97,31 @@ class LindiH5pyDataset(h5py.Dataset):
                 #             return StrDataset(h5obj, None)
                 #     return h5obj
                 # We cannot have a dtype with kind 'O' and no metadata
-                ret = np.dtype(str(ret), metadata={})
+                # There is also this section in pynwb validator.py
+                # if isinstance(received, np.dtype):
+                #     if received.char == 'O':
+                #         if 'vlen' in received.metadata:
+                #             received = received.metadata['vlen']
+                #         else:
+                #             raise ValueError("Unrecognized type: '%s'" % received)
+                #         received = 'utf' if received is str else 'ascii'
+                #     elif received.char == 'U':
+                #         received = 'utf'
+                #     elif received.char == 'S':
+                #         received = 'ascii'
+                #     else:
+                #         received = received.name
+                # ------------------------------------------
+                # I don't know how to figure out when vlen should be str or bytes
+                # but validate seems to work only when I put in vlen = bytes
+                #
+                vlen = bytes
+                ret = np.dtype(str(ret), metadata={'vlen': vlen})
         return ret
 
     @property
     def nbytes(self):
-        return self._dataset_object.nbytes
+        return self._zarr_array.nbytes
 
     @property
     def file(self):
@@ -116,7 +129,7 @@ class LindiH5pyDataset(h5py.Dataset):
 
     @property
     def name(self):
-        return self._dataset_object.name
+        return self._zarr_array.name
 
     @property
     def maxshape(self):
@@ -128,38 +141,22 @@ class LindiH5pyDataset(h5py.Dataset):
     def ndim(self):
         if self._is_scalar:
             return 0
-        return self._dataset_object.ndim
+        return self._zarr_array.ndim
 
     @property
     def attrs(self):  # type: ignore
-        if isinstance(self._dataset_object, h5py.Dataset):
-            attrs_type = 'h5py'
-        elif isinstance(self._dataset_object, zarr.Array):
-            attrs_type = 'zarr'
-        else:
-            raise Exception(f'Unexpected dataset object type: {type(self._dataset_object)}')
-        return LindiH5pyAttributes(self._dataset_object.attrs, attrs_type=attrs_type, readonly=self._file.mode == 'r')
+        return LindiH5pyAttributes(self._zarr_array.attrs, readonly=self._file.mode == 'r')
 
     @property
     def fletcher32(self):
-        if isinstance(self._dataset_object, h5py.Dataset):
-            return self._dataset_object.fletcher32
-        elif isinstance(self._dataset_object, zarr.Array):
-            for f in self._dataset_object.filters:
-                if f.__class__.__name__ == 'Fletcher32':
-                    return True
-            return False
-        else:
-            raise Exception(f'Unexpected dataset object type: {type(self._dataset_object)}')
+        for f in self._zarr_array.filters:
+            if f.__class__.__name__ == 'Fletcher32':
+                return True
+        return False
 
     @property
     def chunks(self):
-        if isinstance(self._dataset_object, h5py.Dataset):
-            return self._dataset_object.chunks
-        elif isinstance(self._dataset_object, zarr.Array):
-            return self._dataset_object.chunks
-        else:
-            raise Exception(f'Unexpected dataset object type: {type(self._dataset_object)}')
+        return self._zarr_array.chunks
 
     def __repr__(self):  # type: ignore
         return f"<{self.__class__.__name__}: {self.name}>"
@@ -168,15 +165,9 @@ class LindiH5pyDataset(h5py.Dataset):
         return f"<{self.__class__.__name__}: {self.name}>"
 
     def __getitem__(self, args, new_dtype=None):
-        if isinstance(self._dataset_object, h5py.Dataset):
-            ret = self._dataset_object.__getitem__(args, new_dtype)
-        elif isinstance(self._dataset_object, zarr.Array):
-            if new_dtype is not None:
-                raise Exception("new_dtype is not supported for zarr.Array")
-            ret = self._get_item_for_zarr(self._dataset_object, args)
-        else:
-            raise Exception(f"Unexpected type: {type(self._dataset_object)}")
-        return ret
+        if new_dtype is not None:
+            raise Exception("new_dtype is not supported for zarr.Array")
+        return self._get_item_for_zarr(self._zarr_array, args)
 
     def _get_item_for_zarr(self, zarr_array: zarr.Array, selection: Any):
         # First check whether this is an external array link
@@ -266,11 +257,11 @@ class LindiH5pyDatasetCompoundFieldSelection:
             raise TypeError(
                 f"Compound field selection only implemented for 1D datasets, not {self._dataset.ndim}D"
             )
-        if not isinstance(self._dataset._dataset_object, zarr.Array):
+        if not isinstance(self._dataset._zarr_array, zarr.Array):
             raise TypeError(
-                f"Compound field selection only implemented for zarr.Array, not {type(self._dataset._dataset_object)}"
+                f"Compound field selection only implemented for zarr.Array, not {type(self._dataset._zarr_array)}"
             )
-        za = self._dataset._dataset_object
+        za = self._dataset._zarr_array
         self._zarr_array = za
         # Prepare the data in memory
         d = [za[i][self._ind] for i in range(len(za))]

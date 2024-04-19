@@ -16,12 +16,12 @@ class LindiH5pyDatasetWriter:
         self.p = p
 
     def __setitem__(self, args, val):
-        if isinstance(self.p._dataset_object, h5py.Dataset):
-            self.p._dataset_object.__setitem__(args, val)
-        elif isinstance(self.p._dataset_object, zarr.Array):
-            self._set_item_for_zarr(self.p._dataset_object, args, val)
+        if isinstance(self.p._zarr_array, h5py.Dataset):
+            self.p._zarr_array.__setitem__(args, val)
+        elif isinstance(self.p._zarr_array, zarr.Array):
+            self._set_item_for_zarr(self.p._zarr_array, args, val)
         else:
-            raise Exception(f"Unexpected type: {type(self.p._dataset_object)}")
+            raise Exception(f"Unexpected type: {type(self.p._zarr_array)}")
 
     def _set_item_for_zarr(self, zarr_array: zarr.Array, selection: Any, val: Any):
         if self.p._compound_dtype is not None:

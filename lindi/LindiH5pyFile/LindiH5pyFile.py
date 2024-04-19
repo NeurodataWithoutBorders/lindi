@@ -7,29 +7,31 @@ import zarr
 from zarr.storage import Store as ZarrStore
 
 from .LindiH5pyGroup import LindiH5pyGroup
-from .LindiH5pyDataset import LindiH5pyDataset
 from .LindiH5pyAttributes import LindiH5pyAttributes
 from .LindiH5pyReference import LindiH5pyReference
 from .LindiReferenceFileSystemStore import LindiReferenceFileSystemStore
 
+from ..LindiStagingStore.StagingArea import StagingArea
+from ..LindiStagingStore.LindiStagingStore import LindiStagingStore
+
 
 class LindiH5pyFile(h5py.File):
-    def __init__(self, _file_object: Union[h5py.File, zarr.Group], *, _zarr_store: Union[ZarrStore, None] = None, _mode: Literal["r", "r+"] = "r"):
+    def __init__(self, _zarr_group: zarr.Group, *, _zarr_store: Union[ZarrStore, None] = None, _mode: Literal["r", "r+"] = "r"):
         """
         Do not use this constructor directly. Instead, use:
         from_reference_file_system, from_zarr_store, from_zarr_group,
         or from_h5py_file
         """
-        self._file_object = _file_object
+        self._zarr_group = _zarr_group
         self._zarr_store = _zarr_store
         self._mode: Literal['r', 'r+'] = _mode
-        self._the_group = LindiH5pyGroup(_file_object, self)
+        self._the_group = LindiH5pyGroup(_zarr_group, self)
 
         # see comment in LindiH5pyGroup
-        self._id = f'{id(self._file_object)}/'
+        self._id = f'{id(self._zarr_group)}/'
 
     @staticmethod
-    def from_reference_file_system(rfs: Union[dict, str], mode: Literal["r", "r+"] = "r"):
+    def from_reference_file_system(rfs: Union[dict, str], mode: Literal["r", "r+"] = "r", staging_area: Union[StagingArea, None] = None):
         """
         Create a LindiH5pyFile from a reference file system.
 
@@ -47,6 +49,10 @@ class LindiH5pyFile(h5py.File):
             to_reference_file_system() to export the updated reference file
             system to the same file or a new file.
         """
+        if staging_area is not None:
+            if mode not in ['r+']:
+                raise Exception("Staging area cannot be used in read-only mode")
+
         if isinstance(rfs, str):
             if rfs.startswith("http") or rfs.startswith("https"):
                 with tempfile.TemporaryDirectory() as tmpdir:
@@ -55,15 +61,17 @@ class LindiH5pyFile(h5py.File):
                     with open(filename, "r") as f:
                         data = json.load(f)
                     assert isinstance(data, dict)  # prevent infinite recursion
-                    return LindiH5pyFile.from_reference_file_system(data, mode=mode)
+                    return LindiH5pyFile.from_reference_file_system(data, mode=mode, staging_area=staging_area)
             else:
                 with open(rfs, "r") as f:
                     data = json.load(f)
                 assert isinstance(data, dict)  # prevent infinite recursion
-                return LindiH5pyFile.from_reference_file_system(data, mode=mode)
+                return LindiH5pyFile.from_reference_file_system(data, mode=mode, staging_area=staging_area)
         elif isinstance(rfs, dict):
             # This store does not need to be closed
             store = LindiReferenceFileSystemStore(rfs)
+            if staging_area:
+                store = LindiStagingStore(base_store=store, staging_area=staging_area)
             return LindiH5pyFile.from_zarr_store(store, mode=mode)
         else:
             raise Exception(f"Unhandled type for rfs: {type(rfs)}")
@@ -109,20 +117,6 @@ class LindiH5pyFile(h5py.File):
         """
         return LindiH5pyFile(zarr_group, _zarr_store=_zarr_store, _mode=mode)
 
-    @staticmethod
-    def from_h5py_file(h5py_file: h5py.File):
-        """
-        Create a LindiH5pyFile from an h5py file.
-
-        This is used mainly for testing and may be removed in the future.
-
-        Parameters
-        ----------
-        h5py_file : h5py.File
-            The h5py file.
-        """
-        return LindiH5pyFile(h5py_file)
-
     def to_reference_file_system(self):
         """
         Export the internal in-memory representation to a reference file system.
@@ -131,32 +125,24 @@ class LindiH5pyFile(h5py.File):
         """
         if self._zarr_store is None:
             raise Exception("Cannot convert to reference file system without zarr store")
-        if not isinstance(self._zarr_store, LindiReferenceFileSystemStore):
+        zarr_store = self._zarr_store
+        if isinstance(zarr_store, LindiStagingStore):
+            zarr_store = zarr_store._base_store
+        if not isinstance(zarr_store, LindiReferenceFileSystemStore):
             raise Exception(f"Unexpected type for zarr store: {type(self._zarr_store)}")
-        rfs = self._zarr_store.rfs
+        rfs = zarr_store.rfs
         rfs_copy = json.loads(json.dumps(rfs))
-        LindiReferenceFileSystemStore.replace_meta_file_contents_with_dicts(rfs_copy)
+        LindiReferenceFileSystemStore.replace_meta_file_contents_with_dicts_in_rfs(rfs_copy)
+        LindiReferenceFileSystemStore.use_templates_in_rfs(rfs_copy)
         return rfs_copy
 
     @property
     def attrs(self):  # type: ignore
-        if isinstance(self._file_object, h5py.File):
-            attrs_type = 'h5py'
-        elif isinstance(self._file_object, zarr.Group):
-            attrs_type = 'zarr'
-        else:
-            raise Exception(f'Unexpected file object type: {type(self._file_object)}')
-        return LindiH5pyAttributes(self._file_object.attrs, attrs_type=attrs_type, readonly=self.mode == "r")
+        return LindiH5pyAttributes(self._zarr_group.attrs, readonly=self.mode == "r")
 
     @property
     def filename(self):
-        # This is not a string, but this is what h5py seems to do
-        if isinstance(self._file_object, h5py.File):
-            return self._file_object.filename
-        elif isinstance(self._file_object, zarr.Group):
-            return ''
-        else:
-            raise Exception(f"Unhandled type for file object: {type(self._file_object)}")
+        return ''
 
     @property
     def driver(self):
@@ -186,8 +172,7 @@ class LindiH5pyFile(h5py.File):
         pass
 
     def flush(self):
-        if isinstance(self._file_object, h5py.File):
-            return self._file_object.flush()
+        pass
 
     def __enter__(self):  # type: ignore
         return self
@@ -196,26 +181,18 @@ class LindiH5pyFile(h5py.File):
         self.close()
 
     def __str__(self):
-        return f'<LindiH5pyFile "{self._file_object}">'
+        return f'<LindiH5pyFile "{self._zarr_group}">'
 
     def __repr__(self):
-        return f'<LindiH5pyFile "{self._file_object}">'
+        return f'<LindiH5pyFile "{self._zarr_group}">'
 
     def __bool__(self):
         # This is called when checking if the file is open
-        if isinstance(self._file_object, h5py.File):
-            return self._file_object.__bool__()
-        elif isinstance(self._file_object, zarr.Group):
-            return True
-        else:
-            raise Exception(f"Unexpected type for file object: {type(self._file_object)}")
+        return True
 
     def __hash__(self):
         # This is called for example when using a file as a key in a dictionary
-        if isinstance(self._file_object, h5py.File):
-            return self._file_object.__hash__()
-        else:
-            return id(self)
+        return id(self)
 
     def copy(self, source, dest, name=None,
              shallow=False, expand_soft=False, expand_external=False,
@@ -248,10 +225,10 @@ class LindiH5pyFile(h5py.File):
         return self._get_item(name)
 
     def _get_item(self, name, getlink=False, default=None):
-        if isinstance(name, LindiH5pyReference) and isinstance(self._file_object, zarr.Group):
+        if isinstance(name, LindiH5pyReference):
             if getlink:
                 raise Exception("Getting link is not allowed for references")
-            zarr_group = self._file_object
+            zarr_group = self._zarr_group
             if name._source != '.':
                 raise Exception(f'For now, source of reference must be ".", got "{name._source}"')
             if name._source_object_id is not None:
@@ -262,16 +239,6 @@ class LindiH5pyFile(h5py.File):
                 if name._object_id != target.attrs.get("object_id"):
                     raise Exception(f'Mismatch in object_id: "{name._object_id}" and "{target.attrs.get("object_id")}"')
             return target
-        elif isinstance(name, h5py.Reference) and isinstance(self._file_object, h5py.File):
-            if getlink:
-                raise Exception("Getting link is not allowed for references")
-            x = self._file_object[name]
-            if isinstance(x, h5py.Group):
-                return LindiH5pyGroup(x, self)
-            elif isinstance(x, h5py.Dataset):
-                return LindiH5pyDataset(x, self)
-            else:
-                raise Exception(f"Unexpected type for resolved reference at path {name}: {type(x)}")
         # if it contains slashes, it's a path
         if isinstance(name, str) and "/" in name:
             parts = name.split("/")
@@ -340,6 +307,15 @@ class LindiH5pyFile(h5py.File):
         if self._mode not in ['r+']:
             raise Exception("Cannot require dataset in read-only mode")
         return self._the_group.require_dataset(name, shape, dtype, exact=exact, **kwds)
+
+    ##############################
+    # staging store
+    @property
+    def staging_store(self):
+        store = self._zarr_store
+        if not isinstance(store, LindiStagingStore):
+            return None
+        return store
 
 
 def _download_file(url: str, filename: str) -> None:

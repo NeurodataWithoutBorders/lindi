@@ -26,28 +26,26 @@ def test_variety():
             f["dataset1"].attrs["test_attr1"] = "attribute-of-dataset1"
             f["group1"].attrs["test_attr2"] = "attribute-of-group1"
         h5f = h5py.File(filename, "r")
-        h5f_wrapped = lindi.LindiH5pyFile.from_h5py_file(h5f)
         with LindiH5ZarrStore.from_file(filename, url=filename) as store:
             rfs = store.to_reference_file_system()
             h5f_rfs = lindi.LindiH5pyFile.from_reference_file_system(rfs)
-            for h5f_2 in [h5f_rfs, h5f_wrapped]:
-                assert h5f_2.attrs["int1"] == h5f.attrs["int1"]
-                assert h5f_2.attrs["float1"] == h5f.attrs["float1"]
-                assert h5f_2.attrs["str1"] == h5f.attrs["str1"]
-                assert h5f_2.attrs["bytes1"] == h5f.attrs["bytes1"]
-                assert lists_are_equal(h5f_2.attrs["list1"], h5f.attrs["list1"])
-                assert lists_are_equal(h5f_2.attrs["tuple1"], h5f.attrs["tuple1"])
-                assert arrays_are_equal(np.array(h5f_2.attrs["array1"]), h5f.attrs["array1"])
-                assert h5f_2["dataset1"].attrs["test_attr1"] == h5f["dataset1"].attrs["test_attr1"]  # type: ignore
-                assert h5f_2["dataset1"].id
-                assert arrays_are_equal(h5f_2["dataset1"][()], h5f["dataset1"][()])  # type: ignore
-                assert h5f_2["group1"].attrs["test_attr2"] == h5f["group1"].attrs["test_attr2"]  # type: ignore
-                target_1 = h5f[h5f.attrs["dataset1_ref"]]
-                target_2 = h5f_2[h5f_2.attrs["dataset1_ref"]]
-                assert target_1.attrs["test_attr1"] == target_2.attrs["test_attr1"]  # type: ignore
-                target_1 = h5f[h5f.attrs["group1_ref"]]
-                target_2 = h5f_2[h5f_2.attrs["group1_ref"]]
-                assert target_1.attrs["test_attr2"] == target_2.attrs["test_attr2"]  # type: ignore
+            assert h5f_rfs.attrs["int1"] == h5f.attrs["int1"]
+            assert h5f_rfs.attrs["float1"] == h5f.attrs["float1"]
+            assert h5f_rfs.attrs["str1"] == h5f.attrs["str1"]
+            assert h5f_rfs.attrs["bytes1"] == h5f.attrs["bytes1"]
+            assert lists_are_equal(h5f_rfs.attrs["list1"], h5f.attrs["list1"])
+            assert lists_are_equal(h5f_rfs.attrs["tuple1"], h5f.attrs["tuple1"])
+            assert arrays_are_equal(np.array(h5f_rfs.attrs["array1"]), h5f.attrs["array1"])
+            assert h5f_rfs["dataset1"].attrs["test_attr1"] == h5f["dataset1"].attrs["test_attr1"]  # type: ignore
+            assert h5f_rfs["dataset1"].id  # type: ignore
+            assert arrays_are_equal(h5f_rfs["dataset1"][()], h5f["dataset1"][()])  # type: ignore
+            assert h5f_rfs["group1"].attrs["test_attr2"] == h5f["group1"].attrs["test_attr2"]  # type: ignore
+            target_1 = h5f[h5f.attrs["dataset1_ref"]]
+            target_2 = h5f_rfs[h5f_rfs.attrs["dataset1_ref"]]
+            assert target_1.attrs["test_attr1"] == target_2.attrs["test_attr1"]  # type: ignore
+            target_1 = h5f[h5f.attrs["group1_ref"]]
+            target_2 = h5f_rfs[h5f_rfs.attrs["group1_ref"]]
+            assert target_1.attrs["test_attr2"] == target_2.attrs["test_attr2"]  # type: ignore
 
 
 def test_soft_links():
@@ -59,45 +57,43 @@ def test_soft_links():
             g.create_dataset('dataset1', data=[5, 6, 7])
             f['soft_link'] = h5py.SoftLink('/group_target')
         h5f = h5py.File(filename, "r")
-        h5f_wrapped = lindi.LindiH5pyFile.from_h5py_file(h5f)
         with LindiH5ZarrStore.from_file(filename, url=filename) as store:
             rfs = store.to_reference_file_system()
             h5f_rfs = lindi.LindiH5pyFile.from_reference_file_system(rfs)
-            for h5f_2 in [h5f_rfs, h5f_wrapped]:
-                g1 = h5f['group_target']
-                assert isinstance(g1, h5py.Group)
-                g2 = h5f_2['group_target']
-                assert isinstance(g2, h5py.Group)
-                assert g1.attrs['foo'] == g2.attrs['foo']  # type: ignore
-                with pytest.raises(TypeError):
-                    g1[np.array([0, 1, 2])]
-                h1 = h5f['soft_link']
-                assert isinstance(h1, h5py.Group)
-                h2 = h5f_2['soft_link']
-                assert isinstance(h2, h5py.Group)
-                assert h1.attrs['foo'] == h2.attrs['foo']  # type: ignore
-                # this is tricky: it seems that with h5py, the name of the soft link
-                # is the source name. So the following assertion will fail.
-                # assert h1.name == h2.name
-                k1 = h5f.get('soft_link', getlink=True)
-                k2 = h5f_2.get('soft_link', getlink=True)
-                assert isinstance(k1, h5py.SoftLink)
-                assert isinstance(k2, h5py.SoftLink)
-                ds1 = h5f['soft_link']['dataset1']  # type: ignore
-                assert isinstance(ds1, h5py.Dataset)
-                ds2 = h5f_2['soft_link']['dataset1']  # type: ignore
-                assert isinstance(ds2, h5py.Dataset)
-                assert arrays_are_equal(ds1[()], ds2[()])
-                ds1 = h5f['soft_link/dataset1']
-                assert isinstance(ds1, h5py.Dataset)
-                ds2 = h5f_2['soft_link/dataset1']
-                assert isinstance(ds2, h5py.Dataset)
-                assert arrays_are_equal(ds1[()], ds2[()])
-                ds1 = h5f['group_target/dataset1']
-                assert isinstance(ds1, h5py.Dataset)
-                ds2 = h5f_2['group_target/dataset1']
-                assert isinstance(ds2, h5py.Dataset)
-                assert arrays_are_equal(ds1[()], ds2[()])
+            g1 = h5f['group_target']
+            assert isinstance(g1, h5py.Group)
+            g2 = h5f_rfs['group_target']
+            assert isinstance(g2, h5py.Group)
+            assert g1.attrs['foo'] == g2.attrs['foo']  # type: ignore
+            with pytest.raises(TypeError):
+                g1[np.array([0, 1, 2])]
+            h1 = h5f['soft_link']
+            assert isinstance(h1, h5py.Group)
+            h2 = h5f_rfs['soft_link']
+            assert isinstance(h2, h5py.Group)
+            assert h1.attrs['foo'] == h2.attrs['foo']  # type: ignore
+            # this is tricky: it seems that with h5py, the name of the soft link
+            # is the source name. So the following assertion will fail.
+            # assert h1.name == h2.name
+            k1 = h5f.get('soft_link', getlink=True)
+            k2 = h5f_rfs.get('soft_link', getlink=True)
+            assert isinstance(k1, h5py.SoftLink)
+            assert isinstance(k2, h5py.SoftLink)
+            ds1 = h5f['soft_link']['dataset1']  # type: ignore
+            assert isinstance(ds1, h5py.Dataset)
+            ds2 = h5f_rfs['soft_link']['dataset1']  # type: ignore
+            assert isinstance(ds2, h5py.Dataset)
+            assert arrays_are_equal(ds1[()], ds2[()])
+            ds1 = h5f['soft_link/dataset1']
+            assert isinstance(ds1, h5py.Dataset)
+            ds2 = h5f_rfs['soft_link/dataset1']
+            assert isinstance(ds2, h5py.Dataset)
+            assert arrays_are_equal(ds1[()], ds2[()])
+            ds1 = h5f['group_target/dataset1']
+            assert isinstance(ds1, h5py.Dataset)
+            ds2 = h5f_rfs['group_target/dataset1']
+            assert isinstance(ds2, h5py.Dataset)
+            assert arrays_are_equal(ds1[()], ds2[()])
 
 
 def test_arrays_of_compound_dtype():
@@ -305,7 +301,7 @@ def test_reference_file_system_to_file():
             f.create_dataset("X", data=[1, 2, 3])
         with LindiH5ZarrStore.from_file(filename, url=filename) as store:
             rfs_fname = f'{tmpdir}/test.lindi.json'
-            store.to_file(rfs_fname)
+            store.write_reference_file_system(rfs_fname)
             client = lindi.LindiH5pyFile.from_reference_file_system(rfs_fname)
             X = client["X"]
             assert isinstance(X, lindi.LindiH5pyDataset)
@@ -353,13 +349,67 @@ def test_lindi_reference_file_system_store():
     store = LindiReferenceFileSystemStore(rfs)
     assert json.loads(store[".zattrs"]) == {"test": 2}
     rfs = {"refs": {".zattrs": "{\"test\": 3}"}}
-    LindiReferenceFileSystemStore.replace_meta_file_contents_with_dicts(rfs)
+    LindiReferenceFileSystemStore.replace_meta_file_contents_with_dicts_in_rfs(rfs)
     assert isinstance(rfs["refs"][".zattrs"], dict)
     store = LindiReferenceFileSystemStore(rfs)
     assert json.loads(store[".zattrs"]) == {"test": 3}
     rfs = {"refs": {".zattrs_xxx": "{\"test\": 5}"}}
-    LindiReferenceFileSystemStore.replace_meta_file_contents_with_dicts(rfs)
+    LindiReferenceFileSystemStore.replace_meta_file_contents_with_dicts_in_rfs(rfs)
     assert isinstance(rfs["refs"][".zattrs_xxx"], str)
+    rfs = {"refs": {"0": ["http://example.com", 0, 1000]}}
+    LindiReferenceFileSystemStore.use_templates_in_rfs(rfs)
+    assert 'templates' not in rfs
+    assert rfs['refs']['0'] == ['http://example.com', 0, 1000]
+    with tempfile.TemporaryDirectory() as tmpdir:
+        with open(f"{tmpdir}/file1.txt", "wb") as f:
+            f.write(b"a" * 1000)
+            f.write(b"b" * 1000)
+            f.write(b"c" * 1000)
+            f.write(b"d" * 1000)
+            f.write(b"e" * 1000)
+        with open(f"{tmpdir}/file2.txt", "wb") as f:
+            f.write(b"f" * 1000)
+            f.write(b"g" * 1000)
+            f.write(b"h" * 1000)
+            f.write(b"i" * 1000)
+            f.write(b"j" * 1000)
+        rfs = {"refs": {
+            "0": [f"{tmpdir}/file1.txt", 0, 1000],
+            "1": [f"{tmpdir}/file1.txt", 1000, 1000],
+            "2": [f"{tmpdir}/file1.txt", 2000, 1000],
+            "3": [f"{tmpdir}/file1.txt", 3000, 1000],
+            "4": [f"{tmpdir}/file1.txt", 4000, 1000],
+            "5": [f"{tmpdir}/file2.txt", 0, 1000],
+            "6": [f"{tmpdir}/file2.txt", 1000, 1000],
+            "7": [f"{tmpdir}/file2.txt", 2000, 1000],
+            "8": [f"{tmpdir}/file2.txt", 3000, 1000],
+            "9": [f"{tmpdir}/file2.txt", 4000, 1000],
+        }}
+        LindiReferenceFileSystemStore.use_templates_in_rfs(rfs)
+        assert 'templates' in rfs
+        assert rfs['templates']['u1'] == f"{tmpdir}/file1.txt"
+        assert rfs['templates']['u2'] == f"{tmpdir}/file2.txt"
+        assert rfs['refs']['0'] == ['{{u1}}', 0, 1000]
+        assert rfs['refs']['1'] == ['{{u1}}', 1000, 1000]
+        assert rfs['refs']['2'] == ['{{u1}}', 2000, 1000]
+        assert rfs['refs']['3'] == ['{{u1}}', 3000, 1000]
+        assert rfs['refs']['4'] == ['{{u1}}', 4000, 1000]
+        assert rfs['refs']['5'] == ['{{u2}}', 0, 1000]
+        assert rfs['refs']['6'] == ['{{u2}}', 1000, 1000]
+        assert rfs['refs']['7'] == ['{{u2}}', 2000, 1000]
+        assert rfs['refs']['8'] == ['{{u2}}', 3000, 1000]
+        assert rfs['refs']['9'] == ['{{u2}}', 4000, 1000]
+        store = LindiReferenceFileSystemStore(rfs)
+        assert store['0'] == b"a" * 1000
+        assert store['1'] == b"b" * 1000
+        assert store['2'] == b"c" * 1000
+        assert store['3'] == b"d" * 1000
+        assert store['4'] == b"e" * 1000
+        assert store['5'] == b"f" * 1000
+        assert store['6'] == b"g" * 1000
+        assert store['7'] == b"h" * 1000
+        assert store['8'] == b"i" * 1000
+        assert store['9'] == b"j" * 1000
 
     rfs = {"refs": {"a": "abc"}}
     store = LindiReferenceFileSystemStore(rfs)
@@ -423,7 +473,7 @@ def test_lindi_h5_zarr_store():
         with pytest.raises(Exception, match=store_is_closed_msg):
             store.to_reference_file_system()
         with pytest.raises(Exception, match=store_is_closed_msg):
-            store.to_file("test.json")
+            store.write_reference_file_system("test.lindi.json")
         with pytest.raises(Exception, match=store_is_closed_msg):
             store._get_chunk_file_bytes_data("dataset1", "0")
 
@@ -443,16 +493,12 @@ def test_lindi_h5_zarr_store():
             store["nonexistent/0"]
 
         # Key error
-        store = LindiH5ZarrStore.from_file(filename)
+        store = LindiH5ZarrStore.from_file(filename, url='.')
         with pytest.raises(KeyError):
             store['']
         assert '' not in store
         with pytest.raises(KeyError):
             store["nonexistent/.zattrs"]
-
-        # Unsupported file type
-        with pytest.raises(Exception, match="Unsupported file type: zarr"):
-            store.to_file("test.json", file_type="zarr")  # type: ignore
 
         # URL is not set
         store = LindiH5ZarrStore.from_file(filename, url=None)

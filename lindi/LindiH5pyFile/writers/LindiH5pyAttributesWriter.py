@@ -9,12 +9,7 @@ class LindiH5pyAttributesWriter:
         self.p = p
 
     def __setitem__(self, key, value):
+        from ...conversion.attr_conversion import h5_to_zarr_attr  # avoid circular import
         if self.p._readonly:
             raise KeyError("Cannot set attributes on read-only object")
-        if self.p._attrs_type == "h5py":
-            self.p._attrs[key] = value
-        elif self.p._attrs_type == "zarr":
-            from ...conversion.attr_conversion import h5_to_zarr_attr  # avoid circular import
-            self.p._attrs[key] = h5_to_zarr_attr(value, h5f=None)
-        else:
-            raise ValueError(f"Unknown attrs_type: {self.p._attrs_type}")
+        self.p._attrs[key] = h5_to_zarr_attr(value, h5f=None)

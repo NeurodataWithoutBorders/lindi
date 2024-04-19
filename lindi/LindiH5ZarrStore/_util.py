@@ -1,4 +1,5 @@
 from typing import IO, List
+import json
 import numpy as np
 import h5py
 
@@ -83,3 +84,10 @@ def _get_chunk_names_for_dataset(chunk_coords_shape: List[int]) -> List[str]:
             for name0 in names0:
                 names.append(f"{i}.{name0}")
         return names
+
+
+def _write_rfs_to_file(*, rfs: dict, output_file_name: str):
+    """Write a reference file system to a file.
+    """
+    with open(output_file_name, "w") as f:
+        json.dump(rfs, f, indent=2, sort_keys=True)
