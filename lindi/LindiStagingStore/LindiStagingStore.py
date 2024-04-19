@@ -128,7 +128,7 @@ class LindiStagingStore(ZarrStore):
             self.consolidate_chunks()
         rfs = self._base_store.rfs
         rfs = json.loads(json.dumps(rfs))  # deep copy
-        LindiReferenceFileSystemStore.replace_meta_file_contents_with_dicts(rfs)
+        LindiReferenceFileSystemStore.replace_meta_file_contents_with_dicts_in_rfs(rfs)
         blob_mapping = _upload_directory_of_blobs(self._staging_area.directory, on_upload_blob=on_upload_blob)
         for k, v in rfs['refs'].items():
             if isinstance(v, list) and len(v) == 3:
@@ -140,6 +140,7 @@ class LindiStagingStore(ZarrStore):
                     rfs['refs'][k][0] = url2
         with tempfile.TemporaryDirectory() as tmpdir:
             rfs_fname = f"{tmpdir}/rfs.lindi.json"
+            LindiReferenceFileSystemStore.use_templates_in_rfs(rfs)
             _write_rfs_to_file(rfs=rfs, output_file_name=rfs_fname)
             return on_upload_main(rfs_fname)
 
