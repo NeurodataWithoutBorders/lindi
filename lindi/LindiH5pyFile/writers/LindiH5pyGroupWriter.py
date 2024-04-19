@@ -24,16 +24,16 @@ class LindiH5pyGroupWriter:
         from ..LindiH5pyGroup import LindiH5pyGroup  # avoid circular import
         if track_order is not None:
             raise Exception("track_order is not supported (I don't know what it is)")
-        if isinstance(self.p._group_object, h5py.Group):
+        if isinstance(self.p._zarr_group, h5py.Group):
             return LindiH5pyGroup(
-                self.p._group_object.create_group(name), self.p._file
+                self.p._zarr_group.create_group(name), self.p._file
             )
-        elif isinstance(self.p._group_object, zarr.Group):
+        elif isinstance(self.p._zarr_group, zarr.Group):
             return LindiH5pyGroup(
-                self.p._group_object.create_group(name), self.p._file
+                self.p._zarr_group.create_group(name), self.p._file
             )
         else:
-            raise Exception(f'Unexpected group object type: {type(self.p._group_object)}')
+            raise Exception(f'Unexpected group object type: {type(self.p._zarr_group)}')
 
     def require_group(self, name):
         if name in self.p:
@@ -86,14 +86,14 @@ class LindiH5pyGroupWriter:
         else:
             raise Exception(f'Unexpected type for compression: {type(compression)}')
 
-        if isinstance(self.p._group_object, h5py.Group):
+        if isinstance(self.p._zarr_group, h5py.Group):
             if _zarr_compressor != 'default':
                 raise Exception('zarr_compressor is not supported when _group_object is h5py.Group')
             return LindiH5pyDataset(
                 self._group_object.create_dataset(name, shape=shape, dtype=dtype, data=data, chunks=chunks),  # type: ignore
                 self.p._file
             )
-        elif isinstance(self.p._group_object, zarr.Group):
+        elif isinstance(self.p._zarr_group, zarr.Group):
             if isinstance(data, list):
                 data = np.array(data)
             if shape is None:
@@ -111,7 +111,7 @@ class LindiH5pyGroupWriter:
                 else:
                     dtype = np.dtype(type(data))
             ds = create_zarr_dataset_from_h5_data(
-                zarr_parent_group=self.p._group_object,
+                zarr_parent_group=self.p._zarr_group,
                 name=name,
                 label=(self.p.name or '') + '/' + name,
                 h5_chunks=chunks,
@@ -123,7 +123,7 @@ class LindiH5pyGroupWriter:
             )
             return LindiH5pyDataset(ds, self.p._file)
         else:
-            raise Exception(f'Unexpected group object type: {type(self.p._group_object)}')
+            raise Exception(f'Unexpected group object type: {type(self.p._zarr_group)}')
 
     def require_dataset(self, name, shape, dtype, exact=False, **kwds):
         if name in self.p:
@@ -143,20 +143,20 @@ class LindiH5pyGroupWriter:
 
     def __setitem__(self, name, obj):
         if isinstance(obj, h5py.SoftLink):
-            if isinstance(self.p._group_object, h5py.Group):
-                self.p._group_object[name] = obj
-            elif isinstance(self.p._group_object, zarr.Group):
+            if isinstance(self.p._zarr_group, h5py.Group):
+                self.p._zarr_group[name] = obj
+            elif isinstance(self.p._zarr_group, zarr.Group):
                 grp = self.p.create_group(name)
-                grp._group_object.attrs['_SOFT_LINK'] = {
+                grp._zarr_group.attrs['_SOFT_LINK'] = {
                     'path': obj.path
                 }
             else:
-                raise Exception(f'Unexpected group object type: {type(self.p._group_object)}')
+                raise Exception(f'Unexpected group object type: {type(self.p._zarr_group)}')
         else:
             raise Exception(f'Unexpected type for obj in __setitem__: {type(obj)}')
 
     def __delitem__(self, name):
-        del self.p._group_object[name]
+        del self.p._zarr_group[name]
 
     @property
     def ref(self):
