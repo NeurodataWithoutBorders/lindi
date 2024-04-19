@@ -59,7 +59,6 @@ rfs = store.to_reference_file_system()
 
 # Save it to a file for later use
 with open("example.lindi.json", "w") as f:
-with open("example.lindi.json", "w") as f:
     json.dump(rfs, f, indent=2)
 
 # Create an h5py-like client from the reference file system
@@ -90,7 +89,6 @@ with pynwb.NWBHDF5IO(file=client, mode="r") as io:
 ```
 
 ### Edit a .nwb.lindi.json file using pynwb or other tools
-### Edit a .nwb.lindi.json file using pynwb or other tools
 
 ```python
 import json
@@ -109,11 +107,9 @@ client.attrs['new_attribute'] = 'new_value'
 # Save the changes to a new .nwb.lindi.json file
 rfs_new = client.to_reference_file_system()
 with open('new.nwb.lindi.json', 'w') as f:
-with open('new.nwb.lindi.json', 'w') as f:
     f.write(json.dumps(rfs_new, indent=2, sort_keys=True))
 ```
 
-### Add datasets to a .nwb.lindi.json file using a local staging area
 ### Add datasets to a .nwb.lindi.json file using a local staging area
 
 ```python
