@@ -353,13 +353,67 @@ def test_lindi_reference_file_system_store():
     store = LindiReferenceFileSystemStore(rfs)
     assert json.loads(store[".zattrs"]) == {"test": 2}
     rfs = {"refs": {".zattrs": "{\"test\": 3}"}}
-    LindiReferenceFileSystemStore.replace_meta_file_contents_with_dicts(rfs)
+    LindiReferenceFileSystemStore.replace_meta_file_contents_with_dicts_in_rfs(rfs)
     assert isinstance(rfs["refs"][".zattrs"], dict)
     store = LindiReferenceFileSystemStore(rfs)
     assert json.loads(store[".zattrs"]) == {"test": 3}
     rfs = {"refs": {".zattrs_xxx": "{\"test\": 5}"}}
-    LindiReferenceFileSystemStore.replace_meta_file_contents_with_dicts(rfs)
+    LindiReferenceFileSystemStore.replace_meta_file_contents_with_dicts_in_rfs(rfs)
     assert isinstance(rfs["refs"][".zattrs_xxx"], str)
+    rfs = {"refs": {"0": ["http://example.com", 0, 1000]}}
+    LindiReferenceFileSystemStore.use_templates_in_rfs(rfs)
+    assert 'templates' not in rfs
+    assert rfs['refs']['0'] == ['http://example.com', 0, 1000]
+    with tempfile.TemporaryDirectory() as tmpdir:
+        with open(f"{tmpdir}/file1.txt", "wb") as f:
+            f.write(b"a" * 1000)
+            f.write(b"b" * 1000)
+            f.write(b"c" * 1000)
+            f.write(b"d" * 1000)
+            f.write(b"e" * 1000)
+        with open(f"{tmpdir}/file2.txt", "wb") as f:
+            f.write(b"f" * 1000)
+            f.write(b"g" * 1000)
+            f.write(b"h" * 1000)
+            f.write(b"i" * 1000)
+            f.write(b"j" * 1000)
+        rfs = {"refs": {
+            "0": [f"{tmpdir}/file1.txt", 0, 1000],
+            "1": [f"{tmpdir}/file1.txt", 1000, 1000],
+            "2": [f"{tmpdir}/file1.txt", 2000, 1000],
+            "3": [f"{tmpdir}/file1.txt", 3000, 1000],
+            "4": [f"{tmpdir}/file1.txt", 4000, 1000],
+            "5": [f"{tmpdir}/file2.txt", 0, 1000],
+            "6": [f"{tmpdir}/file2.txt", 1000, 1000],
+            "7": [f"{tmpdir}/file2.txt", 2000, 1000],
+            "8": [f"{tmpdir}/file2.txt", 3000, 1000],
+            "9": [f"{tmpdir}/file2.txt", 4000, 1000],
+        }}
+        LindiReferenceFileSystemStore.use_templates_in_rfs(rfs)
+        assert 'templates' in rfs
+        assert rfs['templates']['u1'] == f"{tmpdir}/file1.txt"
+        assert rfs['templates']['u2'] == f"{tmpdir}/file2.txt"
+        assert rfs['refs']['0'] == ['{{u1}}', 0, 1000]
+        assert rfs['refs']['1'] == ['{{u1}}', 1000, 1000]
+        assert rfs['refs']['2'] == ['{{u1}}', 2000, 1000]
+        assert rfs['refs']['3'] == ['{{u1}}', 3000, 1000]
+        assert rfs['refs']['4'] == ['{{u1}}', 4000, 1000]
+        assert rfs['refs']['5'] == ['{{u2}}', 0, 1000]
+        assert rfs['refs']['6'] == ['{{u2}}', 1000, 1000]
+        assert rfs['refs']['7'] == ['{{u2}}', 2000, 1000]
+        assert rfs['refs']['8'] == ['{{u2}}', 3000, 1000]
+        assert rfs['refs']['9'] == ['{{u2}}', 4000, 1000]
+        store = LindiReferenceFileSystemStore(rfs)
+        assert store['0'] == b"a" * 1000
+        assert store['1'] == b"b" * 1000
+        assert store['2'] == b"c" * 1000
+        assert store['3'] == b"d" * 1000
+        assert store['4'] == b"e" * 1000
+        assert store['5'] == b"f" * 1000
+        assert store['6'] == b"g" * 1000
+        assert store['7'] == b"h" * 1000
+        assert store['8'] == b"i" * 1000
+        assert store['9'] == b"j" * 1000
 
     rfs = {"refs": {"a": "abc"}}
     store = LindiReferenceFileSystemStore(rfs)

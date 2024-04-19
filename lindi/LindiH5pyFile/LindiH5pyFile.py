@@ -147,7 +147,8 @@ class LindiH5pyFile(h5py.File):
             raise Exception(f"Unexpected type for zarr store: {type(self._zarr_store)}")
         rfs = zarr_store.rfs
         rfs_copy = json.loads(json.dumps(rfs))
-        LindiReferenceFileSystemStore.replace_meta_file_contents_with_dicts(rfs_copy)
+        LindiReferenceFileSystemStore.replace_meta_file_contents_with_dicts_in_rfs(rfs_copy)
+        LindiReferenceFileSystemStore.use_templates_in_rfs(rfs_copy)
         return rfs_copy
 
     @property

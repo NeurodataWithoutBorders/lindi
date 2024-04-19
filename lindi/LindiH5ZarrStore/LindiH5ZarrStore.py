@@ -579,7 +579,8 @@ class LindiH5ZarrStore(Store):
         # Process the groups recursively starting with the root group
         _process_group("", self._h5f)
 
-        LindiReferenceFileSystemStore.replace_meta_file_contents_with_dicts(ret)
+        LindiReferenceFileSystemStore.replace_meta_file_contents_with_dicts_in_rfs(ret)
+        LindiReferenceFileSystemStore.use_templates_in_rfs(ret)
         return ret
 
 
