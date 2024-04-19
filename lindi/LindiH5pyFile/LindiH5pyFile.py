@@ -12,6 +12,9 @@ from .LindiH5pyAttributes import LindiH5pyAttributes
 from .LindiH5pyReference import LindiH5pyReference
 from .LindiReferenceFileSystemStore import LindiReferenceFileSystemStore
 
+from ..LindiStagingStore.StagingArea import StagingArea
+from ..LindiStagingStore.LindiStagingStore import LindiStagingStore
+
 
 class LindiH5pyFile(h5py.File):
     def __init__(self, _file_object: Union[h5py.File, zarr.Group], *, _zarr_store: Union[ZarrStore, None] = None, _mode: Literal["r", "r+"] = "r"):
@@ -29,7 +32,7 @@ class LindiH5pyFile(h5py.File):
         self._id = f'{id(self._file_object)}/'
 
     @staticmethod
-    def from_reference_file_system(rfs: Union[dict, str], mode: Literal["r", "r+"] = "r"):
+    def from_reference_file_system(rfs: Union[dict, str], mode: Literal["r", "r+"] = "r", staging_area: Union[StagingArea, None] = None):
         """
         Create a LindiH5pyFile from a reference file system.
 
@@ -47,6 +50,10 @@ class LindiH5pyFile(h5py.File):
             to_reference_file_system() to export the updated reference file
             system to the same file or a new file.
         """
+        if staging_area is not None:
+            if mode not in ['r+']:
+                raise Exception("Staging area cannot be used in read-only mode")
+
         if isinstance(rfs, str):
             if rfs.startswith("http") or rfs.startswith("https"):
                 with tempfile.TemporaryDirectory() as tmpdir:
@@ -55,15 +62,17 @@ class LindiH5pyFile(h5py.File):
                     with open(filename, "r") as f:
                         data = json.load(f)
                     assert isinstance(data, dict)  # prevent infinite recursion
-                    return LindiH5pyFile.from_reference_file_system(data, mode=mode)
+                    return LindiH5pyFile.from_reference_file_system(data, mode=mode, staging_area=staging_area)
             else:
                 with open(rfs, "r") as f:
                     data = json.load(f)
                 assert isinstance(data, dict)  # prevent infinite recursion
-                return LindiH5pyFile.from_reference_file_system(data, mode=mode)
+                return LindiH5pyFile.from_reference_file_system(data, mode=mode, staging_area=staging_area)
         elif isinstance(rfs, dict):
             # This store does not need to be closed
             store = LindiReferenceFileSystemStore(rfs)
+            if staging_area:
+                store = LindiStagingStore(base_store=store, staging_area=staging_area)
             return LindiH5pyFile.from_zarr_store(store, mode=mode)
         else:
             raise Exception(f"Unhandled type for rfs: {type(rfs)}")
@@ -131,9 +140,12 @@ class LindiH5pyFile(h5py.File):
         """
         if self._zarr_store is None:
             raise Exception("Cannot convert to reference file system without zarr store")
-        if not isinstance(self._zarr_store, LindiReferenceFileSystemStore):
+        zarr_store = self._zarr_store
+        if isinstance(zarr_store, LindiStagingStore):
+            zarr_store = zarr_store._base_store
+        if not isinstance(zarr_store, LindiReferenceFileSystemStore):
             raise Exception(f"Unexpected type for zarr store: {type(self._zarr_store)}")
-        rfs = self._zarr_store.rfs
+        rfs = zarr_store.rfs
         rfs_copy = json.loads(json.dumps(rfs))
         LindiReferenceFileSystemStore.replace_meta_file_contents_with_dicts(rfs_copy)
         return rfs_copy
@@ -340,6 +352,15 @@ class LindiH5pyFile(h5py.File):
         if self._mode not in ['r+']:
             raise Exception("Cannot require dataset in read-only mode")
         return self._the_group.require_dataset(name, shape, dtype, exact=exact, **kwds)
+
+    ##############################
+    # staging store
+    @property
+    def staging_store(self):
+        store = self._zarr_store
+        if not isinstance(store, LindiStagingStore):
+            return None
+        return store
 
 
 def _download_file(url: str, filename: str) -> None:
