@@ -5,6 +5,7 @@ import os
 from zarr.storage import Store as ZarrStore
 from ..LindiH5pyFile.LindiReferenceFileSystemStore import LindiReferenceFileSystemStore
 from .StagingArea import StagingArea, _random_str
+from ..LindiH5ZarrStore._util import _write_rfs_to_file
 
 
 # Accepts a string path to a file, uploads (or copies) it somewhere, and returns a string URL
@@ -138,9 +139,8 @@ class LindiStagingStore(ZarrStore):
                         raise ValueError(f"Could not find url in blob mapping: {url1}")
                     rfs['refs'][k][0] = url2
         with tempfile.TemporaryDirectory() as tmpdir:
-            rfs_fname = f"{tmpdir}/rfs.json"
-            with open(rfs_fname, 'w') as f:
-                json.dump(rfs, f, indent=2, sort_keys=True)
+            rfs_fname = f"{tmpdir}/rfs.lindi.json"
+            _write_rfs_to_file(rfs=rfs, output_file_name=rfs_fname)
             return on_upload_main(rfs_fname)
 
     def consolidate_chunks(self):
