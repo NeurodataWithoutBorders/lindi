@@ -5,7 +5,6 @@ import urllib.request
 import h5py
 import zarr
 from zarr.storage import Store as ZarrStore
-from numcodecs.abc import Codec
 
 from .LindiH5pyGroup import LindiH5pyGroup
 from .LindiH5pyDataset import LindiH5pyDataset
@@ -341,20 +340,6 @@ class LindiH5pyFile(h5py.File):
         if self._mode not in ['r+']:
             raise Exception("Cannot require dataset in read-only mode")
         return self._the_group.require_dataset(name, shape, dtype, exact=exact, **kwds)
-
-    def create_dataset_with_zarr_compressor(
-        self,
-        name,
-        shape=None,
-        dtype=None,
-        data=None,
-        *,
-        compressor: Union[Codec, Literal['default']] = 'default',
-        **kwds
-    ):
-        if self._mode not in ['r+']:
-            raise Exception("Cannot create dataset in read-only mode")
-        return self._the_group.create_dataset_with_zarr_compressor(name, shape=shape, dtype=dtype, data=data, compressor=compressor, **kwds)
 
 
 def _download_file(url: str, filename: str) -> None:

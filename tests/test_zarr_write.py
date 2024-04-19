@@ -49,10 +49,10 @@ def test_zarr_write_with_zstd_compressor():
         store = zarr.DirectoryStore(dirname)
         zarr.group(store=store)
         with lindi.LindiH5pyFile.from_zarr_store(store, mode='r+') as h5f_backed_by_zarr:
-            h5f_backed_by_zarr.create_dataset_with_zarr_compressor(
+            h5f_backed_by_zarr.create_dataset(
                 'dset_float32',
                 data=np.array([1, 2, 3], dtype=np.float32),
-                compressor=numcodecs.Zstd(),  # this compressor not supported in hdf5
+                compression=numcodecs.Zstd(),  # this compressor not supported without plugin in hdf5
             )
 
         store2 = zarr.DirectoryStore(dirname)

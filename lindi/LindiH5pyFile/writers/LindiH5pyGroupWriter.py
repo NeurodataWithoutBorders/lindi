@@ -1,7 +1,8 @@
-from typing import TYPE_CHECKING, Union, Literal
+from typing import TYPE_CHECKING
 import h5py
 import numpy as np
 import zarr
+import numcodecs
 from numcodecs.abc import Codec
 
 from ..LindiH5pyDataset import LindiH5pyDataset
@@ -11,6 +12,8 @@ if TYPE_CHECKING:
     from ..LindiH5pyGroup import LindiH5pyGroup  # pragma: no cover
 
 from ...conversion.create_zarr_dataset_from_h5_data import create_zarr_dataset_from_h5_data
+
+_compression_not_specified_ = object()
 
 
 class LindiH5pyGroupWriter:
@@ -46,16 +49,42 @@ class LindiH5pyGroupWriter:
         shape=None,
         dtype=None,
         data=None,
-        *,
-        _zarr_compressor: Union[Codec, Literal['default']] = 'default',
         **kwds
     ):
         chunks = None
+        compression = _compression_not_specified_
+        compression_opts = None
         for k, v in kwds.items():
             if k == 'chunks':
                 chunks = v
+            elif k == 'compression':
+                compression = v
+            elif k == 'compression_opts':
+                compression_opts = v
             else:
                 raise Exception(f'Unsupported kwds in create_dataset: {k}')
+
+        if compression is _compression_not_specified_:
+            _zarr_compressor = 'default'
+            if compression_opts is not None:
+                raise Exception('compression_opts is only supported when compression is provided')
+        elif isinstance(compression, Codec):
+            _zarr_compressor = compression
+            if compression_opts is not None:
+                raise Exception('compression_opts is not supported when compression is provided as a Codec')
+        elif isinstance(compression, str):
+            if compression == 'gzip':
+                if compression_opts is None:
+                    level = 4  # default for h5py
+                elif isinstance(compression_opts, int):
+                    level = compression_opts
+                else:
+                    raise Exception(f'Unexpected type for compression_opts: {type(compression_opts)}')
+                _zarr_compressor = numcodecs.GZip(level=level)
+            else:
+                raise Exception(f'Compression {compression} is not supported')
+        else:
+            raise Exception(f'Unexpected type for compression: {type(compression)}')
 
         if isinstance(self.p._group_object, h5py.Group):
             if _zarr_compressor != 'default':

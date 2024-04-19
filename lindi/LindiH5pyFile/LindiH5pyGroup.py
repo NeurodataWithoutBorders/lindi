@@ -1,7 +1,6 @@
-from typing import TYPE_CHECKING, Union, Literal
+from typing import TYPE_CHECKING, Union
 import h5py
 import zarr
-from numcodecs.abc import Codec
 
 from .LindiH5pyDataset import LindiH5pyDataset
 from .LindiH5pyLink import LindiH5pyHardLink, LindiH5pySoftLink
@@ -187,21 +186,6 @@ class LindiH5pyGroup(h5py.Group):
             raise Exception('Cannot require dataset in read-only mode')
         assert self._writer is not None
         return self._writer.require_dataset(name, shape, dtype, exact=exact, **kwds)
-
-    def create_dataset_with_zarr_compressor(
-        self,
-        name,
-        shape=None,
-        dtype=None,
-        data=None,
-        *,
-        compressor: Union[Codec, Literal['default']] = 'default',
-        **kwds
-    ):
-        if self._readonly:
-            raise Exception('Cannot create dataset in read-only mode')
-        assert self._writer is not None
-        return self._writer.create_dataset(name, shape=shape, dtype=dtype, data=data, _zarr_compressor=compressor, **kwds)
 
     def __setitem__(self, name, obj):
         if self._readonly:
