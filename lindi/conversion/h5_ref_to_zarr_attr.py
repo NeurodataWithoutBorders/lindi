@@ -45,17 +45,18 @@ def h5_ref_to_zarr_attr(ref: h5py.Reference, *, h5f: h5py.File):
 
     # See https://hdmf-zarr.readthedocs.io/en/latest/storage.html#storing-object-references-in-attributes
     value = {
-        "object_id": object_id,
-        "path": deref_objname,
+        "object_id": _decode_if_needed(object_id),  # we need this to be json serializable
+        "path": _decode_if_needed(deref_objname),
         "source": ".",  # Are we always going to use the top-level object as the source?
-        "source_object_id": file_object_id,
+        "source_object_id": _decode_if_needed(file_object_id),
     }
-
-    # We need this to be json serializable
-    for k, v in value.items():
-        if isinstance(v, bytes):
-            value[k] = v.decode('utf-8')
 
     return {
         "_REFERENCE": value
     }
+
+
+def _decode_if_needed(val):
+    if isinstance(val, bytes):
+        return val.decode('utf-8')
+    return val
