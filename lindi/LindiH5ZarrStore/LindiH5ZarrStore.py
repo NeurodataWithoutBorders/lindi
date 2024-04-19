@@ -1,6 +1,6 @@
 import json
 import base64
-from typing import Union, List, IO, Any, Dict, Literal
+from typing import Union, List, IO, Any, Dict
 from dataclasses import dataclass
 import numpy as np
 import zarr
@@ -460,16 +460,17 @@ class LindiH5ZarrStore(Store):
         else:
             return []
 
-    def to_file(self, file_name: str, *, file_type: Literal["zarr.json"] = "zarr.json"):
+    def write_reference_file_system(self, output_file_name: str):
         """Write a reference file system corresponding to this store to a file.
 
         This can then be loaded using LindiH5pyFile.from_reference_file_system(file_name)
         """
-        if file_type != "zarr.json":
-            raise Exception(f"Unsupported file type: {file_type}")
+
+        if not output_file_name.endswith(".lindi.json"):
+            raise Exception("The output file name must end with .lindi.json")
 
         ret = self.to_reference_file_system()
-        with open(file_name, "w") as f:
+        with open(output_file_name, "w") as f:
             json.dump(ret, f, indent=2)
 
     def to_reference_file_system(self) -> dict:
