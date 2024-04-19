@@ -8,8 +8,7 @@ import shutil
 def test_staging_area():
     with tempfile.TemporaryDirectory() as tmpdir:
         staging_area = lindi.StagingArea.create(tmpdir + '/staging_area')
-        empty_rfs = {'refs': {'.zgroup': {'zarr_format': 2}}}
-        client = lindi.LindiH5pyFile.from_reference_file_system(empty_rfs, mode='r+', staging_area=staging_area)
+        client = lindi.LindiH5pyFile.from_reference_file_system(None, mode='r+', staging_area=staging_area)
         X = np.random.randn(1000, 1000).astype(np.float32)
         client.create_dataset('large_array', data=X, chunks=(400, 400))
         total_size = _get_total_size_of_directory(tmpdir)
@@ -43,7 +42,7 @@ def test_staging_area():
             consolidate_chunks=True
         )
 
-        client3 = lindi.LindiH5pyFile.from_reference_file_system(output_fname, mode='r')
+        client3 = lindi.LindiH5pyFile.from_lindi_file(output_fname, mode='r')
         X3 = client3['large_array']
         assert isinstance(X3, lindi.LindiH5pyDataset)
         assert np.allclose(X1[:], X3[:])

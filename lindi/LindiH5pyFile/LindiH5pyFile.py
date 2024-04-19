@@ -14,6 +14,8 @@ from .LindiReferenceFileSystemStore import LindiReferenceFileSystemStore
 from ..LindiStagingStore.StagingArea import StagingArea
 from ..LindiStagingStore.LindiStagingStore import LindiStagingStore
 
+from ..LocalCache.LocalCache import LocalCache
+
 
 class LindiH5pyFile(h5py.File):
     def __init__(self, _zarr_group: zarr.Group, *, _zarr_store: Union[ZarrStore, None] = None, _mode: Literal["r", "r+"] = "r"):
@@ -31,15 +33,25 @@ class LindiH5pyFile(h5py.File):
         self._id = f'{id(self._zarr_group)}/'
 
     @staticmethod
-    def from_reference_file_system(rfs: Union[dict, str], mode: Literal["r", "r+"] = "r", staging_area: Union[StagingArea, None] = None):
+    def from_lindi_file(url: str, *, mode: Literal["r", "r+"] = "r", staging_area: Union[StagingArea, None] = None, local_cache: Union[LocalCache, None] = None):
+        """
+        Create a LindiH5pyFile from a URL or path to a .lindi.json file.
+
+        For a description of parameters, see from_reference_file_system().
+        """
+        return LindiH5pyFile.from_reference_file_system(url, mode=mode, staging_area=staging_area, local_cache=local_cache)
+
+    @staticmethod
+    def from_reference_file_system(rfs: Union[dict, str, None], *, mode: Literal["r", "r+"] = "r", staging_area: Union[StagingArea, None] = None, local_cache: Union[LocalCache, None] = None):
         """
         Create a LindiH5pyFile from a reference file system.
 
         Parameters
         ----------
-        rfs : Union[dict, str]
+        rfs : Union[dict, str, None]
             The reference file system. This can be a dictionary or a URL or path
-            to a .lindi.json file.
+            to a .lindi.json file. If None, an empty reference file system will
+            be created.
         mode : Literal["r", "r+"], optional
             The mode to open the file object in, by default "r". If the mode is
             "r", the file object will be read-only. If the mode is "r+", the
@@ -48,7 +60,20 @@ class LindiH5pyFile(h5py.File):
             internal in-memory representation will be modified. Use
             to_reference_file_system() to export the updated reference file
             system to the same file or a new file.
+        staging_area : Union[StagingArea, None], optional
+            The staging area to use for writing data, preparing for upload.
+            This is only used in write mode, by default None.
+        local_cache : Union[LocalCache, None], optional
+            The local cache to use for caching data, by default None.
         """
+        if rfs is None:
+            rfs = {
+                "refs": {
+                    '.zgroup': {
+                        'zarr_format': 2
+                    }
+                },
+            }
         if staging_area is not None:
             if mode not in ['r+']:
                 raise Exception("Staging area cannot be used in read-only mode")
@@ -61,15 +86,15 @@ class LindiH5pyFile(h5py.File):
                     with open(filename, "r") as f:
                         data = json.load(f)
                     assert isinstance(data, dict)  # prevent infinite recursion
-                    return LindiH5pyFile.from_reference_file_system(data, mode=mode, staging_area=staging_area)
+                    return LindiH5pyFile.from_reference_file_system(data, mode=mode, staging_area=staging_area, local_cache=local_cache)
             else:
                 with open(rfs, "r") as f:
                     data = json.load(f)
                 assert isinstance(data, dict)  # prevent infinite recursion
-                return LindiH5pyFile.from_reference_file_system(data, mode=mode, staging_area=staging_area)
+                return LindiH5pyFile.from_reference_file_system(data, mode=mode, staging_area=staging_area, local_cache=local_cache)
         elif isinstance(rfs, dict):
             # This store does not need to be closed
-            store = LindiReferenceFileSystemStore(rfs)
+            store = LindiReferenceFileSystemStore(rfs, local_cache=local_cache)
             if staging_area:
                 store = LindiStagingStore(base_store=store, staging_area=staging_area)
             return LindiH5pyFile.from_zarr_store(store, mode=mode)
@@ -121,7 +146,7 @@ class LindiH5pyFile(h5py.File):
         """
         Export the internal in-memory representation to a reference file system.
         In order to use this, the file object needs to have been created using
-        from_reference_file_system().
+        from_reference_file_system() or from_lindi_file().
         """
         if self._zarr_store is None:
             raise Exception("Cannot convert to reference file system without zarr store")

@@ -79,8 +79,8 @@ import lindi
 # URL of the remote .nwb.lindi.json file
 url = 'https://kerchunk.neurosift.org/dandi/dandisets/000939/assets/11f512ba-5bcf-4230-a8cb-dc8d36db38cb/zarr.json'
 
-# Load the h5py-like client for the reference file system
-client = lindi.LindiH5pyFile.from_reference_file_system(url)
+# Load the h5py-like client
+client = lindi.LindiH5pyFile.from_lindi_file(url)
 
 # Open using pynwb
 with pynwb.NWBHDF5IO(file=client, mode="r") as io:
@@ -121,7 +121,7 @@ url = 'https://lindi.neurosift.org/dandi/dandisets/000939/assets/11f512ba-5bcf-4
 # Load the h5py-like client for the reference file system
 # in read-write mode with a staging area
 with lindi.StagingArea.create(base_dir='lindi_staging') as staging_area:
-    client = lindi.LindiH5pyFile.from_reference_file_system(
+    client = lindi.LindiH5pyFile.from_lindi_file(
         url,
         mode="r+",
         staging_area=staging_area

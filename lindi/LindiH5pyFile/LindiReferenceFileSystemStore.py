@@ -1,7 +1,9 @@
-from typing import Literal, Dict
+from typing import Literal, Dict, Union
 import json
 import base64
 from zarr.storage import Store as ZarrStore
+
+from ..LocalCache.LocalCache import LocalCache
 from .FileSegmentReader.FileSegmentReader import FileSegmentReader
 from .FileSegmentReader.DandiFileSegmentReader import DandiFileSegmentReader
 
@@ -65,7 +67,7 @@ class LindiReferenceFileSystemStore(ZarrStore):
     will be reflected immediately in the store. This can be used by experimental
     tools such as lindi-cloud.
     """
-    def __init__(self, rfs: dict, mode: Literal["r", "r+"] = "r+"):
+    def __init__(self, rfs: dict, *, mode: Literal["r", "r+"] = "r+", local_cache: Union[LocalCache, None] = None):
         """
         Create a LindiReferenceFileSystemStore.
 
@@ -75,6 +77,9 @@ class LindiReferenceFileSystemStore(ZarrStore):
             The reference file system (see class docstring for details).
         mode : str
             The mode to open the store in. Only "r" is supported at this time.
+        local_cache : LocalCache, optional
+            The local cache to use for caching data chunks read from the
+            remote URLs. If None, no caching is done.
         """
         if "refs" not in rfs:
             raise Exception("rfs must contain a 'refs' key")
@@ -106,6 +111,7 @@ class LindiReferenceFileSystemStore(ZarrStore):
 
         self.rfs = rfs
         self.mode = mode
+        self.local_cache = local_cache
 
     # These methods are overridden from MutableMapping
     def __getitem__(self, key: str):
@@ -128,7 +134,13 @@ class LindiReferenceFileSystemStore(ZarrStore):
             if '{{' in url and 'templates' in self.rfs:
                 for k, v in self.rfs["templates"].items():
                     url = url.replace("{{" + k + "}}", v)
+            if self.local_cache is not None:
+                x = self.local_cache.get_chunk(url=url, offset=offset, size=length)
+                if x is not None:
+                    return x
             val = _read_bytes_from_url(url, offset, length)
+            if self.local_cache is not None:
+                self.local_cache.put_chunk(url=url, offset=offset, size=length, data=val)
             return val
         else:
             # should not happen given checks in __init__, but self.rfs is mutable

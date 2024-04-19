@@ -7,7 +7,7 @@ import pynwb
 url = 'https://kerchunk.neurosift.org/dandi/dandisets/000939/assets/11f512ba-5bcf-4230-a8cb-dc8d36db38cb/zarr.json'
 
 # Load the h5py-like client from the reference file system
-client = lindi.LindiH5pyFile.from_reference_file_system(url, mode='r+')
+client = lindi.LindiH5pyFile.from_lindi_file(url, mode='r+')
 
 # modify the age of the subject
 subject = client['general']['subject']  # type: ignore

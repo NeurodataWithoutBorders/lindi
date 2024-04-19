@@ -464,7 +464,7 @@ class LindiH5ZarrStore(Store):
     def write_reference_file_system(self, output_file_name: str):
         """Write a reference file system corresponding to this store to a file.
 
-        This can then be loaded using LindiH5pyFile.from_reference_file_system(file_name)
+        This can then be loaded using LindiH5pyFile.from_lindi_file(file_name)
         """
 
         if not output_file_name.endswith(".lindi.json"):
