@@ -7,9 +7,9 @@ from ..LindiH5pyFile.LindiReferenceFileSystemStore import LindiReferenceFileSyst
 from .StagingArea import StagingArea, _random_str
 
 
-# Accepts a string path to a file, stores it somewhere, and returns a string URL
+# Accepts a string path to a file, uploads (or copies) it somewhere, and returns a string URL
 # (or local path)
-StoreFileFunc = Callable[[str], str]
+UploadFileFunc = Callable[[str], str]
 
 
 class LindiStagingStore(ZarrStore):
@@ -96,8 +96,8 @@ class LindiStagingStore(ZarrStore):
     def upload(
         self,
         *,
-        on_store_blob: StoreFileFunc,
-        on_store_main: StoreFileFunc,
+        on_upload_blob: UploadFileFunc,
+        on_upload_main: UploadFileFunc,
         consolidate_chunks: bool = True
     ):
         """
@@ -107,10 +107,10 @@ class LindiStagingStore(ZarrStore):
 
         Parameters
         ----------
-        on_store_blob : StoreFileFunc
-            A function that takes a string path to a blob file, stores it
+        on_upload_blob : StoreFileFunc
+            A function that takes a string path to a blob file, uploads or copies it
             somewhere, and returns a string URL (or local path).
-        on_store_main : StoreFileFunc
+        on_upload_main : StoreFileFunc
             A function that takes a string path to the main .json file, stores
             it somewhere, and returns a string URL (or local path).
         consolidate_chunks : bool
@@ -128,7 +128,7 @@ class LindiStagingStore(ZarrStore):
         rfs = self._base_store.rfs
         rfs = json.loads(json.dumps(rfs))  # deep copy
         LindiReferenceFileSystemStore.replace_meta_file_contents_with_dicts(rfs)
-        blob_mapping = _upload_directory_of_blobs(self._staging_area.directory, on_store_blob=on_store_blob)
+        blob_mapping = _upload_directory_of_blobs(self._staging_area.directory, on_upload_blob=on_upload_blob)
         for k, v in rfs['refs'].items():
             if isinstance(v, list) and len(v) == 3:
                 url1 = v[0]
@@ -141,7 +141,7 @@ class LindiStagingStore(ZarrStore):
             rfs_fname = f"{tmpdir}/rfs.json"
             with open(rfs_fname, 'w') as f:
                 json.dump(rfs, f, indent=2, sort_keys=True)
-            return on_store_main(rfs_fname)
+            return on_upload_main(rfs_fname)
 
     def consolidate_chunks(self):
         """
@@ -235,7 +235,7 @@ def _sort_by_chunk_key(files: list) -> list:
 
 def _upload_directory_of_blobs(
     staging_dir: str,
-    on_store_blob: StoreFileFunc
+    on_upload_blob: UploadFileFunc
 ) -> dict:
     """
     Upload all the files in a directory to a storage system and return a mapping
@@ -251,7 +251,7 @@ def _upload_directory_of_blobs(
         relative_fname = full_fname[len(staging_dir):]
         size_bytes = os.path.getsize(full_fname)
         print(f'Uploading blob {i + 1} of {len(all_files)} {relative_fname} ({_format_size_bytes(size_bytes)})')
-        blob_url = on_store_blob(full_fname)
+        blob_url = on_upload_blob(full_fname)
         blob_mapping[full_fname] = blob_url
     return blob_mapping
 
