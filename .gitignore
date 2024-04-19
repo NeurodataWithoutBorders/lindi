@@ -1,4 +1,4 @@
-*.zarr.json
+*.lindi.json
 *.nwb
 
 .coverage
