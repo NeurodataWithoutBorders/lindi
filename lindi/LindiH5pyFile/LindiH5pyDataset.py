@@ -103,7 +103,26 @@ class LindiH5pyDataset(h5py.Dataset):
                 #             return StrDataset(h5obj, None)
                 #     return h5obj
                 # We cannot have a dtype with kind 'O' and no metadata
-                ret = np.dtype(str(ret), metadata={})
+                # There is also this section in pynwb validator.py
+                # if isinstance(received, np.dtype):
+                #     if received.char == 'O':
+                #         if 'vlen' in received.metadata:
+                #             received = received.metadata['vlen']
+                #         else:
+                #             raise ValueError("Unrecognized type: '%s'" % received)
+                #         received = 'utf' if received is str else 'ascii'
+                #     elif received.char == 'U':
+                #         received = 'utf'
+                #     elif received.char == 'S':
+                #         received = 'ascii'
+                #     else:
+                #         received = received.name
+                # ------------------------------------------
+                # I don't know how to figure out when vlen should be str or bytes
+                # but validate seems to work only when I put in vlen = bytes
+                #
+                vlen = bytes
+                ret = np.dtype(str(ret), metadata={'vlen': vlen})
         return ret
 
     @property
