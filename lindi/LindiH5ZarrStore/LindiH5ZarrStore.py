@@ -4,7 +4,6 @@ from typing import Union, List, IO, Any, Dict
 from dataclasses import dataclass
 import numpy as np
 import zarr
-import remfile
 from zarr.storage import Store, MemoryStore
 import h5py
 from ._util import (
@@ -21,6 +20,7 @@ from ..conversion.h5_filters_to_codecs import h5_filters_to_codecs
 from ..conversion.create_zarr_dataset_from_h5_data import create_zarr_dataset_from_h5_data
 from ..LindiH5pyFile.LindiReferenceFileSystemStore import LindiReferenceFileSystemStore
 from ..LocalCache.LocalCache import LocalCache
+from ..LindiRemfile.LindiRemfile import LindiRemfile
 
 
 @dataclass
@@ -111,7 +111,7 @@ class LindiH5ZarrStore(Store):
             "http://"
         ) or hdf5_file_name_or_url.startswith("https://"):
             # note that the remfile.File object does not need to be closed
-            remf = remfile.File(hdf5_file_name_or_url, verbose=False)
+            remf = LindiRemfile(hdf5_file_name_or_url, verbose=False, local_cache=local_cache)
             return LindiH5ZarrStore(_file=remf, _url=hdf5_file_name_or_url, _opts=opts, _entities_to_close=[], _local_cache=local_cache)
         else:
             if local_cache is not None:

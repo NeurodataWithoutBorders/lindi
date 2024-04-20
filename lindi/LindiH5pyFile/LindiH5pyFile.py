@@ -13,7 +13,6 @@ from .LindiReferenceFileSystemStore import LindiReferenceFileSystemStore
 
 from ..LindiStagingStore.StagingArea import StagingArea
 from ..LindiStagingStore.LindiStagingStore import LindiStagingStore
-from ..LindiH5ZarrStore.LindiH5ZarrStore import LindiH5ZarrStore
 
 from ..LocalCache.LocalCache import LocalCache
 
@@ -57,6 +56,7 @@ class LindiH5pyFile(h5py.File):
         local_cache : Union[LocalCache, None], optional
             The local cache to use for caching data chunks, by default None.
         """
+        from ..LindiH5ZarrStore.LindiH5ZarrStore import LindiH5ZarrStore  # avoid circular import
         if mode == 'r+':
             raise Exception("Opening hdf5 file in r+ mode is not supported")
         zarr_store = LindiH5ZarrStore.from_file(url_or_path, local_cache=local_cache)
@@ -172,6 +172,7 @@ class LindiH5pyFile(h5py.File):
         In order to use this, the file object needs to have been created using
         from_reference_file_system() or from_lindi_file().
         """
+        from ..LindiH5ZarrStore.LindiH5ZarrStore import LindiH5ZarrStore  # avoid circular import
         if self._zarr_store is None:
             raise Exception("Cannot convert to reference file system without zarr store")
         zarr_store = self._zarr_store
