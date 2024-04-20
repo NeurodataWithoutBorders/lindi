@@ -12,13 +12,13 @@ class LocalCache:
         self._sqlite_db_fname = os.path.join(self._cache_dir, "lindi_cache.db")
         self._sqlite_client = LocalCacheSQLiteClient(db_fname=self._sqlite_db_fname)
 
-    def get_chunk(self, *, url: str, offset: int, size: int):
-        return self._sqlite_client.get_chunk(url=url, offset=offset, size=size)
+    def get_remote_chunk(self, *, url: str, offset: int, size: int):
+        return self._sqlite_client.get_remote_chunk(url=url, offset=offset, size=size)
 
-    def put_chunk(self, *, url: str, offset: int, size: int, data: bytes):
+    def put_remote_chunk(self, *, url: str, offset: int, size: int, data: bytes):
         if len(data) != size:
             raise ValueError("data size does not match size")
-        self._sqlite_client.put_chunk(url=url, offset=offset, size=size, data=data)
+        self._sqlite_client.put_remote_chunk(url=url, offset=offset, size=size, data=data)
 
 
 class LocalCacheSQLiteClient:
@@ -34,7 +34,7 @@ class LocalCacheSQLiteClient:
         )
         self._cursor.execute(
             """
-            CREATE TABLE IF NOT EXISTS cache (
+            CREATE TABLE IF NOT EXISTS remote_chunks (
                 url TEXT,
                 offset INTEGER,
                 size INTEGER,
@@ -45,10 +45,10 @@ class LocalCacheSQLiteClient:
         )
         self._conn.commit()
 
-    def get_chunk(self, *, url: str, offset: int, size: int):
+    def get_remote_chunk(self, *, url: str, offset: int, size: int):
         self._cursor.execute(
             """
-            SELECT data FROM cache WHERE url = ? AND offset = ? AND size = ?
+            SELECT data FROM remote_chunks WHERE url = ? AND offset = ? AND size = ?
             """,
             (url, offset, size),
         )
@@ -57,10 +57,10 @@ class LocalCacheSQLiteClient:
             return None
         return row[0]
 
-    def put_chunk(self, *, url: str, offset: int, size: int, data: bytes):
+    def put_remote_chunk(self, *, url: str, offset: int, size: int, data: bytes):
         self._cursor.execute(
             """
-            INSERT OR REPLACE INTO cache (url, offset, size, data) VALUES (?, ?, ?, ?)
+            INSERT OR REPLACE INTO remote_chunks (url, offset, size, data) VALUES (?, ?, ?, ?)
             """,
             (url, offset, size, data),
         )

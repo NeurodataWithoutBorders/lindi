@@ -160,7 +160,7 @@ class LindiRemfile:
             return self._memory_chunks[chunk_index]
 
         if self._local_cache is not None:
-            cached_value = self._local_cache.get_chunk(
+            cached_value = self._local_cache.get_remote_chunk(
                 url=self._url,
                 offset=chunk_index * self._min_chunk_size,
                 size=min(self._min_chunk_size, self.length - chunk_index * self._min_chunk_size),
@@ -217,7 +217,7 @@ class LindiRemfile:
             if self._local_cache is None:
                 self._memory_chunks[chunk_index] = x
             if self._local_cache is not None:
-                self._local_cache.put_chunk(
+                self._local_cache.put_remote_chunk(
                     url=self._url,
                     offset=chunk_index * self._min_chunk_size,
                     size=min(self._min_chunk_size, self.length - chunk_index * self._min_chunk_size),
@@ -232,7 +232,7 @@ class LindiRemfile:
                     ]
                     self._memory_chunk_indices.append(chunk_index + i)
                 if self._local_cache is not None:
-                    self._local_cache.put_chunk(
+                    self._local_cache.put_remote_chunk(
                         url=self._url,
                         offset=(chunk_index + i) * self._min_chunk_size,
                         size=min(self._min_chunk_size, self.length - (chunk_index + i) * self._min_chunk_size),

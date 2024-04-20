@@ -134,12 +134,12 @@ class LindiReferenceFileSystemStore(ZarrStore):
                 for k, v in self.rfs["templates"].items():
                     url = url.replace("{{" + k + "}}", v)
             if self.local_cache is not None:
-                x = self.local_cache.get_chunk(url=url, offset=offset, size=length)
+                x = self.local_cache.get_remote_chunk(url=url, offset=offset, size=length)
                 if x is not None:
                     return x
             val = _read_bytes_from_url_or_path(url, offset, length)
             if self.local_cache is not None:
-                self.local_cache.put_chunk(url=url, offset=offset, size=length, data=val)
+                self.local_cache.put_remote_chunk(url=url, offset=offset, size=length, data=val)
             return val
         else:
             # should not happen given checks in __init__, but self.rfs is mutable
