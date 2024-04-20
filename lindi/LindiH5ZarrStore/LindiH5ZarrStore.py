@@ -20,6 +20,7 @@ from ..conversion.reformat_json import reformat_json
 from ..conversion.h5_filters_to_codecs import h5_filters_to_codecs
 from ..conversion.create_zarr_dataset_from_h5_data import create_zarr_dataset_from_h5_data
 from ..LindiH5pyFile.LindiReferenceFileSystemStore import LindiReferenceFileSystemStore
+from ..LocalCache.LocalCache import LocalCache
 
 
 @dataclass
@@ -57,7 +58,8 @@ class LindiH5ZarrStore(Store):
         _file: Union[IO, Any],
         _opts: LindiH5ZarrStoreOpts,
         _url: Union[str, None] = None,
-        _entities_to_close: List[Any]
+        _entities_to_close: List[Any],
+        _local_cache: Union[LocalCache, None] = None
     ):
         """
         Do not call the constructor directly. Instead, use the from_file class
@@ -67,6 +69,7 @@ class LindiH5ZarrStore(Store):
         self._h5f: Union[h5py.File, None] = h5py.File(_file, "r")
         self._url = _url
         self._opts = _opts
+        self._local_cache = _local_cache
         self._entities_to_close = _entities_to_close + [self._h5f]
 
         # Some datasets do not correspond to traditional chunked datasets. For
@@ -82,6 +85,7 @@ class LindiH5ZarrStore(Store):
         *,
         opts: LindiH5ZarrStoreOpts = LindiH5ZarrStoreOpts(),
         url: Union[str, None] = None,
+        local_cache: Union[LocalCache, None] = None
     ):
         """
         Create a LindiH5ZarrStore from a file or url pointing to an HDF5 file.
@@ -99,14 +103,19 @@ class LindiH5ZarrStore(Store):
             local file name, then you will need to set
             opts.num_dataset_chunks_threshold to None, and you will not be able
             to use the to_reference_file_system method.
+        local_cache : LocalCache or None
+            A local cache to use when reading chunks from a remote file. If None,
+            then no local cache is used.
         """
         if hdf5_file_name_or_url.startswith(
             "http://"
         ) or hdf5_file_name_or_url.startswith("https://"):
             # note that the remfile.File object does not need to be closed
             remf = remfile.File(hdf5_file_name_or_url, verbose=False)
-            return LindiH5ZarrStore(_file=remf, _url=hdf5_file_name_or_url, _opts=opts, _entities_to_close=[])
+            return LindiH5ZarrStore(_file=remf, _url=hdf5_file_name_or_url, _opts=opts, _entities_to_close=[], _local_cache=local_cache)
         else:
+            if local_cache is not None:
+                raise Exception("local_cache cannot be used with a local file")
             f = open(hdf5_file_name_or_url, "rb")
             return LindiH5ZarrStore(_file=f, _url=url, _opts=opts, _entities_to_close=[f])
 
@@ -334,7 +343,24 @@ class LindiH5ZarrStore(Store):
         else:
             assert byte_offset is not None
             assert byte_count is not None
+            if self._local_cache is not None:
+                assert self._url is not None, "Unexpected: url is None but local_cache is not None"
+                ch = self._local_cache.get_chunk(
+                    url=self._url,
+                    offset=byte_offset,
+                    size=byte_count
+                )
+                if ch is not None:
+                    return ch
             buf = _read_bytes(self._file, byte_offset, byte_count)
+            if self._local_cache is not None:
+                assert self._url is not None, "Unexpected: url is None but local_cache is not None"
+                self._local_cache.put_chunk(
+                    url=self._url,
+                    offset=byte_offset,
+                    size=byte_count,
+                    data=buf
+                )
             return buf
 
     def _get_chunk_file_bytes_data(self, key_parent: str, key_name: str):
