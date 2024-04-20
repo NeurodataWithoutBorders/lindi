@@ -1,5 +1,6 @@
 from typing import Union
 import time
+import os
 import requests
 from ..LocalCache.LocalCache import LocalCache
 
@@ -39,6 +40,7 @@ class LindiRemfile:
             Requires that url is a string (does not accept object with .get_url() function)
             Does not support using multiple threads
             Does not use memory cache if LocalCache is specified
+            Handles DANDI authentication
 
         A note:
             In the context of LINDI, this LindiRemfile is going to be used for loading
@@ -328,6 +330,43 @@ def _get_bytes(
     return fetch_bytes(start_byte, end_byte, _num_request_retries, verbose)
 
 
+_global_resolved_urls = {}  # url -> {timestamp, url}
+
+
+def _is_dandi_url(url: str):
+    if url.startswith('https://api.dandiarchive.org/api/'):
+        return True
+    if url.startswith('https://api-staging.dandiarchive.org/'):
+        return True
+    return False
+
+
+def _resolve_dandi_url(url: str):
+    resolve_with_dandi_api_key = None
+    if url.startswith('https://api.dandiarchive.org/api/'):
+        dandi_api_key = os.environ.get('DANDI_API_KEY', None)
+        if dandi_api_key is not None:
+            resolve_with_dandi_api_key = dandi_api_key
+    elif url.startswith('https://api-staging.dandiarchive.org/'):
+        dandi_api_key = os.environ.get('DANDI_STAGING_API_KEY', None)
+        if dandi_api_key is not None:
+            resolve_with_dandi_api_key = dandi_api_key
+    headers = {}
+    if resolve_with_dandi_api_key is not None:
+        headers['Authorization'] = f'token {resolve_with_dandi_api_key}'
+    # do it synchronously here
+    resp = requests.head(url, allow_redirects=True, headers=headers)
+    return str(resp.url)
+
+
 def _resolve_url(url: str):
-    # In the future we will do the auth and get the presigned download url
-    return url
+    if url in _global_resolved_urls:
+        elapsed = time.time() - _global_resolved_urls[url]["timestamp"]
+        if elapsed < 60 * 10:
+            return _global_resolved_urls[url]["url"]
+    if _is_dandi_url(url):
+        resolved_url = _resolve_dandi_url(url)
+    else:
+        resolved_url = url
+    _global_resolved_urls[url] = {"timestamp": time.time(), "url": resolved_url}
+    return resolved_url
