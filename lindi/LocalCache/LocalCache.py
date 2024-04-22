@@ -3,7 +3,7 @@ import os
 
 
 class LocalCache:
-    def __init__(self, *, cache_dir: Union[str, None]):
+    def __init__(self, *, cache_dir: Union[str, None] = None):
         if cache_dir is None:
             # use ~/.lindi/cache as default cache directory
             cache_dir = os.path.expanduser("~/.lindi/cache")

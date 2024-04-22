@@ -2,10 +2,10 @@ from typing import TYPE_CHECKING, Any, Dict
 import numpy as np
 import h5py
 import zarr
-import remfile
 
 from .LindiH5pyAttributes import LindiH5pyAttributes
 from .LindiH5pyReference import LindiH5pyReference
+from ..LindiRemfile.LindiRemfile import LindiRemfile
 
 from ..conversion.decode_references import decode_references
 
@@ -219,7 +219,7 @@ class LindiH5pyDataset(h5py.Dataset):
     def _get_external_hdf5_client(self, url: str) -> h5py.File:
         if url not in _external_hdf5_clients:
             if url.startswith("http://") or url.startswith("https://"):
-                ff = remfile.File(url)
+                ff = LindiRemfile(url, local_cache=self._file._local_cache)
             else:
                 ff = open(url, "rb")  # this never gets closed
             _external_hdf5_clients[url] = h5py.File(ff, "r")

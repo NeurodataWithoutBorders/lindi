@@ -146,7 +146,7 @@ class LindiRemfile:
             self._memory_chunk_indices = self._memory_chunk_indices[
                 int(self._max_chunks_in_cache * 0.5):
             ]
-
+        
         return ret
 
     def _load_chunk(self, chunk_index: int) -> bytes:

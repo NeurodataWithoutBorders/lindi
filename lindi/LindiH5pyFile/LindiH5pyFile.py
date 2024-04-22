@@ -18,7 +18,7 @@ from ..LocalCache.LocalCache import LocalCache
 
 
 class LindiH5pyFile(h5py.File):
-    def __init__(self, _zarr_group: zarr.Group, *, _zarr_store: Union[ZarrStore, None] = None, _mode: Literal["r", "r+"] = "r"):
+    def __init__(self, _zarr_group: zarr.Group, *, _zarr_store: Union[ZarrStore, None] = None, _mode: Literal["r", "r+"] = "r", _local_cache: Union[LocalCache, None] = None):
         """
         Do not use this constructor directly. Instead, use:
         from_reference_file_system, from_zarr_store, from_zarr_group,
@@ -28,6 +28,7 @@ class LindiH5pyFile(h5py.File):
         self._zarr_store = _zarr_store
         self._mode: Literal['r', 'r+'] = _mode
         self._the_group = LindiH5pyGroup(_zarr_group, self)
+        self._local_cache = _local_cache
 
         # see comment in LindiH5pyGroup
         self._id = f'{id(self._zarr_group)}/'
@@ -62,7 +63,8 @@ class LindiH5pyFile(h5py.File):
         zarr_store = LindiH5ZarrStore.from_file(url_or_path, local_cache=local_cache)
         return LindiH5pyFile.from_zarr_store(
             zarr_store=zarr_store,
-            mode=mode
+            mode=mode,
+            local_cache=local_cache
         )
 
     @staticmethod
@@ -126,7 +128,7 @@ class LindiH5pyFile(h5py.File):
             raise Exception(f"Unhandled type for rfs: {type(rfs)}")
 
     @staticmethod
-    def from_zarr_store(zarr_store: ZarrStore, mode: Literal["r", "r+"] = "r"):
+    def from_zarr_store(zarr_store: ZarrStore, mode: Literal["r", "r+"] = "r", local_cache: Union[LocalCache, None] = None):
         """
         Create a LindiH5pyFile from a zarr store.
 
@@ -143,10 +145,10 @@ class LindiH5pyFile(h5py.File):
         # does not need to be closed
         zarr_group = zarr.open(store=zarr_store, mode=mode)
         assert isinstance(zarr_group, zarr.Group)
-        return LindiH5pyFile.from_zarr_group(zarr_group, _zarr_store=zarr_store, mode=mode)
+        return LindiH5pyFile.from_zarr_group(zarr_group, _zarr_store=zarr_store, mode=mode, local_cache=local_cache)
 
     @staticmethod
-    def from_zarr_group(zarr_group: zarr.Group, *, mode: Literal["r", "r+"] = "r", _zarr_store: Union[ZarrStore, None] = None):
+    def from_zarr_group(zarr_group: zarr.Group, *, mode: Literal["r", "r+"] = "r", _zarr_store: Union[ZarrStore, None] = None, local_cache: Union[LocalCache, None] = None):
         """
         Create a LindiH5pyFile from a zarr group.
 
@@ -164,7 +166,7 @@ class LindiH5pyFile(h5py.File):
 
         See from_zarr_store().
         """
-        return LindiH5pyFile(zarr_group, _zarr_store=_zarr_store, _mode=mode)
+        return LindiH5pyFile(zarr_group, _zarr_store=_zarr_store, _mode=mode, _local_cache=local_cache)
 
     def to_reference_file_system(self):
         """
