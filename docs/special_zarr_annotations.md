@@ -34,7 +34,7 @@ Note that we do not currently support external links.
 - `object_id`: The object_id attribute of the target object (for validation).
 - `source_object_id`: The object_id attribute of the source object (for validation).
 
-The largely follows the [convention used by hdmf-zarr](https://hdmf-zarr.readthedocs.io/en/latest/storage.html#storing-object-references-in-attributes). 
+The largely follows the [convention used by hdmf-zarr](https://hdmf-zarr.readthedocs.io/en/latest/storage.html#storing-object-references-in-attributes).
 
 HDF5 references can appear within both attributes and datasets. For attributes, the value of the attribute is a dict in the above form. For datasets, the value of an item within the dataset is a dict in the above form.
 
@@ -50,4 +50,4 @@ Zarr arrays can represent compound data types from HDF5 datasets. The `_COMPOUND
 
 ### `_EXTERNAL_ARRAY_LINK = {'link_type': 'hdf5_dataset', 'url': '...', 'name': '...'}`
 
-For datasets with an extensive number of chunks such that inclusion in the Zarr or reference file system is impractical, LINDI uses the `_EXTERNAL_ARRAY_LINK` attribute on a Zarr array. This attribute points to an external HDF5 file, specifying the `url` for remote access (or local path) and the `name` of the target dataset within that file. When slicing that dataset, the `LindiH5pyClient` will handle data retrieval, leveraging `h5py` and `remfile` for remote access.
+For datasets with an extensive number of chunks such that inclusion in the Zarr or reference file system is impractical, LINDI uses the `_EXTERNAL_ARRAY_LINK` attribute on a Zarr array. This attribute points to an external HDF5 file, specifying the `url` for remote access (or local path) and the `name` of the target dataset within that file. When slicing that dataset, the `LindiH5pyClient` will handle data retrieval, leveraging `h5py` and `LindiRemfile` for remote access.
