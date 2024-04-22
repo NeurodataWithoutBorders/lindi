@@ -4,7 +4,7 @@ import os
 import requests
 from ..LocalCache.LocalCache import LocalCache
 
-default_min_chunk_size = 1024 * 1024  # This is different from Remfile - this is an important decision because it determines the chunk size in the LocalCache
+default_min_chunk_size = 128 * 1024  # This is different from Remfile - this is an important decision because it determines the chunk size in the LocalCache
 default_max_cache_size = 1024 * 1024 * 1024
 default_chunk_increment_factor = 1.7
 default_max_chunk_size = 100 * 1024 * 1024
@@ -146,7 +146,7 @@ class LindiRemfile:
             self._memory_chunk_indices = self._memory_chunk_indices[
                 int(self._max_chunks_in_cache * 0.5):
             ]
-        
+
         return ret
 
     def _load_chunk(self, chunk_index: int) -> bytes:
@@ -226,17 +226,23 @@ class LindiRemfile:
             self._memory_chunk_indices.append(chunk_index)
         else:
             for i in range(self._smart_loader_chunk_sequence_length):
+                if i * self._min_chunk_size >= len(x):
+                    break
                 if self._local_cache is None:
                     self._memory_chunks[chunk_index + i] = x[
                         i * self._min_chunk_size: (i + 1) * self._min_chunk_size
                     ]
                     self._memory_chunk_indices.append(chunk_index + i)
                 if self._local_cache is not None:
+                    size = min(self._min_chunk_size, self.length - (chunk_index + i) * self._min_chunk_size)
+                    data = x[i * self._min_chunk_size: (i + 1) * self._min_chunk_size]
+                    if len(data) != size:
+                        raise ValueError(f'Unexpected: len(data) != size: {len(data)} != {size}')
                     self._local_cache.put_remote_chunk(
                         url=self._url,
                         offset=(chunk_index + i) * self._min_chunk_size,
-                        size=min(self._min_chunk_size, self.length - (chunk_index + i) * self._min_chunk_size),
-                        data=x[i * self._min_chunk_size: (i + 1) * self._min_chunk_size]
+                        size=size,
+                        data=data
                     )
         self._smart_loader_last_chunk_index_accessed = (
             chunk_index + self._smart_loader_chunk_sequence_length - 1
