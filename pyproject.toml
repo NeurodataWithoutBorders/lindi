@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "lindi"
-version = "0.2.0"
+version = "0.3.0"
 description = ""
 authors = [
     "Jeremy Magland <jmagland@flatironinstitute.org>",
@@ -14,7 +14,6 @@ python = "^3.8"
 numcodecs = "^0.12.1"
 zarr = "^2.16.1"
 h5py = "^3.10.0"
-remfile = "^0.1.9"
 requests = "^2.31.0"
 
 [tool.poetry.group.dev.dependencies]

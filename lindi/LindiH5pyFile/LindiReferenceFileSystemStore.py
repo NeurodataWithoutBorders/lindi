@@ -1,9 +1,10 @@
-from typing import Literal, Dict
+from typing import Literal, Dict, Union
 import json
 import base64
+import requests
 from zarr.storage import Store as ZarrStore
-from .FileSegmentReader.FileSegmentReader import FileSegmentReader
-from .FileSegmentReader.DandiFileSegmentReader import DandiFileSegmentReader
+
+from ..LocalCache.LocalCache import LocalCache
 
 
 class LindiReferenceFileSystemStore(ZarrStore):
@@ -65,7 +66,7 @@ class LindiReferenceFileSystemStore(ZarrStore):
     will be reflected immediately in the store. This can be used by experimental
     tools such as lindi-cloud.
     """
-    def __init__(self, rfs: dict, mode: Literal["r", "r+"] = "r+"):
+    def __init__(self, rfs: dict, *, mode: Literal["r", "r+"] = "r+", local_cache: Union[LocalCache, None] = None):
         """
         Create a LindiReferenceFileSystemStore.
 
@@ -75,6 +76,9 @@ class LindiReferenceFileSystemStore(ZarrStore):
             The reference file system (see class docstring for details).
         mode : str
             The mode to open the store in. Only "r" is supported at this time.
+        local_cache : LocalCache, optional
+            The local cache to use for caching data chunks read from the
+            remote URLs. If None, no caching is done.
         """
         if "refs" not in rfs:
             raise Exception("rfs must contain a 'refs' key")
@@ -106,6 +110,7 @@ class LindiReferenceFileSystemStore(ZarrStore):
 
         self.rfs = rfs
         self.mode = mode
+        self.local_cache = local_cache
 
     # These methods are overridden from MutableMapping
     def __getitem__(self, key: str):
@@ -128,7 +133,13 @@ class LindiReferenceFileSystemStore(ZarrStore):
             if '{{' in url and 'templates' in self.rfs:
                 for k, v in self.rfs["templates"].items():
                     url = url.replace("{{" + k + "}}", v)
-            val = _read_bytes_from_url(url, offset, length)
+            if self.local_cache is not None:
+                x = self.local_cache.get_remote_chunk(url=url, offset=offset, size=length)
+                if x is not None:
+                    return x
+            val = _read_bytes_from_url_or_path(url, offset, length)
+            if self.local_cache is not None:
+                self.local_cache.put_remote_chunk(url=url, offset=offset, size=length, data=val)
             return val
         else:
             # should not happen given checks in __init__, but self.rfs is mutable
@@ -217,22 +228,24 @@ class LindiReferenceFileSystemStore(ZarrStore):
                     v[0] = '{{' + template_names_for_urls[url] + '}}'
 
 
-# Keep a global cache of file segment readers that apply to all instances of
-# LindiReferenceFileSystemStore. The key is the URL of the file.
-_file_segment_readers: Dict[str, FileSegmentReader] = {}
-
-
-def _read_bytes_from_url(url: str, offset: int, length: int):
+def _read_bytes_from_url_or_path(url_or_path: str, offset: int, length: int):
     """
     Read a range of bytes from a URL.
     """
-    if url not in _file_segment_readers:
-        if DandiFileSegmentReader.is_dandi_url(url):
-            # This is a DANDI URL, so it needs to be handled specially
-            # see the docstring for DandiFileSegmentReader for details
-            file_segment_reader = DandiFileSegmentReader(url)
-        else:
-            # This is a non-DANDI URL or local file path
-            file_segment_reader = FileSegmentReader(url)
-        _file_segment_readers[url] = file_segment_reader
-    return _file_segment_readers[url].read(offset, length)
+    from ..LindiRemfile.LindiRemfile import _resolve_url
+    if url_or_path.startswith('http://') or url_or_path.startswith('https://'):
+        url_resolved = _resolve_url(url_or_path)  # handle DANDI auth
+        range_start = offset
+        range_end = offset + length - 1
+        range_header = f"bytes={range_start}-{range_end}"
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3",
+            "Range": range_header
+        }
+        response = requests.get(url_resolved, headers=headers)
+        response.raise_for_status()
+        return response.content
+    else:
+        with open(url_or_path, 'rb') as f:
+            f.seek(offset)
+            return f.read(length)
