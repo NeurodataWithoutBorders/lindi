@@ -91,6 +91,15 @@ class LindiH5pyFile(h5py.File):
             if mode not in ['r+']:
                 raise Exception("Staging area cannot be used in read-only mode")
 
+        if rfs is None:
+            rfs = {
+                "refs": {
+                    ".zgroup": {
+                        "zarr_format": 2
+                    }
+                }
+            }
+
         if isinstance(rfs, str):
             if rfs.startswith("http") or rfs.startswith("https"):
                 with tempfile.TemporaryDirectory() as tmpdir:

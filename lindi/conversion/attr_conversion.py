@@ -5,7 +5,7 @@ from .nan_inf_ninf import encode_nan_inf_ninf
 from .h5_ref_to_zarr_attr import h5_ref_to_zarr_attr
 
 
-def h5_to_zarr_attr(attr: Any, *, label: str = '', h5f: Union[h5py.File, None]):
+def h5_to_zarr_attr(attr: Any, *, label: str = '', h5f: Union[h5py.File, None] = None):
     """Convert an attribute from h5py to a format that zarr can accept."""
 
     from ..LindiH5pyFile.LindiH5pyReference import LindiH5pyReference  # Avoid circular import
@@ -29,7 +29,7 @@ def h5_to_zarr_attr(attr: Any, *, label: str = '', h5f: Union[h5py.File, None]):
         raise Exception(f"Complex number is not supported at {label}")
     elif type(attr) in [bool, np.bool_]:
         return bool(attr)
-    elif isinstance(attr, (bool, list, tuple, dict, set)):
+    elif isinstance(attr, (list, tuple, dict, set)):
         raise Exception(f"Unexpected type for h5 attribute: {type(attr)} at {label}")
     elif isinstance(attr, str):
         return attr
@@ -54,7 +54,7 @@ def h5_to_zarr_attr(attr: Any, *, label: str = '', h5f: Union[h5py.File, None]):
         elif attr.dtype.kind == 'S':
             return _decode_bytes_to_str_in_nested_list(attr.tolist())
         else:
-            raise Exception(f"Unexpected dtype for attribute numpy array: {attr.dtype} at {label}")
+            raise Exception(f"Unexpected dtype for attribute numpy array: {attr.dtype} at {label}")  # pragma: no cover
     elif isinstance(attr, LindiH5pyReference):
         return {
             '_REFERENCE': attr._obj
@@ -91,6 +91,8 @@ def zarr_to_h5_attr(attr: Any):
     elif isinstance(attr, list):
         if _nested_list_has_all_strings(attr):
             return np.array(attr, dtype='O')
+        elif _nested_list_has_all_bytes(attr):
+            return np.array(attr, dtype='S')
         elif _nested_list_has_all_ints(attr):
             return np.array(attr, dtype='int64')
         elif _nested_list_has_all_floats_or_ints(attr):
@@ -112,8 +114,17 @@ def _nested_list_has_all_strings(x):
         return False
 
 
+def _nested_list_has_all_bytes(x):
+    if isinstance(x, bytes):
+        return True
+    elif isinstance(x, list):
+        return all(_nested_list_has_all_bytes(y) for y in x)
+    else:
+        return False
+
+
 def _nested_list_has_all_ints(x):
-    if isinstance(x, int):
+    if isinstance(x, int) and not isinstance(x, bool):
         return True
     elif isinstance(x, list):
         return all(_nested_list_has_all_ints(y) for y in x)
@@ -148,6 +159,8 @@ def _determine_list_dtype(x):
     elif all(isinstance(i, float) for i in x_flattened):
         return np.float64
     elif all(isinstance(i, bool) for i in x_flattened):
+        return np.bool_
+    elif all(isinstance(i, np.bool_) for i in x_flattened):
         return np.bool_
     elif all(isinstance(i, str) for i in x_flattened):
         return np.dtype('O')

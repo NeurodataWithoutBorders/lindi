@@ -589,6 +589,11 @@ def test_fail_create_dataset_with_compression():
     client = lindi.LindiH5pyFile.from_reference_file_system(None, mode='r+')
     with pytest.raises(Exception):
         client.create_dataset("dataset1", data=[(1, 3.14), (2, 6.28)], dtype=dt, compression='gzip')
+    # object type
+    dt = np.dtype(object)
+    client = lindi.LindiH5pyFile.from_reference_file_system(None, mode='r+')
+    with pytest.raises(Exception):
+        client.create_dataset("dataset1", data=[object(), object()], dtype=dt, compression='gzip')
 
 
 def test_fail_create_array_of_unicode_strings():

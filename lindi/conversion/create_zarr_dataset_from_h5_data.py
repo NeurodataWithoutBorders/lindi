@@ -247,5 +247,5 @@ def h5_object_data_to_zarr_data(h5_data: Union[np.ndarray, list], *, h5f: Union[
                 raise Exception(f'h5f cannot be None when converting h5py.Reference to zarr attribute at {label}')
             zarr_data_1d_view[i] = h5_ref_to_zarr_attr(val, h5f=h5f)
         else:
-            raise Exception(f'Cannot handle value of type {type(val)} in dataset {label} with dtype {h5_data.dtype} and shape {h5_data.shape}')
+            raise Exception(f'Cannot handle value of type {type(val)} in dataset {label} with dtype {h5_data.dtype} and shape {h5_data.shape}')  # pragma: no cover
     return zarr_data
