@@ -6,7 +6,7 @@ class LocalCache:
     def __init__(self, *, cache_dir: Union[str, None] = None):
         if cache_dir is None:
             # use ~/.lindi/cache as default cache directory
-            cache_dir = os.path.expanduser("~/.lindi/cache")
+            cache_dir = os.path.expanduser("~/.lindi/cache")  # pragma: no cover
         self._cache_dir = cache_dir
         os.makedirs(self._cache_dir, exist_ok=True)
         self._sqlite_db_fname = os.path.join(self._cache_dir, "lindi_cache.db")

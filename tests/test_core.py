@@ -29,6 +29,8 @@ def test_variety():
         with LindiH5ZarrStore.from_file(filename, url=filename) as store:
             rfs = store.to_reference_file_system()
             h5f_rfs = lindi.LindiH5pyFile.from_reference_file_system(rfs)
+            assert h5f_rfs.__repr__()
+            assert h5f_rfs.__str__()
             assert h5f_rfs.attrs["int1"] == h5f.attrs["int1"]
             assert h5f_rfs.attrs["float1"] == h5f.attrs["float1"]
             assert h5f_rfs.attrs["str1"] == h5f.attrs["str1"]
@@ -639,6 +641,16 @@ def test_create_compound_dtype_dataset():
     assert ds['z'][0] == "abc"
     assert ds['w'][0] == b"def"
     assert ds['b'][0]
+
+
+def test_fail_write_attr_on_readonly_file():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        filename = f"{tmpdir}/test.h5"
+        with h5py.File(filename, "w") as f:
+            f.create_dataset("X", data=[1, 2, 3])
+        client = lindi.LindiH5pyFile.from_hdf5_file(filename, mode='r')
+        with pytest.raises(Exception):
+            client.attrs['attr1'] = 42
 
 
 if __name__ == '__main__':
