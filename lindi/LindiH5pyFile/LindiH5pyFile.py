@@ -16,6 +16,8 @@ from ..LindiStagingStore.LindiStagingStore import LindiStagingStore
 
 from ..LocalCache.LocalCache import LocalCache
 
+from ..LindiH5ZarrStore._util import _write_rfs_to_file
+
 
 class LindiH5pyFile(h5py.File):
     def __init__(self, _zarr_group: zarr.Group, *, _zarr_store: Union[ZarrStore, None] = None, _mode: Literal["r", "r+"] = "r", _local_cache: Union[LocalCache, None] = None):
@@ -189,6 +191,20 @@ class LindiH5pyFile(h5py.File):
         LindiReferenceFileSystemStore.replace_meta_file_contents_with_dicts_in_rfs(rfs_copy)
         LindiReferenceFileSystemStore.use_templates_in_rfs(rfs_copy)
         return rfs_copy
+
+    def write_lindi_file(self, filename: str):
+        """
+        Write the reference file system to a .lindi.json file.
+
+        Parameters
+        ----------
+        filename : str
+            The filename to write to. It must end with '.lindi.json'.
+        """
+        if not filename.endswith(".lindi.json"):
+            raise Exception("Filename must end with '.lindi.json'")
+        rfs = self.to_reference_file_system()
+        _write_rfs_to_file(rfs=rfs, output_file_name=filename)
 
     @property
     def attrs(self):  # type: ignore
