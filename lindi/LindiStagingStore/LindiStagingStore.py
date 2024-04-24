@@ -209,6 +209,45 @@ class LindiStagingStore(ZarrStore):
             for fname in files:
                 os.remove(f"{root}/{fname}")
 
+    def copy_chunks_to_staging_area(self, *, download_remote: bool):
+        """
+        Copy the chunks in the base store to the staging area. This is done
+        in preparation for uploading to a storage system.
+
+        Parameters
+        ----------
+        download_remote : bool
+            If True, download the remote chunks to the staging area. If False,
+            just copy the local chunks.
+        """
+        if download_remote:
+            raise NotImplementedError("Downloading remote chunks not yet implemented")
+        rfs = self._base_store.rfs
+        templates = rfs.get('templates', {})
+        for k, v in rfs['refs'].items():
+            if isinstance(v, list) and len(v) == 3:
+                url = _apply_templates(v[0], templates)
+                if url.startswith('http://') or url.startswith('https://'):
+                    if download_remote:
+                        raise NotImplementedError("Downloading remote chunks not yet implemented")
+                    continue
+                elif url.startswith(self._staging_area.directory + '/'):
+                    # already in the staging area
+                    continue
+                else:
+                    # copy the local file to the staging area
+                    path0 = url
+                    chunk_data = _read_chunk_data(path0, v[1], v[2])
+                    stored_file_path = self._staging_area.store_file(k, chunk_data)
+                    self._set_ref_reference(k, stored_file_path, 0, v[2])
+
+
+def _apply_templates(x: str, templates: dict) -> str:
+    if '{{' in x and '}}' in x:
+        for key, val in templates.items():
+            x = x.replace('{{' + key + '}}', val)
+    return x
+
 
 def _sort_by_chunk_key(files: list) -> list:
     # first verify that all the files have the same number of parts
@@ -266,3 +305,9 @@ def _format_size_bytes(size_bytes: int) -> str:
         return f"{size_bytes / 1024 / 1024:.1f} MB"
     else:
         return f"{size_bytes / 1024 / 1024 / 1024:.1f} GB"
+
+
+def _read_chunk_data(filename: str, offset: int, size: int) -> bytes:
+    with open(filename, "rb") as f:
+        f.seek(offset)
+        return f.read(size)

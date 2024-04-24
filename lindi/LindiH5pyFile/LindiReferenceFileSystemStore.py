@@ -130,7 +130,7 @@ class LindiReferenceFileSystemStore(ZarrStore):
             url = x[0]
             offset = x[1]
             length = x[2]
-            if '{{' in url and 'templates' in self.rfs:
+            if '{{' in url and '}}' in url and 'templates' in self.rfs:
                 for k, v in self.rfs["templates"].items():
                     url = url.replace("{{" + k + "}}", v)
             if self.local_cache is not None:
