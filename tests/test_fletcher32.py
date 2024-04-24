@@ -8,8 +8,8 @@ def test_fletcher32():
     with tempfile.TemporaryDirectory() as tmpdir:
         filename = f'{tmpdir}/test.h5'
         with h5py.File(filename, 'w') as f:
-            dset = f.create_dataset('dset', shape=(100,), dtype='i4', fletcher32=True)
-            dset[...] = range(100)
+            dset = f.create_dataset('dset', shape=(2000,), dtype='i4', fletcher32=True)
+            dset[...] = range(2000)  # this needs to be large enough so it doesn't get inlined
             assert dset.fletcher32
         store = lindi.LindiH5ZarrStore.from_file(filename, url=filename)
         rfs = store.to_reference_file_system()
@@ -20,7 +20,7 @@ def test_fletcher32():
         data = ds0[...]
         assert isinstance(data, np.ndarray)
         assert data.dtype == np.dtype('int32')
-        assert np.all(data == np.arange(100))
+        assert np.all(data == np.arange(2000))
 
 
 if __name__ == '__main__':
