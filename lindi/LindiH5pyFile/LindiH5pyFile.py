@@ -1,4 +1,4 @@
-from typing import Union, Literal
+from typing import Union, Literal, Callable
 import os
 import json
 import tempfile
@@ -13,7 +13,7 @@ from .LindiH5pyReference import LindiH5pyReference
 from .LindiReferenceFileSystemStore import LindiReferenceFileSystemStore
 
 from ..LindiStagingStore.StagingArea import StagingArea
-from ..LindiStagingStore.LindiStagingStore import LindiStagingStore
+from ..LindiStagingStore.LindiStagingStore import LindiStagingStore, _apply_templates
 from ..LindiH5ZarrStore.LindiH5ZarrStoreOpts import LindiH5ZarrStoreOpts
 
 from ..LocalCache.LocalCache import LocalCache
@@ -22,6 +22,10 @@ from ..LindiH5ZarrStore._util import _write_rfs_to_file
 
 
 LindiFileMode = Literal["r", "r+", "w", "w-", "x", "a"]
+
+# Accepts a string path to a file, uploads (or copies) it somewhere, and returns a string URL
+# (or local path)
+UploadFileFunc = Callable[[str], str]
 
 
 class LindiH5pyFile(h5py.File):
@@ -210,14 +214,13 @@ class LindiH5pyFile(h5py.File):
     def to_reference_file_system(self):
         """
         Export the internal in-memory representation to a reference file system.
-        In order to use this, the file object needs to have been created using
-        from_reference_file_system() or from_lindi_file().
         """
         from ..LindiH5ZarrStore.LindiH5ZarrStore import LindiH5ZarrStore  # avoid circular import
         if self._zarr_store is None:
             raise Exception("Cannot convert to reference file system without zarr store")
         zarr_store = self._zarr_store
         if isinstance(zarr_store, LindiStagingStore):
+            zarr_store.consolidate_chunks()
             zarr_store = zarr_store._base_store
         if isinstance(zarr_store, LindiH5ZarrStore):
             return zarr_store.to_reference_file_system()
@@ -228,6 +231,53 @@ class LindiH5pyFile(h5py.File):
         LindiReferenceFileSystemStore.replace_meta_file_contents_with_dicts_in_rfs(rfs_copy)
         LindiReferenceFileSystemStore.use_templates_in_rfs(rfs_copy)
         return rfs_copy
+
+    def upload(
+        self,
+        *,
+        on_upload_blob: UploadFileFunc,
+        on_upload_main: UploadFileFunc
+    ):
+        """
+        Consolidate the chunks in the staging area, upload them to a storage
+        system, updating the references in the base store, and then upload the
+        updated reference file system .json file.
+
+        Parameters
+        ----------
+        on_upload_blob : StoreFileFunc
+            A function that takes a string path to a blob file, uploads or copies it
+            somewhere, and returns a string URL (or local path).
+        on_upload_main : StoreFileFunc
+            A function that takes a string path to the main .json file, stores
+            it somewhere, and returns a string URL (or local path).
+
+        Returns
+        -------
+        str
+            The URL (or local path) of the uploaded reference file system .json
+            file.
+        """
+        rfs = self.to_reference_file_system()
+        blobs_to_upload = set()
+        for k, v in rfs['refs'].items():
+            if isinstance(v, list) and len(v) == 3:
+                url = _apply_templates(v[0], rfs.get('templates', {}))
+                if not url.startswith("http://") and not url.startswith("https://"):
+                    local_path = url
+                    blobs_to_upload.add(local_path)
+        blob_mapping = _upload_blobs(blobs_to_upload, on_upload_blob=on_upload_blob)
+        for k, v in rfs['refs'].items():
+            if isinstance(v, list) and len(v) == 3:
+                url1 = _apply_templates(v[0], rfs.get('templates', {}))
+                url2 = blob_mapping.get(url1, None)
+                if url2 is not None:
+                    v[0] = url2
+        with tempfile.TemporaryDirectory() as tmpdir:
+            rfs_fname = f"{tmpdir}/rfs.lindi.json"
+            LindiReferenceFileSystemStore.use_templates_in_rfs(rfs)
+            _write_rfs_to_file(rfs=rfs, output_file_name=rfs_fname)
+            return on_upload_main(rfs_fname)
 
     def write_lindi_file(self, filename: str):
         """
@@ -491,3 +541,32 @@ def _deep_copy(obj):
         return tuple(_deep_copy(v) for v in obj)
     else:
         return obj
+
+
+def _upload_blobs(
+    blobs: set,
+    *,
+    on_upload_blob: UploadFileFunc
+) -> dict:
+    """
+    Upload all the blobs in a set to a storage system and return a mapping from
+    the original file paths to the URLs of the uploaded files.
+    """
+    blob_mapping = {}
+    for i, blob in enumerate(blobs):
+        size = os.path.getsize(blob)
+        print(f'Uploading blob {i + 1} of {len(blobs)} {blob} ({_format_size_bytes(size)})')
+        blob_url = on_upload_blob(blob)
+        blob_mapping[blob] = blob_url
+    return blob_mapping
+
+
+def _format_size_bytes(size_bytes: int) -> str:
+    if size_bytes < 1024:
+        return f"{size_bytes} bytes"
+    elif size_bytes < 1024 * 1024:
+        return f"{size_bytes / 1024:.1f} KB"
+    elif size_bytes < 1024 * 1024 * 1024:
+        return f"{size_bytes / 1024 / 1024:.1f} MB"
+    else:
+        return f"{size_bytes / 1024 / 1024 / 1024:.1f} GB"

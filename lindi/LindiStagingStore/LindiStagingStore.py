@@ -1,16 +1,7 @@
-from typing import Callable
-import json
-import tempfile
 import os
 from zarr.storage import Store as ZarrStore
 from ..LindiH5pyFile.LindiReferenceFileSystemStore import LindiReferenceFileSystemStore
 from .StagingArea import StagingArea, _random_str
-from ..LindiH5ZarrStore._util import _write_rfs_to_file
-
-
-# Accepts a string path to a file, uploads (or copies) it somewhere, and returns a string URL
-# (or local path)
-UploadFileFunc = Callable[[str], str]
 
 
 class LindiStagingStore(ZarrStore):
@@ -93,56 +84,6 @@ class LindiStagingStore(ZarrStore):
             offset,
             size
         ]
-
-    def upload(
-        self,
-        *,
-        on_upload_blob: UploadFileFunc,
-        on_upload_main: UploadFileFunc,
-        consolidate_chunks: bool = True
-    ):
-        """
-        Consolidate the chunks in the staging area, upload them to a storage
-        system, updating the references in the base store, and then upload the
-        updated reference file system .json file.
-
-        Parameters
-        ----------
-        on_upload_blob : StoreFileFunc
-            A function that takes a string path to a blob file, uploads or copies it
-            somewhere, and returns a string URL (or local path).
-        on_upload_main : StoreFileFunc
-            A function that takes a string path to the main .json file, stores
-            it somewhere, and returns a string URL (or local path).
-        consolidate_chunks : bool
-            If True (the default), consolidate the chunks in the staging area
-            before uploading.
-
-        Returns
-        -------
-        str
-            The URL (or local path) of the uploaded reference file system .json
-            file.
-        """
-        if consolidate_chunks:
-            self.consolidate_chunks()
-        rfs = self._base_store.rfs
-        rfs = json.loads(json.dumps(rfs))  # deep copy
-        LindiReferenceFileSystemStore.replace_meta_file_contents_with_dicts_in_rfs(rfs)
-        blob_mapping = _upload_directory_of_blobs(self._staging_area.directory, on_upload_blob=on_upload_blob)
-        for k, v in rfs['refs'].items():
-            if isinstance(v, list) and len(v) == 3:
-                url1 = v[0]
-                if url1.startswith(self._staging_area.directory + '/'):
-                    url2 = blob_mapping.get(url1, None)
-                    if url2 is None:
-                        raise ValueError(f"Could not find url in blob mapping: {url1}")
-                    rfs['refs'][k][0] = url2
-        with tempfile.TemporaryDirectory() as tmpdir:
-            rfs_fname = f"{tmpdir}/rfs.lindi.json"
-            LindiReferenceFileSystemStore.use_templates_in_rfs(rfs)
-            _write_rfs_to_file(rfs=rfs, output_file_name=rfs_fname)
-            return on_upload_main(rfs_fname)
 
     def consolidate_chunks(self):
         """
@@ -271,40 +212,6 @@ def _sort_by_chunk_key(files: list) -> list:
         parts = fname.split('.')
         return tuple(int(p) for p in parts)
     return sorted(files, key=_chunk_key)
-
-
-def _upload_directory_of_blobs(
-    staging_dir: str,
-    on_upload_blob: UploadFileFunc
-) -> dict:
-    """
-    Upload all the files in a directory to a storage system and return a mapping
-    from the original file paths to the URLs of the uploaded files.
-    """
-    all_files = []
-    for root, dirs, files in os.walk(staging_dir):
-        for fname in files:
-            full_fname = f"{root}/{fname}"
-            all_files.append(full_fname)
-    blob_mapping = {}
-    for i, full_fname in enumerate(all_files):
-        relative_fname = full_fname[len(staging_dir):]
-        size_bytes = os.path.getsize(full_fname)
-        print(f'Uploading blob {i + 1} of {len(all_files)} {relative_fname} ({_format_size_bytes(size_bytes)})')
-        blob_url = on_upload_blob(full_fname)
-        blob_mapping[full_fname] = blob_url
-    return blob_mapping
-
-
-def _format_size_bytes(size_bytes: int) -> str:
-    if size_bytes < 1024:
-        return f"{size_bytes} bytes"
-    elif size_bytes < 1024 * 1024:
-        return f"{size_bytes / 1024:.1f} KB"
-    elif size_bytes < 1024 * 1024 * 1024:
-        return f"{size_bytes / 1024 / 1024:.1f} MB"
-    else:
-        return f"{size_bytes / 1024 / 1024 / 1024:.1f} GB"
 
 
 def _read_chunk_data(filename: str, offset: int, size: int) -> bytes:
