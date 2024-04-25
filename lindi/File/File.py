@@ -1,20 +1,16 @@
 from typing import Literal
 import os
 import h5py
-from h5py import File as OriginalH5pyFile
 from ..LindiH5pyFile.LindiH5pyFile import LindiH5pyFile
 from ..LindiStagingStore.StagingArea import StagingArea
 from ..LocalCache.LocalCache import LocalCache
 
 
-# We need to use this metaclass so that isinstance(f, h5py.File) works when f is
-# a LindiH5pyFile or OriginalH5pyFile
-class InstanceCheckMeta(type):
-    def __instancecheck__(cls, instance):
-        return isinstance(instance, OriginalH5pyFile) or isinstance(instance, LindiH5pyFile)
-
-
-class File(metaclass=InstanceCheckMeta):
+class File(h5py.File):
+    """
+    A drop-in replacement for h5py.File that is either a lindi.LindiH5pyFile or
+    h5py.File depending on whether the file name ends with .lindi.json or not.
+    """
     def __new__(cls, name, mode: Literal['r', 'r+', 'w', 'w-', 'x', 'a'] = 'r', **kwds):
         if isinstance(name, str) and name.endswith('.lindi.json'):
             # should we raise exceptions on select unsupported kwds? or just go with the flow?
@@ -35,12 +31,4 @@ class File(metaclass=InstanceCheckMeta):
                 local_cache=local_cache
             )
         else:
-            return OriginalH5pyFile(name, mode=mode, **kwds)
-
-
-def apply_h5py_patch():
-    h5py.File = File
-
-
-# by virtue of importing we apply the patch
-apply_h5py_patch()
+            return h5py.File(name, mode=mode, **kwds)
