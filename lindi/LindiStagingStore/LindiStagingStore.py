@@ -34,6 +34,7 @@ class LindiStagingStore(ZarrStore):
         """
         self._base_store = base_store
         self._staging_area = staging_area
+        self._is_empty = True
 
     def __getitem__(self, key: str):
         return self._base_store.__getitem__(key)
@@ -54,6 +55,7 @@ class LindiStagingStore(ZarrStore):
             return self._base_store.__setitem__(key, value)
         else:
             # If not inline, save it as a file in the staging directory
+            self._is_empty = False
             key_without_initial_slash = key if not key.startswith("/") else key[1:]
             stored_file_path = self._staging_area.store_file(key_without_initial_slash, value)
 
@@ -240,6 +242,10 @@ class LindiStagingStore(ZarrStore):
                     chunk_data = _read_chunk_data(path0, v[1], v[2])
                     stored_file_path = self._staging_area.store_file(k, chunk_data)
                     self._set_ref_reference(k, stored_file_path, 0, v[2])
+
+    @property
+    def is_empty(self):
+        return self._is_empty
 
 
 def _apply_templates(x: str, templates: dict) -> str:
