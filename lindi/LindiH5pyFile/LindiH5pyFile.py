@@ -1,4 +1,5 @@
 from typing import Union, Literal
+import os
 import json
 import tempfile
 import urllib.request
@@ -20,33 +21,37 @@ from ..LocalCache.LocalCache import LocalCache
 from ..LindiH5ZarrStore._util import _write_rfs_to_file
 
 
+LindiFileMode = Literal["r", "r+", "w", "w-", "x", "a"]
+
+
 class LindiH5pyFile(h5py.File):
-    def __init__(self, _zarr_group: zarr.Group, *, _zarr_store: Union[ZarrStore, None] = None, _mode: Literal["r", "r+"] = "r", _local_cache: Union[LocalCache, None] = None):
+    def __init__(self, _zarr_group: zarr.Group, *, _zarr_store: Union[ZarrStore, None] = None, _mode: LindiFileMode = "r", _local_cache: Union[LocalCache, None] = None, _local_file_path: Union[str, None] = None):
         """
-        Do not use this constructor directly. Instead, use:
-        from_reference_file_system, from_zarr_store, from_zarr_group,
-        or from_h5py_file
+        Do not use this constructor directly. Instead, use: from_lindi_file,
+        from_h5py_file, from_reference_file_system, from_zarr_store, or
+        from_zarr_group.
         """
         self._zarr_group = _zarr_group
         self._zarr_store = _zarr_store
-        self._mode: Literal['r', 'r+'] = _mode
+        self._mode: LindiFileMode = _mode
         self._the_group = LindiH5pyGroup(_zarr_group, self)
         self._local_cache = _local_cache
+        self._local_file_path = _local_file_path
 
         # see comment in LindiH5pyGroup
         self._id = f'{id(self._zarr_group)}/'
 
     @staticmethod
-    def from_lindi_file(url_or_path: str, *, mode: Literal["r", "r+"] = "r", staging_area: Union[StagingArea, None] = None, local_cache: Union[LocalCache, None] = None):
+    def from_lindi_file(url_or_path: str, *, mode: LindiFileMode = "r", staging_area: Union[StagingArea, None] = None, local_cache: Union[LocalCache, None] = None, local_file_path: Union[str, None] = None):
         """
         Create a LindiH5pyFile from a URL or path to a .lindi.json file.
 
         For a description of parameters, see from_reference_file_system().
         """
-        return LindiH5pyFile.from_reference_file_system(url_or_path, mode=mode, staging_area=staging_area, local_cache=local_cache)
+        return LindiH5pyFile.from_reference_file_system(url_or_path, mode=mode, staging_area=staging_area, local_cache=local_cache, local_file_path=local_file_path)
 
     @staticmethod
-    def from_hdf5_file(url_or_path: str, *, mode: Literal["r", "r+"] = "r", local_cache: Union[LocalCache, None] = None, zarr_store_opts: LindiH5ZarrStoreOpts = LindiH5ZarrStoreOpts()):
+    def from_hdf5_file(url_or_path: str, *, mode: LindiFileMode = "r", local_cache: Union[LocalCache, None] = None, zarr_store_opts: LindiH5ZarrStoreOpts = LindiH5ZarrStoreOpts()):
         """
         Create a LindiH5pyFile from a URL or path to an HDF5 file.
 
@@ -54,15 +59,15 @@ class LindiH5pyFile(h5py.File):
         ----------
         url_or_path : str
             The URL or path to the remote or local HDF5 file.
-        mode : Literal["r", "r+"], optional
-            The mode to open the file object in. Right now only "r" is
-            supported, by default "r".
+        mode : Literal["r", "r+", "w", "w-", "x", "a"], optional
+            The mode to open the file object in. See api docs for
+            h5py.File for more information on the modes, by default "r".
         local_cache : Union[LocalCache, None], optional
             The local cache to use for caching data chunks, by default None.
         """
         from ..LindiH5ZarrStore.LindiH5ZarrStore import LindiH5ZarrStore  # avoid circular import
-        if mode == 'r+':
-            raise Exception("Opening hdf5 file in r+ mode is not supported")
+        if mode != "r":
+            raise Exception("Opening hdf5 file in write mode is not supported")
         zarr_store = LindiH5ZarrStore.from_file(url_or_path, local_cache=local_cache, opts=zarr_store_opts, url=url_or_path)
         return LindiH5pyFile.from_zarr_store(
             zarr_store=zarr_store,
@@ -71,7 +76,7 @@ class LindiH5pyFile(h5py.File):
         )
 
     @staticmethod
-    def from_reference_file_system(rfs: Union[dict, str, None], *, mode: Literal["r", "r+"] = "r", staging_area: Union[StagingArea, None] = None, local_cache: Union[LocalCache, None] = None):
+    def from_reference_file_system(rfs: Union[dict, str, None], *, mode: LindiFileMode = "r", staging_area: Union[StagingArea, None] = None, local_cache: Union[LocalCache, None] = None, local_file_path: Union[str, None] = None):
         """
         Create a LindiH5pyFile from a reference file system.
 
@@ -81,19 +86,18 @@ class LindiH5pyFile(h5py.File):
             The reference file system. This can be a dictionary or a URL or path
             to a .lindi.json file. If None, an empty reference file system will
             be created.
-        mode : Literal["r", "r+"], optional
-            The mode to open the file object in, by default "r". If the mode is
-            "r", the file object will be read-only. If the mode is "r+", the
-            file will be read-write. However, if the rfs is a string (URL or
-            path), the file itself will not be modified on changes, but the
-            internal in-memory representation will be modified. Use
-            to_reference_file_system() to export the updated reference file
-            system to the same file or a new file.
+        mode : Literal["r", "r+", "w", "w-", "x", "a"], optional
+            The mode to open the file object in, by default "r".
         staging_area : Union[StagingArea, None], optional
-            The staging area to use for writing data, preparing for upload.
-            This is only used in write mode, by default None.
+            The staging area to use for writing data, preparing for upload. This
+            is only used in write mode, by default None.
         local_cache : Union[LocalCache, None], optional
             The local cache to use for caching data, by default None.
+        local_file_path : Union[str, None], optional
+            If rfs is not a string or is a remote url, this is the path to the
+            local file for the purpose of writing to it. It is required in this
+            case if mode is not "r". If rfs is a string and not a remote url, it
+            must be equal to local_file_path if provided.
         """
         if rfs is None:
             rfs = {
@@ -105,30 +109,65 @@ class LindiH5pyFile(h5py.File):
             }
 
         if isinstance(rfs, str):
-            if rfs.startswith("http://") or rfs.startswith("https://"):
+            rfs_is_url = rfs.startswith("http://") or rfs.startswith("https://")
+            if local_file_path is not None and not rfs_is_url and rfs != local_file_path:
+                raise Exception(f"rfs is not a remote url, so local_file_path must be the same as rfs, but got: {rfs} and {local_file_path}")
+            if rfs_is_url:
                 with tempfile.TemporaryDirectory() as tmpdir:
                     filename = f"{tmpdir}/temp.lindi.json"
                     _download_file(rfs, filename)
                     with open(filename, "r") as f:
                         data = json.load(f)
                     assert isinstance(data, dict)  # prevent infinite recursion
-                    return LindiH5pyFile.from_reference_file_system(data, mode=mode, staging_area=staging_area, local_cache=local_cache)
+                    return LindiH5pyFile.from_reference_file_system(data, mode=mode, staging_area=staging_area, local_cache=local_cache, local_file_path=local_file_path)
             else:
+                empty_rfs = {
+                    "refs": {
+                        '.zgroup': {
+                            'zarr_format': 2
+                        }
+                    },
+                }
+                if mode == "r":
+                    # Readonly, file must exist (default)
+                    if not os.path.exists(rfs):
+                        raise Exception(f"File does not exist: {rfs}")
+                elif mode == "r+":
+                    # Read/write, file must exist
+                    if not os.path.exists(rfs):
+                        raise Exception(f"File does not exist: {rfs}")
+                elif mode == "w":
+                    # Create file, truncate if exists
+                    with open(rfs, "w") as f:
+                        json.dump(empty_rfs, f)
+                elif mode in ["w-", "x"]:
+                    # Create file, fail if exists
+                    if os.path.exists(rfs):
+                        raise Exception(f"File already exists: {rfs}")
+                    with open(rfs, "w") as f:
+                        json.dump(empty_rfs, f)
+                elif mode == "a":
+                    # Read/write if exists, create otherwise
+                    if os.path.exists(rfs):
+                        with open(rfs, "r") as f:
+                            data = json.load(f)
+                else:
+                    raise Exception(f"Unhandled mode: {mode}")
                 with open(rfs, "r") as f:
                     data = json.load(f)
                 assert isinstance(data, dict)  # prevent infinite recursion
-                return LindiH5pyFile.from_reference_file_system(data, mode=mode, staging_area=staging_area, local_cache=local_cache)
+                return LindiH5pyFile.from_reference_file_system(data, mode=mode, staging_area=staging_area, local_cache=local_cache, local_file_path=local_file_path)
         elif isinstance(rfs, dict):
             # This store does not need to be closed
             store = LindiReferenceFileSystemStore(rfs, local_cache=local_cache)
             if staging_area:
                 store = LindiStagingStore(base_store=store, staging_area=staging_area)
-            return LindiH5pyFile.from_zarr_store(store, mode=mode)
+            return LindiH5pyFile.from_zarr_store(store, mode=mode, local_file_path=local_file_path)
         else:
             raise Exception(f"Unhandled type for rfs: {type(rfs)}")
 
     @staticmethod
-    def from_zarr_store(zarr_store: ZarrStore, mode: Literal["r", "r+"] = "r", local_cache: Union[LocalCache, None] = None):
+    def from_zarr_store(zarr_store: ZarrStore, mode: LindiFileMode = "r", local_cache: Union[LocalCache, None] = None, local_file_path: Union[str, None] = None):
         """
         Create a LindiH5pyFile from a zarr store.
 
@@ -136,7 +175,7 @@ class LindiH5pyFile(h5py.File):
         ----------
         zarr_store : ZarrStore
             The zarr store.
-        mode : Literal["r", "r+"], optional
+        mode : Literal["r", "r+", "w", "w-", "x", "a"], optional
             The mode to open the file object in, by default "r". If the mode is
             "r", the file object will be read-only. For write mode to work, the
             zarr store will need to be writeable as well.
@@ -145,10 +184,10 @@ class LindiH5pyFile(h5py.File):
         # does not need to be closed
         zarr_group = zarr.open(store=zarr_store, mode=mode)
         assert isinstance(zarr_group, zarr.Group)
-        return LindiH5pyFile.from_zarr_group(zarr_group, _zarr_store=zarr_store, mode=mode, local_cache=local_cache)
+        return LindiH5pyFile.from_zarr_group(zarr_group, _zarr_store=zarr_store, mode=mode, local_cache=local_cache, local_file_path=local_file_path)
 
     @staticmethod
-    def from_zarr_group(zarr_group: zarr.Group, *, mode: Literal["r", "r+"] = "r", _zarr_store: Union[ZarrStore, None] = None, local_cache: Union[LocalCache, None] = None):
+    def from_zarr_group(zarr_group: zarr.Group, *, mode: LindiFileMode = "r", _zarr_store: Union[ZarrStore, None] = None, local_cache: Union[LocalCache, None] = None, local_file_path: Union[str, None] = None):
         """
         Create a LindiH5pyFile from a zarr group.
 
@@ -156,7 +195,7 @@ class LindiH5pyFile(h5py.File):
         ----------
         zarr_group : zarr.Group
             The zarr group.
-        mode : Literal["r", "r+"], optional
+        mode : Literal["r", "r+", "w", "w-", "x", "a"], optional
             The mode to open the file object in, by default "r". If the mode is
             "r", the file object will be read-only. For write mode to work, the
             zarr store will need to be writeable as well.
@@ -166,7 +205,7 @@ class LindiH5pyFile(h5py.File):
 
         See from_zarr_store().
         """
-        return LindiH5pyFile(zarr_group, _zarr_store=_zarr_store, _mode=mode, _local_cache=local_cache)
+        return LindiH5pyFile(zarr_group, _zarr_store=_zarr_store, _mode=mode, _local_cache=local_cache, _local_file_path=local_file_path)
 
     def to_reference_file_system(self):
         """
@@ -218,7 +257,7 @@ class LindiH5pyFile(h5py.File):
 
     @property
     def mode(self):
-        return self._mode
+        return 'r' if self._mode == 'r' else 'r+'
 
     @property
     def libver(self):
@@ -236,11 +275,12 @@ class LindiH5pyFile(h5py.File):
         raise Exception("Getting swmr_mode is not allowed")
 
     def close(self):
-        # Nothing was opened, so nothing needs to be closed
-        pass
+        self.flush()
 
     def flush(self):
-        pass
+        if self._mode != 'r' and self._local_file_path is not None:
+            rfs = self.to_reference_file_system()
+            _write_rfs_to_file(rfs=rfs, output_file_name=self._local_file_path)
 
     def __enter__(self):  # type: ignore
         return self
@@ -355,24 +395,24 @@ class LindiH5pyFile(h5py.File):
     ##############################
     # write
     def create_group(self, name, track_order=None):
-        if self._mode not in ['r+']:
+        if self._mode == 'r':
             raise Exception("Cannot create group in read-only mode")
         if track_order is not None:
             raise Exception("track_order is not supported (I don't know what it is)")
         return self._the_group.create_group(name)
 
     def require_group(self, name):
-        if self._mode not in ['r+']:
+        if self._mode == 'r':
             raise Exception("Cannot require group in read-only mode")
         return self._the_group.require_group(name)
 
     def create_dataset(self, name, shape=None, dtype=None, data=None, **kwds):
-        if self._mode not in ['r+']:
+        if self._mode == 'r':
             raise Exception("Cannot create dataset in read-only mode")
         return self._the_group.create_dataset(name, shape=shape, dtype=dtype, data=data, **kwds)
 
     def require_dataset(self, name, shape, dtype, exact=False, **kwds):
-        if self._mode not in ['r+']:
+        if self._mode == 'r':
             raise Exception("Cannot require dataset in read-only mode")
         return self._the_group.require_dataset(name, shape, dtype, exact=exact, **kwds)
 
