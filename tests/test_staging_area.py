@@ -7,7 +7,7 @@ import shutil
 
 def test_staging_area():
     with tempfile.TemporaryDirectory() as tmpdir:
-        staging_area = lindi.StagingArea.create(tmpdir + '/staging_area')
+        staging_area = lindi.StagingArea.create(base_dir=tmpdir + '/staging_area')
         client = lindi.LindiH5pyFile.from_reference_file_system(None, mode='r+', staging_area=staging_area)
         X = np.random.randn(1000, 1000).astype(np.float32)
         client.create_dataset('large_array', data=X, chunks=(400, 400))

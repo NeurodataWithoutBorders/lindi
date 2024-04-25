@@ -116,7 +116,7 @@ class LindiH5pyDataset(h5py.Dataset):
                 # but validate seems to work only when I put in vlen = bytes
                 #
                 vlen = bytes
-                ret = np.dtype(str(ret), metadata={'vlen': vlen})
+                ret = np.dtype(str(ret), metadata={'vlen': vlen})  # type: ignore
         return ret
 
     @property

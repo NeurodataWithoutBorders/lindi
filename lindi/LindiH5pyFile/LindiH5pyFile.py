@@ -52,6 +52,9 @@ class LindiH5pyFile(h5py.File):
 
         For a description of parameters, see from_reference_file_system().
         """
+        if local_file_path is None:
+            if not url_or_path.startswith("http://") and not url_or_path.startswith("https://"):
+                local_file_path = url_or_path
         return LindiH5pyFile.from_reference_file_system(url_or_path, mode=mode, staging_area=staging_area, local_cache=local_cache, local_file_path=local_file_path)
 
     @staticmethod
