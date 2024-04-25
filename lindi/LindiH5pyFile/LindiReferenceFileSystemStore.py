@@ -213,7 +213,11 @@ class LindiReferenceFileSystemStore(ZarrStore):
         urls_with_many_occurrences = sorted([url for url, count in url_counts.items() if count >= 5])
         new_templates = rfs.get('templates', {})
         template_names_for_urls: Dict[str, str] = {}
+        for template_name, url in new_templates.items():
+            template_names_for_urls[url] = template_name
         for url in urls_with_many_occurrences:
+            if url in template_names_for_urls:
+                continue
             i = 1
             while f'u{i}' in new_templates:
                 i += 1
