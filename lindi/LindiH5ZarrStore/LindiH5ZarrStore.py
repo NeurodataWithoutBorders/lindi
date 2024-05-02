@@ -403,7 +403,12 @@ class LindiH5ZarrStore(Store):
                 )
         if h5_item.chunks is not None:
             # Get the byte range in the file for the chunk.
-            byte_offset, byte_count = _get_chunk_byte_range(h5_item, chunk_coords)
+            try:
+                byte_offset, byte_count = _get_chunk_byte_range(h5_item, chunk_coords)
+            except Exception as e:
+                raise Exception(
+                    f"Error getting byte range for chunk {key_parent}/{key_name}. Shape: {h5_item.shape}, Chunks: {h5_item.chunks}, Chunk coords: {chunk_coords}: {e}"
+                )
         else:
             # In this case (contiguous dataset), we need to check that the chunk
             # coordinates are (0, 0, 0, ...)
