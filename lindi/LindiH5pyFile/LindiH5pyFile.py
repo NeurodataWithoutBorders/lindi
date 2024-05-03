@@ -169,7 +169,7 @@ class LindiH5pyFile(h5py.File):
             store = LindiReferenceFileSystemStore(rfs, local_cache=local_cache)
             if staging_area:
                 store = LindiStagingStore(base_store=store, staging_area=staging_area)
-            return LindiH5pyFile.from_zarr_store(store, mode=mode, local_file_path=local_file_path)
+            return LindiH5pyFile.from_zarr_store(store, mode=mode, local_file_path=local_file_path, local_cache=local_cache)
         else:
             raise Exception(f"Unhandled type for rfs: {type(rfs)}")
 
