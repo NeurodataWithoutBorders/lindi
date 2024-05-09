@@ -282,7 +282,7 @@ class LindiH5pyFile(h5py.File):
             _write_rfs_to_file(rfs=rfs, output_file_name=rfs_fname)
             return on_upload_main(rfs_fname)
 
-    def write_lindi_file(self, filename: str):
+    def write_lindi_file(self, filename: str, *, generation_metadata: Union[dict, None] = None):
         """
         Write the reference file system to a .lindi.json file.
 
@@ -290,10 +290,16 @@ class LindiH5pyFile(h5py.File):
         ----------
         filename : str
             The filename to write to. It must end with '.lindi.json'.
+        generation_metadata : Union[dict, None], optional
+            The optional generation metadata to include in the reference file
+            system, by default None. This information dict is simply set to the
+            'generationMetadata' key in the reference file system.
         """
         if not filename.endswith(".lindi.json"):
             raise Exception("Filename must end with '.lindi.json'")
         rfs = self.to_reference_file_system()
+        if generation_metadata is not None:
+            rfs['generationMetadata'] = generation_metadata
         _write_rfs_to_file(rfs=rfs, output_file_name=filename)
 
     @property
