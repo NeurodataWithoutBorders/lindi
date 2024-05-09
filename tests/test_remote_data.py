@@ -35,7 +35,7 @@ def test_remote_data_2():
     import pynwb
 
     # Define the URL for a remote .nwb.lindi.json file
-    url = 'https://lindi.neurosift.org/dandi/dandisets/000939/assets/11f512ba-5bcf-4230-a8cb-dc8d36db38cb/zarr.json'
+    url = 'https://lindi.neurosift.org/dandi/dandisets/000939/assets/56d875d6-a705-48d3-944c-53394a389c85/nwb.lindi.json'
 
     # Load the h5py-like client from the reference file system
     client = lindi.LindiH5pyFile.from_reference_file_system(url)
@@ -50,7 +50,7 @@ def test_remote_data_2():
 def test_remote_data_rfs_copy():
     # Test that we can copy datasets and groups from one reference file system to another
     # and the data itself is not copied, only the references.
-    url = 'https://lindi.neurosift.org/dandi/dandisets/000939/assets/11f512ba-5bcf-4230-a8cb-dc8d36db38cb/zarr.json'
+    url = 'https://lindi.neurosift.org/dandi/dandisets/000939/assets/56d875d6-a705-48d3-944c-53394a389c85/nwb.lindi.json'
 
     client = lindi.LindiH5pyFile.from_reference_file_system(url)
 
