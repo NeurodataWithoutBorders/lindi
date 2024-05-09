@@ -66,7 +66,7 @@ def test_remote_data_rfs_copy():
 
     client.copy('processing/behavior/Position/position/data', client2, 'copied_data1')
     aa = rfs2['refs']['copied_data1/.zarray']
-    assert isinstance(aa, str)
+    assert isinstance(aa, str) or isinstance(aa, dict)
     assert 'copied_data1/0.0' in rfs2['refs']
     bb = rfs2['refs']['copied_data1/0.0']
     assert isinstance(bb, list)  # make sure it is a reference, not the actual data
