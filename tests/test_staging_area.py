@@ -36,10 +36,9 @@ def test_staging_area():
             return output_fname
 
         assert client.staging_store
-        client.staging_store.upload(
+        client.upload(
             on_upload_blob=on_upload_blob,
-            on_upload_main=on_upload_main,
-            consolidate_chunks=True
+            on_upload_main=on_upload_main
         )
 
         client3 = lindi.LindiH5pyFile.from_lindi_file(output_fname, mode='r')
