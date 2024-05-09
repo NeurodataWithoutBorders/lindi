@@ -528,11 +528,16 @@ def _recursive_copy(src_item: Union[h5py.Group, h5py.Dataset], dest: h5py.File, 
                     for src_ref_key in src_ref_keys:
                         if src_ref_key.startswith(f'{src_item_name}/'):
                             dst_ref_key = f'{name}/{src_ref_key[len(src_item_name) + 1:]}'
-                            # Even though it's not expected to be a problem, we
-                            # do a deep copy here because a problem resulting
-                            # from one rfs being modified affecting another
-                            # would be very difficult to debug.
-                            dst_rfs['refs'][dst_ref_key] = _deep_copy(src_rfs['refs'][src_ref_key])
+                            # important to do a deep copy
+                            val = _deep_copy(src_rfs['refs'][src_ref_key])
+                            if isinstance(val, list) and len(val) > 0:
+                                # if it's a list then we need to resolve any
+                                # templates in the first element of the list.
+                                # This is very important because the destination
+                                # rfs will probably have different templates.
+                                url0 = _apply_templates(val[0], src_rfs.get('templates', {}))
+                                val[0] = url0
+                            dst_rfs['refs'][dst_ref_key] = val
                     return
 
         dst_item = dest.create_dataset(name, data=src_item[()], chunks=src_item.chunks)

@@ -35,7 +35,7 @@ def test_remote_data_2():
     import pynwb
 
     # Define the URL for a remote .nwb.lindi.json file
-    url = 'https://lindi.neurosift.org/dandi/dandisets/000939/assets/11f512ba-5bcf-4230-a8cb-dc8d36db38cb/zarr.json'
+    url = 'https://lindi.neurosift.org/dandi/dandisets/000939/assets/56d875d6-a705-48d3-944c-53394a389c85/nwb.lindi.json'
 
     # Load the h5py-like client from the reference file system
     client = lindi.LindiH5pyFile.from_reference_file_system(url)
@@ -50,7 +50,7 @@ def test_remote_data_2():
 def test_remote_data_rfs_copy():
     # Test that we can copy datasets and groups from one reference file system to another
     # and the data itself is not copied, only the references.
-    url = 'https://lindi.neurosift.org/dandi/dandisets/000939/assets/11f512ba-5bcf-4230-a8cb-dc8d36db38cb/zarr.json'
+    url = 'https://lindi.neurosift.org/dandi/dandisets/000939/assets/56d875d6-a705-48d3-944c-53394a389c85/nwb.lindi.json'
 
     client = lindi.LindiH5pyFile.from_reference_file_system(url)
 
@@ -62,11 +62,11 @@ def test_remote_data_rfs_copy():
     # This first dataset is a 2D array with chunks
     ds = client['processing/behavior/Position/position/data']
     assert isinstance(ds, lindi.LindiH5pyDataset)
-    assert ds.shape == (494315, 2)
+    assert ds.shape == (360867, 2)
 
     client.copy('processing/behavior/Position/position/data', client2, 'copied_data1')
     aa = rfs2['refs']['copied_data1/.zarray']
-    assert isinstance(aa, str)
+    assert isinstance(aa, str) or isinstance(aa, dict)
     assert 'copied_data1/0.0' in rfs2['refs']
     bb = rfs2['refs']['copied_data1/0.0']
     assert isinstance(bb, list)  # make sure it is a reference, not the actual data
@@ -77,13 +77,17 @@ def test_remote_data_rfs_copy():
 
     # This next dataset has an _EXTERNAL_ARRAY_LINK which means it has a pointer
     # to a dataset in a remote h5py
-    ds = client['processing/ecephys/LFP/LFP/data']
-    assert isinstance(ds, lindi.LindiH5pyDataset)
-    assert ds.shape == (17647830, 64)
+    # https://neurosift.app/?p=/nwb&dandisetId=000409&dandisetVersion=draft&url=https://api.dandiarchive.org/api/assets/ab3998c2-3540-4bda-8b03-3f3795fa602d/download/
+    url_b = 'https://lindi.neurosift.org/dandi/dandisets/000409/assets/ab3998c2-3540-4bda-8b03-3f3795fa602d/nwb.lindi.json'
+    client_b = lindi.LindiH5pyFile.from_reference_file_system(url_b)
 
-    client.copy('processing/ecephys/LFP/LFP/data', client2, 'copied_data2')
+    ds = client_b['acquisition/ElectricalSeriesAp/data']
+    assert isinstance(ds, lindi.LindiH5pyDataset)
+    assert ds.shape == (109281892, 384)
+
+    client_b.copy('acquisition/ElectricalSeriesAp/data', client2, 'copied_data2')
     aa = rfs2['refs']['copied_data2/.zarray']
-    assert isinstance(aa, str)
+    assert isinstance(aa, str) or isinstance(aa, dict)
     assert 'copied_data2/0.0' not in rfs2['refs']  # make sure the chunks were not copied
 
     ds2 = client2['copied_data2']
