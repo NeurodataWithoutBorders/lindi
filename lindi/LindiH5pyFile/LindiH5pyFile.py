@@ -13,6 +13,7 @@ from .LindiReferenceFileSystemStore import LindiReferenceFileSystemStore
 
 from ..LindiStagingStore.StagingArea import StagingArea
 from ..LindiStagingStore.LindiStagingStore import LindiStagingStore
+from ..LindiH5ZarrStore.LindiH5ZarrStoreOpts import LindiH5ZarrStoreOpts
 
 from ..LocalCache.LocalCache import LocalCache
 
@@ -45,7 +46,7 @@ class LindiH5pyFile(h5py.File):
         return LindiH5pyFile.from_reference_file_system(url_or_path, mode=mode, staging_area=staging_area, local_cache=local_cache)
 
     @staticmethod
-    def from_hdf5_file(url_or_path: str, *, mode: Literal["r", "r+"] = "r", local_cache: Union[LocalCache, None] = None):
+    def from_hdf5_file(url_or_path: str, *, mode: Literal["r", "r+"] = "r", local_cache: Union[LocalCache, None] = None, zarr_store_opts: Union[LindiH5ZarrStoreOpts, None] = None):
         """
         Create a LindiH5pyFile from a URL or path to an HDF5 file.
 
@@ -58,11 +59,13 @@ class LindiH5pyFile(h5py.File):
             supported, by default "r".
         local_cache : Union[LocalCache, None], optional
             The local cache to use for caching data chunks, by default None.
+        zarr_store_opts : Union[LindiH5ZarrStoreOpts, None], optional
+            The options to use for the zarr store, by default None.
         """
         from ..LindiH5ZarrStore.LindiH5ZarrStore import LindiH5ZarrStore  # avoid circular import
         if mode == 'r+':
             raise Exception("Opening hdf5 file in r+ mode is not supported")
-        zarr_store = LindiH5ZarrStore.from_file(url_or_path, local_cache=local_cache)
+        zarr_store = LindiH5ZarrStore.from_file(url_or_path, local_cache=local_cache, opts=zarr_store_opts, url=url_or_path)
         return LindiH5pyFile.from_zarr_store(
             zarr_store=zarr_store,
             mode=mode,
@@ -102,12 +105,9 @@ class LindiH5pyFile(h5py.File):
                     }
                 },
             }
-        if staging_area is not None:
-            if mode not in ['r+']:
-                raise Exception("Staging area cannot be used in read-only mode")
 
         if isinstance(rfs, str):
-            if rfs.startswith("http") or rfs.startswith("https"):
+            if rfs.startswith("http://") or rfs.startswith("https://"):
                 with tempfile.TemporaryDirectory() as tmpdir:
                     filename = f"{tmpdir}/temp.lindi.json"
                     _download_file(rfs, filename)

@@ -1,7 +1,6 @@
 import json
 import base64
 from typing import Union, List, IO, Any, Dict
-from dataclasses import dataclass
 import numpy as np
 import zarr
 from zarr.storage import Store, MemoryStore
@@ -21,20 +20,7 @@ from ..conversion.create_zarr_dataset_from_h5_data import create_zarr_dataset_fr
 from ..LindiH5pyFile.LindiReferenceFileSystemStore import LindiReferenceFileSystemStore
 from ..LocalCache.LocalCache import LocalCache
 from ..LindiRemfile.LindiRemfile import LindiRemfile
-
-
-@dataclass
-class LindiH5ZarrStoreOpts:
-    """
-    Options for the LindiH5ZarrStore class.
-
-    Attributes:
-        num_dataset_chunks_threshold (Union[int, None]): For each dataset in the
-        HDF5 file, if the number of chunks is greater than this threshold, then
-        the dataset will be represented as an external array link. If None, then
-        the threshold is not used. Default is 1000.
-    """
-    num_dataset_chunks_threshold: Union[int, None] = 1000
+from .LindiH5ZarrStoreOpts import LindiH5ZarrStoreOpts
 
 
 class LindiH5ZarrStore(Store):
@@ -83,7 +69,7 @@ class LindiH5ZarrStore(Store):
     def from_file(
         hdf5_file_name_or_url: str,
         *,
-        opts: LindiH5ZarrStoreOpts = LindiH5ZarrStoreOpts(),
+        opts: Union[LindiH5ZarrStoreOpts, None] = None,
         url: Union[str, None] = None,
         local_cache: Union[LocalCache, None] = None
     ):
@@ -94,7 +80,7 @@ class LindiH5ZarrStore(Store):
         ----------
         hdf5_file_name_or_url : str
             The name of the HDF5 file or a URL to the HDF5 file.
-        opts : LindiH5ZarrStoreOpts
+        opts : LindiH5ZarrStoreOpts or None
             Options for the store.
         url : str or None
             If hdf5_file_name_or_url is a local file name, then this can
@@ -107,6 +93,8 @@ class LindiH5ZarrStore(Store):
             A local cache to use when reading chunks from a remote file. If None,
             then no local cache is used.
         """
+        if opts is None:
+            opts = LindiH5ZarrStoreOpts()  # default options
         if hdf5_file_name_or_url.startswith(
             "http://"
         ) or hdf5_file_name_or_url.startswith("https://"):
@@ -618,7 +606,10 @@ class InlineArray:
             self._is_inline = True
             ...
         elif h5_dataset.dtype.kind in ['i', 'u', 'f']:  # integer or float
-            self._is_inline = False
+            if h5_dataset.size and h5_dataset.size < 1000:
+                self._is_inline = True
+            else:
+                self._is_inline = False
         else:
             self._is_inline = True
             if h5_dataset.dtype.kind == "V" and h5_dataset.dtype.fields is not None:  # compound type
