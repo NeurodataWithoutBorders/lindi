@@ -69,7 +69,7 @@ class LindiH5ZarrStore(Store):
     def from_file(
         hdf5_file_name_or_url: str,
         *,
-        opts: LindiH5ZarrStoreOpts = LindiH5ZarrStoreOpts(),
+        opts: Union[LindiH5ZarrStoreOpts, None] = None,
         url: Union[str, None] = None,
         local_cache: Union[LocalCache, None] = None
     ):
@@ -80,7 +80,7 @@ class LindiH5ZarrStore(Store):
         ----------
         hdf5_file_name_or_url : str
             The name of the HDF5 file or a URL to the HDF5 file.
-        opts : LindiH5ZarrStoreOpts
+        opts : LindiH5ZarrStoreOpts or None
             Options for the store.
         url : str or None
             If hdf5_file_name_or_url is a local file name, then this can
@@ -93,6 +93,8 @@ class LindiH5ZarrStore(Store):
             A local cache to use when reading chunks from a remote file. If None,
             then no local cache is used.
         """
+        if opts is None:
+            opts = LindiH5ZarrStoreOpts()  # default options
         if hdf5_file_name_or_url.startswith(
             "http://"
         ) or hdf5_file_name_or_url.startswith("https://"):
