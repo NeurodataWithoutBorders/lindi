@@ -2,10 +2,10 @@ from typing import TYPE_CHECKING, Any, Dict
 import numpy as np
 import h5py
 import zarr
-import remfile
 
 from .LindiH5pyAttributes import LindiH5pyAttributes
 from .LindiH5pyReference import LindiH5pyReference
+from ..LindiRemfile.LindiRemfile import LindiRemfile
 
 from ..conversion.decode_references import decode_references
 
@@ -116,7 +116,7 @@ class LindiH5pyDataset(h5py.Dataset):
                 # but validate seems to work only when I put in vlen = bytes
                 #
                 vlen = bytes
-                ret = np.dtype(str(ret), metadata={'vlen': vlen})
+                ret = np.dtype(str(ret), metadata={'vlen': vlen})  # type: ignore
         return ret
 
     @property
@@ -213,13 +213,15 @@ class LindiH5pyDataset(h5py.Dataset):
             # make sure selection is ()
             if selection != ():
                 raise TypeError(f'Cannot slice a scalar dataset with {selection}')
-            return zarr_array[0]
+            # For some reason, with the newest version of zarr (2.18.0) we need to use [:][0] rather than just [0].
+            # Otherwise we get an error "ValueError: buffer source array is read-only"
+            return zarr_array[:][0]
         return decode_references(zarr_array[selection])
 
     def _get_external_hdf5_client(self, url: str) -> h5py.File:
         if url not in _external_hdf5_clients:
             if url.startswith("http://") or url.startswith("https://"):
-                ff = remfile.File(url)
+                ff = LindiRemfile(url, local_cache=self._file._local_cache)
             else:
                 ff = open(url, "rb")  # this never gets closed
             _external_hdf5_clients[url] = h5py.File(ff, "r")
