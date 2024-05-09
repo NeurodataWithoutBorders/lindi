@@ -88,8 +88,6 @@ class LindiStagingStore(ZarrStore):
     def consolidate_chunks(self):
         """
         Consolidate the chunks in the staging area.
-
-        This method is called by `upload` if `consolidate_chunks` is True.
         """
         rfs = self._base_store.rfs
         refs_keys_by_reference_parent_path = {}
