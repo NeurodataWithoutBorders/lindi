@@ -116,7 +116,7 @@ class LindiH5pyDataset(h5py.Dataset):
                 # but validate seems to work only when I put in vlen = bytes
                 #
                 vlen = bytes
-                ret = np.dtype(str(ret), metadata={'vlen': vlen})
+                ret = np.dtype(str(ret), metadata={'vlen': vlen})  # type: ignore
         return ret
 
     @property
@@ -213,7 +213,9 @@ class LindiH5pyDataset(h5py.Dataset):
             # make sure selection is ()
             if selection != ():
                 raise TypeError(f'Cannot slice a scalar dataset with {selection}')
-            return zarr_array[0]
+            # For some reason, with the newest version of zarr (2.18.0) we need to use [:][0] rather than just [0].
+            # Otherwise we get an error "ValueError: buffer source array is read-only"
+            return zarr_array[:][0]
         return decode_references(zarr_array[selection])
 
     def _get_external_hdf5_client(self, url: str) -> h5py.File:
