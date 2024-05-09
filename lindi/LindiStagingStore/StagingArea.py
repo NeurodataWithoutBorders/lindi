@@ -1,3 +1,4 @@
+from typing import Union
 import os
 import random
 import string
@@ -21,17 +22,27 @@ class StagingArea:
         self._directory = os.path.abspath(_directory)
 
     @staticmethod
-    def create(base_dir: str) -> 'StagingArea':
+    def create(*, base_dir: Union[str, None] = None, dir: Union[str, None] = None) -> 'StagingArea':
         """
-        Create a new staging area.
+        Create a new staging area. Provide either `base_dir` or `dir`, but not
+        both.
 
         Parameters
         ----------
-        base_dir : str
-            The base directory where the staging area will be created. The
-            staging directory will be a subdirectory of this directory.
+        base_dir : str or None
+            If provided, the base directory where the staging area will be
+            created. The staging directory will be a subdirectory of this
+            directory.
+        dir : str or None
+            If provided, the exact directory where the staging area will be
+            created. It is okay if this directory already exists.
         """
-        dir = os.path.join(base_dir, _create_random_id())
+        if base_dir is not None and dir is not None:
+            raise ValueError("Provide either base_dir or dir, but not both")
+        if base_dir is not None:
+            dir = os.path.join(base_dir, _create_random_id())
+        if dir is None:
+            raise ValueError("Provide either base_dir or dir")
         return StagingArea(_directory=dir)
 
     def cleanup(self) -> None:
