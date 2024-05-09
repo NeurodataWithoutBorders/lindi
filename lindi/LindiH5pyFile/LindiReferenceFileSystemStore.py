@@ -49,8 +49,7 @@ class LindiReferenceFileSystemStore(ZarrStore):
 
     We also support the use of templates as in fsspec, but do not support the
     full jinja2 templating. There may be an optional "templates" key in the
-    dictionary, which is a dictionary of template strings. For example,
-    {
+    dictionary, which is a dictionary of template strings. For example, {
         "templates": {"u1": "https://some/url", "u2": "https://some/other/url"},
         "refs": {
             ... "/some/key/0": [
@@ -58,13 +57,16 @@ class LindiReferenceFileSystemStore(ZarrStore):
             ],
             ...
         }
-    }
-    In this case, the "{{u1}}" will be replaced with the value of the "u1"
+    } In this case, the "{{u1}}" will be replaced with the value of the "u1"
     template string.
 
+    Optionally, the reference file system may contain a "generationMetadata"
+    key, which is a dictionary of metadata about the generation of the reference
+    file system. This metadata is not used by this class, but could be by other
+    software. See LindiH5pyFile.write_lindi_file(...)
+
     It is okay for rfs to be modified outside of this class, and the changes
-    will be reflected immediately in the store. This can be used by experimental
-    tools such as lindi-cloud.
+    will be reflected immediately in the store.
     """
     def __init__(self, rfs: dict, *, mode: Literal["r", "r+"] = "r+", local_cache: Union[LocalCache, None] = None):
         """

@@ -290,6 +290,10 @@ class LindiH5pyFile(h5py.File):
         ----------
         filename : str
             The filename to write to. It must end with '.lindi.json'.
+        generation_metadata : Union[dict, None], optional
+            The optional generation metadata to include in the reference file
+            system, by default None. This information dict is simply set to the
+            'generationMetadata' key in the reference file system.
         """
         if not filename.endswith(".lindi.json"):
             raise Exception("Filename must end with '.lindi.json'")
