@@ -260,19 +260,24 @@ class LindiH5pyFile(h5py.File):
         """
         rfs = self.to_reference_file_system()
         blobs_to_upload = set()
+        # Get the set of all local URLs in rfs['refs']
         for k, v in rfs['refs'].items():
             if isinstance(v, list) and len(v) == 3:
                 url = _apply_templates(v[0], rfs.get('templates', {}))
                 if not url.startswith("http://") and not url.startswith("https://"):
                     local_path = url
                     blobs_to_upload.add(local_path)
+        # Upload each of the local blobs using the given upload function and get a mapping from
+        # the original file paths to the URLs of the uploaded files
         blob_mapping = _upload_blobs(blobs_to_upload, on_upload_blob=on_upload_blob)
+        # Replace the local URLs in rfs['refs'] with URLs of the uploaded files
         for k, v in rfs['refs'].items():
             if isinstance(v, list) and len(v) == 3:
                 url1 = _apply_templates(v[0], rfs.get('templates', {}))
                 url2 = blob_mapping.get(url1, None)
                 if url2 is not None:
                     v[0] = url2
+        # Write the updated LINDI file to a temp directory and upload it
         with tempfile.TemporaryDirectory() as tmpdir:
             rfs_fname = f"{tmpdir}/rfs.lindi.json"
             LindiReferenceFileSystemStore.use_templates_in_rfs(rfs)
