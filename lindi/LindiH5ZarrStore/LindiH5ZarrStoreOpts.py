@@ -2,7 +2,7 @@ from typing import Union
 from dataclasses import dataclass
 
 
-@dataclass
+@dataclass(frozen=True)
 class LindiH5ZarrStoreOpts:
     """
     Options for the LindiH5ZarrStore class.
