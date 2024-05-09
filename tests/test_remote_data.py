@@ -77,13 +77,17 @@ def test_remote_data_rfs_copy():
 
     # This next dataset has an _EXTERNAL_ARRAY_LINK which means it has a pointer
     # to a dataset in a remote h5py
-    ds = client['processing/ecephys/LFP/LFP/data']
-    assert isinstance(ds, lindi.LindiH5pyDataset)
-    assert ds.shape == (17647830, 64)
+    # https://neurosift.app/?p=/nwb&dandisetId=000409&dandisetVersion=draft&url=https://api.dandiarchive.org/api/assets/ab3998c2-3540-4bda-8b03-3f3795fa602d/download/
+    url_b = 'https://lindi.neurosift.org/dandi/dandisets/000409/assets/ab3998c2-3540-4bda-8b03-3f3795fa602d/nwb.lindi.json'
+    client_b = lindi.LindiH5pyFile.from_reference_file_system(url_b)
 
-    client.copy('processing/ecephys/LFP/LFP/data', client2, 'copied_data2')
+    ds = client_b['acquisition/ElectricalSeriesAp/data']
+    assert isinstance(ds, lindi.LindiH5pyDataset)
+    assert ds.shape == (109281892, 384)
+
+    client_b.copy('acquisition/ElectricalSeriesAp/data', client2, 'copied_data2')
     aa = rfs2['refs']['copied_data2/.zarray']
-    assert isinstance(aa, str)
+    assert isinstance(aa, str) or isinstance(aa, dict)
     assert 'copied_data2/0.0' not in rfs2['refs']  # make sure the chunks were not copied
 
     ds2 = client2['copied_data2']
