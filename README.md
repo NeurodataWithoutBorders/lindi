@@ -94,7 +94,7 @@ import pynwb
 import lindi
 
 # URL of the remote .nwb.lindi.json file
-url = 'https://kerchunk.neurosift.org/dandi/dandisets/000939/assets/11f512ba-5bcf-4230-a8cb-dc8d36db38cb/zarr.json'
+url = 'https://lindi.neurosift.org/dandi/dandisets/000939/assets/56d875d6-a705-48d3-944c-53394a389c85/nwb.lindi.json'
 
 # Load the h5py-like client
 client = lindi.LindiH5pyFile.from_lindi_file(url)
@@ -112,7 +112,7 @@ import json
 import lindi
 
 # URL of the remote .nwb.lindi.json file
-url = 'https://lindi.neurosift.org/dandi/dandisets/000939/assets/11f512ba-5bcf-4230-a8cb-dc8d36db38cb/zarr.json'
+url = 'https://lindi.neurosift.org/dandi/dandisets/000939/assets/56d875d6-a705-48d3-944c-53394a389c85/nwb.lindi.json'
 
 # Load the h5py-like client for the reference file system
 # in read-write mode
@@ -122,9 +122,7 @@ client = lindi.LindiH5pyFile.from_reference_file_system(url, mode="r+")
 client.attrs['new_attribute'] = 'new_value'
 
 # Save the changes to a new .nwb.lindi.json file
-rfs_new = client.to_reference_file_system()
-with open('new.nwb.lindi.json', 'w') as f:
-    f.write(json.dumps(rfs_new, indent=2, sort_keys=True))
+client.write_lindi_file('new.nwb.lindi.json')
 ```
 
 ### Add datasets to a .nwb.lindi.json file using a local staging area
@@ -133,7 +131,7 @@ with open('new.nwb.lindi.json', 'w') as f:
 import lindi
 
 # URL of the remote .nwb.lindi.json file
-url = 'https://lindi.neurosift.org/dandi/dandisets/000939/assets/11f512ba-5bcf-4230-a8cb-dc8d36db38cb/zarr.json'
+url = 'https://lindi.neurosift.org/dandi/dandisets/000939/assets/56d875d6-a705-48d3-944c-53394a389c85/nwb.lindi.json'
 
 # Load the h5py-like client for the reference file system
 # in read-write mode with a staging area
