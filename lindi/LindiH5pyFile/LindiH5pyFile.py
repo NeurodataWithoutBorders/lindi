@@ -312,7 +312,7 @@ class LindiH5pyFile(h5py.File):
 
     @property
     def mode(self):
-        return self._mode
+        return 'r' if self._mode == 'r' else 'r+'
 
     @property
     def libver(self):
