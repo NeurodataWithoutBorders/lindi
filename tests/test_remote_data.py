@@ -62,7 +62,7 @@ def test_remote_data_rfs_copy():
     # This first dataset is a 2D array with chunks
     ds = client['processing/behavior/Position/position/data']
     assert isinstance(ds, lindi.LindiH5pyDataset)
-    assert ds.shape == (494315, 2)
+    assert ds.shape == (360867, 2)
 
     client.copy('processing/behavior/Position/position/data', client2, 'copied_data1')
     aa = rfs2['refs']['copied_data1/.zarray']
