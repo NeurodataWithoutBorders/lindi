@@ -34,7 +34,7 @@ Note that we do not currently support external links.
 - `object_id`: The object_id attribute of the target object (for validation).
 - `source_object_id`: The object_id attribute of the source object (for validation).
 
-The largely follows the [convention used by hdmf-zarr](https://hdmf-zarr.readthedocs.io/en/latest/storage.html#storing-object-references-in-attributes).
+This largely follows the [convention used by hdmf-zarr](https://hdmf-zarr.readthedocs.io/en/latest/storage.html#storing-object-references-in-attributes).
 
 HDF5 references can appear within both attributes and datasets. For attributes, the value of the attribute is a dict in the above form. For datasets, the value of an item within the dataset is a dict in the above form.
 
