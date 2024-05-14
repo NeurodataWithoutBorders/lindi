@@ -460,6 +460,7 @@ class LindiH5ZarrStore(Store):
             )
 
             chunk_size = h5_item.chunks
+
             def store_chunk_info(chunk_info):
                 # Get the byte range in the file for each chunk.
                 chunk_offset: Tuple[int, ...] = chunk_info.chunk_offset
@@ -620,7 +621,6 @@ class LindiH5ZarrStore(Store):
             zarray_bytes = self.get(f"{key}/.zarray")
             assert zarray_bytes is not None
             _add_ref(f"{key}/.zarray", zarray_bytes)
-            zarray_dict = json.loads(zarray_bytes.decode("utf-8"))
 
             if external_array_link is None:
                 # Only add chunk references for datasets without an external array link
