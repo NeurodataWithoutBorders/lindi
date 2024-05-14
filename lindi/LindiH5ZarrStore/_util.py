@@ -81,7 +81,7 @@ def _get_chunk_byte_range(h5_dataset: h5py.Dataset, chunk_coords: tuple) -> tupl
 def _get_chunk_byte_range_for_chunk_index(h5_dataset: h5py.Dataset, chunk_index: int) -> tuple:
     """Get the byte range in the file for a chunk of an h5py dataset.
 
-    This involves some low-level functions from the h5py library. Use _get_all_chunk_info instead of
+    This involves some low-level functions from the h5py library. Use _apply_to_all_chunk_info instead of
     calling this repeatedly for many chunks of the same dataset.
     """
     # got hints from kerchunk source code
