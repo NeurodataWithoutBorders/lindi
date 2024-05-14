@@ -15,6 +15,7 @@ numcodecs = "^0.12.1"
 zarr = "^2.16.1"
 h5py = "^3.10.0"
 requests = "^2.31.0"
+tqdm = "^4.66.4"
 
 [tool.poetry.group.dev.dependencies]
 pynwb = "^2.6.0"

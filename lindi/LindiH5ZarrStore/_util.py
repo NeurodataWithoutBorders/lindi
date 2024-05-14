@@ -1,4 +1,4 @@
-from typing import IO, List
+from typing import IO, List, Union
 import json
 import numpy as np
 import h5py
@@ -10,11 +10,33 @@ def _read_bytes(file: IO, offset: int, count: int):
     return file.read(count)
 
 
-def _get_chunk_byte_range(h5_dataset: h5py.Dataset, chunk_coords: tuple) -> tuple:
-    """Get the byte range in the file for a chunk of an h5py dataset.
+def _get_all_chunk_info(h5_dataset: h5py.Dataset) -> Union[list, None]:
+    """Get the chunk info for all the chunks of an h5py dataset as a list of StoreInfo objects.
+    The chunks are in order such that the last dimension changes the fastest, e.g., chunk coordinates could be:
+    [0, 0, 0], [0, 0, 1], [0, 0, 2], ..., [0, 1, 0], [0, 1, 1], [0, 1, 2], ..., [1, 0, 0], [1, 0, 1], [1, 0, 2], ...
 
-    This involves some low-level functions from the h5py library. First we need
-    to get the chunk index. Then we call _get_chunk_byte_range_for_chunk_index.
+    Use stinfo[i].byte_offset and stinfo[i].size to get the byte range in the file for the i-th chunk.
+
+    Requires HDF5 1.12.3 and above. If the chunk_iter method is not available, return None.
+
+    This takes 1-5 seconds for a dataset with 1e6 chunks.
+
+    This might be very slow if the dataset is stored remotely.
+    """
+    stinfo = list()
+    dsid = h5_dataset.id
+    try:
+        dsid.chunk_iter(stinfo.append)
+    except AttributeError:
+        # chunk_iter is not available
+        return None
+    return stinfo
+
+
+def _get_chunk_index(h5_dataset: h5py.Dataset, chunk_coords: tuple) -> int:
+    """Get the chunk index for a chunk of an h5py dataset.
+
+    This involves some low-level functions from the h5py library.
     """
     shape = h5_dataset.shape
     chunk_shape = h5_dataset.chunks
@@ -30,13 +52,23 @@ def _get_chunk_byte_range(h5_dataset: h5py.Dataset, chunk_coords: tuple) -> tupl
     chunk_index = 0
     for i in range(ndim):
         chunk_index += int(chunk_coords[i] * np.prod(chunk_coords_shape[i + 1:]))
+    return chunk_index
+
+def _get_chunk_byte_range(h5_dataset: h5py.Dataset, chunk_coords: tuple) -> tuple:
+    """Get the byte range in the file for a chunk of an h5py dataset.
+
+    This involves some low-level functions from the h5py library. First we need
+    to get the chunk index. Then we call _get_chunk_byte_range_for_chunk_index.
+    """
+    chunk_index = _get_chunk_index(h5_dataset, chunk_coords)
     return _get_chunk_byte_range_for_chunk_index(h5_dataset, chunk_index)
 
 
 def _get_chunk_byte_range_for_chunk_index(h5_dataset: h5py.Dataset, chunk_index: int) -> tuple:
     """Get the byte range in the file for a chunk of an h5py dataset.
 
-    This involves some low-level functions from the h5py library.
+    This involves some low-level functions from the h5py library. Use _get_all_chunk_info instead of
+    calling this repeatedly for many chunks of the same dataset.
     """
     # got hints from kerchunk source code
     dsid = h5_dataset.id
