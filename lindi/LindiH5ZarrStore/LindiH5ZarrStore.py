@@ -354,7 +354,7 @@ class LindiH5ZarrStore(Store):
                 )
             return buf
 
-    def _get_single_chunk_file_bytes_data(
+    def _get_chunk_file_bytes_data(
         self,
         key_parent: str,
         key_name: str
@@ -394,32 +394,32 @@ class LindiH5ZarrStore(Store):
                 raise Exception(
                     f"Chunk name {key_name} does not match dataset dimensions for inline array {key_parent}"
                 )
-            inline_data = inline_array.chunk_bytes
-            return None, None, inline_data
+            return None, None, inline_array.chunk_bytes
 
         # If this is a scalar, then the data should have been inline
         if h5_item.ndim == 0:
             raise Exception(f"No inline data for scalar dataset {key_parent}")
 
+        # Get the chunk coords from the file name
+        chunk_name_parts = key_name.split(".")
+        if len(chunk_name_parts) != h5_item.ndim:
+            raise Exception(f"Chunk name {key_name} does not match dataset dimensions")
+        chunk_coords = tuple(int(x) for x in chunk_name_parts)
+        for i, c in enumerate(chunk_coords):
+            if c < 0 or c >= h5_item.shape[i]:
+                raise Exception(
+                    f"Chunk coordinates {chunk_coords} out of range for dataset {key_parent} with dtype {h5_item.dtype}"
+                )
+
         if h5_item.chunks is not None:
-            # Get the byte range in the file for each chunk.
+            # Get the byte range in the file for the chunk.
             try:
                 # Get the chunk coords from the file name
-                chunk_name_parts = key_name.split(".")
-                if len(chunk_name_parts) != h5_item.ndim:
-                    raise Exception(f"Chunk name {key_name} does not match dataset dimensions")
-                chunk_coords = tuple(int(x) for x in chunk_name_parts)
-                for i, c in enumerate(chunk_coords):
-                    if c < 0 or c >= h5_item.shape[i]:
-                        raise Exception(
-                            f"Chunk coordinates {chunk_coords} out of range for dataset {key_parent} with dtype {h5_item.dtype}"
-                        )
                 byte_offset, byte_count = _get_chunk_byte_range(h5_item, chunk_coords)
             except Exception as e:
                 raise Exception(
                     f"Error getting byte range for chunk {key_parent}/{key_name}. Shape: {h5_item.shape}, Chunks: {h5_item.chunks}, Chunk coords: {chunk_coords}: {e}"
                 )
-            return byte_offset, byte_count, None
 
         else:
             # In this case (contiguous dataset), we need to check that the chunk
@@ -431,7 +431,7 @@ class LindiH5ZarrStore(Store):
                 )
             # Get the byte range in the file for the contiguous dataset
             byte_offset, byte_count = _get_byte_range_for_contiguous_dataset(h5_item)
-            return byte_offset, byte_count, None
+        return byte_offset, byte_count, None
 
     def _add_chunk_info_to_refs(
         self,
