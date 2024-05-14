@@ -601,8 +601,6 @@ class LindiH5ZarrStore(Store):
             raise Exception("You must specify a url to create a reference file system")
         ret = {"refs": {}, "version": 1}
 
-        # TODO: use templates to decrease the size of the JSON
-
         def _add_ref(key: str, content: Union[bytes, None]):
             if content is None:
                 raise Exception(f"Unable to get content for key {key}")
@@ -629,7 +627,7 @@ class LindiH5ZarrStore(Store):
         def _add_ref_chunk(key: str, data: Tuple[str, int, int]):
             assert data[1] is not None
             assert data[2] is not None
-            ret["refs"][key] = list(data)  # TODO make downstream accept tuple
+            ret["refs"][key] = list(data)  # downstream expects a list like on read from a JSON file
 
         def _process_group(key, item: h5py.Group):
             if isinstance(item, h5py.Group):
