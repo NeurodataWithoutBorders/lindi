@@ -327,7 +327,7 @@ class LindiH5ZarrStore(Store):
         if self._file is None:
             raise Exception("Store is closed")
         byte_offset, byte_count, inline_data = self._get_chunk_file_bytes_data(
-            key_parent, [key_name]
+            key_parent, key_name
         )
         if inline_data is not None:
             return inline_data
@@ -354,11 +354,7 @@ class LindiH5ZarrStore(Store):
                 )
             return buf
 
-    def _get_chunk_file_bytes_data(
-        self,
-        key_parent: str,
-        key_name: str
-    ):
+    def _get_chunk_file_bytes_data(self, key_parent: str, key_name: str):
         if self._h5f is None:
             raise Exception("Store is closed")
         h5_item = self._h5f.get('/' + key_parent, None)
