@@ -8,12 +8,10 @@ import h5py
 from tqdm import tqdm
 from ._util import (
     _read_bytes,
-    _get_all_chunk_info,
-    _get_chunk_index,
+    _apply_to_all_chunk_info,
     _get_chunk_byte_range,
     _get_byte_range_for_contiguous_dataset,
     _join,
-    _get_chunk_names_for_dataset,
     _write_rfs_to_file,
 )
 from ..conversion.attr_conversion import h5_to_zarr_attr
@@ -425,13 +423,7 @@ class LindiH5ZarrStore(Store):
             byte_offset, byte_count = _get_byte_range_for_contiguous_dataset(h5_item)
         return byte_offset, byte_count, None
 
-    def _add_chunk_info_to_refs(
-        self,
-        key_parent: str,
-        key_names: List[str],
-        add_ref: Callable,
-        add_ref_chunk: Callable
-    ):
+    def _add_chunk_info_to_refs(self, key_parent: str, add_ref: Callable, add_ref_chunk: Callable):
         if self._h5f is None:
             raise Exception("Store is closed")
         h5_item = self._h5f.get('/' + key_parent, None)
@@ -443,19 +435,12 @@ class LindiH5ZarrStore(Store):
                 raise Exception(
                     f"Unable to handle case where chunks is not None but ndim is 0 for dataset {key_parent}"
                 )
-            if len(key_names) != 1 or key_names[0] != "0":
-                raise Exception(
-                    f"Chunk name {key_names[0]} must be '0' for scalar dataset {key_parent}"
-                )
 
         inline_array = self._get_inline_array(key_parent, h5_item)
         if inline_array.is_inline:
-            if len(key_names) != 1 or key_names[0] != inline_array.chunk_fname:
-                raise Exception(
-                    f"Chunk name {key_names[0]} does not match dataset dimensions for inline array {key_parent}"
-                )
+            key_name = inline_array.chunk_fname
             inline_data = inline_array.chunk_bytes
-            add_ref(f"{key_parent}/{key_names[0]}", inline_data)
+            add_ref(f"{key_parent}/{key_name}", inline_data)
             return
 
         # If this is a scalar, then the data should have been inline
@@ -463,62 +448,34 @@ class LindiH5ZarrStore(Store):
             raise Exception(f"No inline data for scalar dataset {key_parent}")
 
         if h5_item.chunks is not None:
-            # Get the byte range in the file for each chunk.
-            # Get a list of all the chunk info.
-            chunk_info = _get_all_chunk_info(h5_item)
-            for chunk_index, key_name in tqdm(
-                enumerate(key_names),
-                total=len(key_names),
+            # Set up progress bar for manual updates because h5py chunk_iter used in _apply_to_all_chunk_info
+            # does not provide a way to hook in a progress bar
+            dsid = h5_item.id
+            num_chunks = dsid.get_num_chunks()  # NOTE: this is very slow if dataset is remote and has many chunks
+            pbar = tqdm(
+                total=num_chunks,
                 desc=f"Writing chunk info for {key_parent}",
                 leave=True,
                 delay=2  # do not show progress bar until 2 seconds have passed
-            ):
-                chunk_coords = None  # so that chunk_coords is not unbound on exception
-                try:
-                    # TODO remove this code through the assert after verifying order of key_names
-                    # Get the chunk coords from the file name
-                    chunk_name_parts = key_name.split(".")
-                    if len(chunk_name_parts) != h5_item.ndim:
-                        raise Exception(f"Chunk name {key_name} does not match dataset dimensions")
-                    chunk_coords = tuple(int(x) for x in chunk_name_parts)
-                    for i, c in enumerate(chunk_coords):
-                        if c < 0 or c >= h5_item.shape[i]:
-                            raise Exception(
-                                f"Chunk coordinates {chunk_coords} out of range for dataset {key_parent} with dtype {h5_item.dtype}"
-                            )
-                    assert chunk_index == _get_chunk_index(h5_item, chunk_coords)
+            )
 
-                    # use chunk_info if available on this system because it is more efficient,
-                    # otherwise use the slower _get_chunk_byte_range
-                    if chunk_info is not None:
-                        byte_offset = chunk_info[chunk_index].byte_offset
-                        byte_count = chunk_info[chunk_index].size
-                    else:
-                        byte_offset, byte_count = _get_chunk_byte_range(h5_item, chunk_coords)
-                except Exception as e:
-                    raise Exception(
-                        f"Error getting byte range for chunk {key_parent}/{key_name}. Shape: {h5_item.shape}, Chunks: {h5_item.chunks}, Chunk coords: {chunk_coords}: {e}"
-                    )
-
-                # In this case we reference a chunk of data in a separate file
+            chunk_size = h5_item.chunks
+            def store_chunk_info(chunk_info):
+                # Get the byte range in the file for each chunk.
+                chunk_offset: Tuple[int, ...] = chunk_info.chunk_offset
+                byte_offset = chunk_info.byte_offset
+                byte_count = chunk_info.size
+                key_name = ".".join([str(a // b) for a, b in zip(chunk_offset, chunk_size)])
                 add_ref_chunk(f"{key_parent}/{key_name}", (self._url, byte_offset, byte_count))
+                pbar.update()
+
+            _apply_to_all_chunk_info(h5_item, store_chunk_info)
+            pbar.close()
         else:
-            # In this case (contiguous dataset), we need to check that the chunk
-            # coordinates are (0, 0, 0, ...)
-            if len(key_names) != 1:
-                raise Exception(
-                    f"Contiguous dataset {key_parent} must have exactly one key name, but got {key_names}"
-                )
-            key_name = key_names[0]
-            chunk_coords = tuple(int(x) for x in key_name.split("."))
-            if chunk_coords != (0,) * h5_item.ndim:
-                raise Exception(
-                    f"Chunk coordinates {chunk_coords} are not (0, 0, 0, ...) for contiguous dataset {key_parent} with dtype {h5_item.dtype} and shape {h5_item.shape}"
-                )
             # Get the byte range in the file for the contiguous dataset
             byte_offset, byte_count = _get_byte_range_for_contiguous_dataset(h5_item)
+            key_name = ".".join("0" for _ in range(h5_item.ndim))
             add_ref_chunk(f"{key_parent}/{key_name}", (self._url, byte_offset, byte_count))
-            return byte_offset, byte_count, None
 
     def _get_external_array_link(self, parent_key: str, h5_item: h5py.Dataset):
         # First check the memory cache
@@ -667,19 +624,7 @@ class LindiH5ZarrStore(Store):
 
             if external_array_link is None:
                 # Only add chunk references for datasets without an external array link
-                shape = zarray_dict["shape"]
-                chunks = zarray_dict.get("chunks", None)
-                chunk_coords_shape = [
-                    # the shape could be zero -- for example dandiset 000559 - acquisition/depth_video/data has shape [0, 0, 0]
-                    (shape[i] + chunks[i] - 1) // chunks[i] if chunks[i] != 0 else 0
-                    for i in range(len(shape))
-                ]
-                # For example, chunk_names could be ['0', '1', '2', ...]
-                # or ['0.0', '0.1', '0.2', ...]
-                chunk_names = _get_chunk_names_for_dataset(
-                    chunk_coords_shape
-                )
-                self._add_chunk_info_to_refs(key, chunk_names, _add_ref, _add_ref_chunk)
+                self._add_chunk_info_to_refs(key, _add_ref, _add_ref_chunk)
 
         # Process the groups recursively starting with the root group
         _process_group("", self._h5f)
