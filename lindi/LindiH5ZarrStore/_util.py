@@ -44,7 +44,7 @@ def _apply_to_all_chunk_info(h5_dataset: h5py.Dataset, callback: Callable):
         dsid.chunk_iter(callback)
     except AttributeError:
         # chunk_iter is not available
-        num_chunks = _get_max_num_chunks(dsid)
+        num_chunks = dsid.get_num_chunks()  # NOTE: this can be slow for remote datasets with many chunks
         if num_chunks > 100:
             warnings.warn(
                 f"Dataset {h5_dataset.name} has {num_chunks} chunks. Using get_chunk_info is slow. "

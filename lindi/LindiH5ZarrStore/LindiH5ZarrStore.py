@@ -451,6 +451,8 @@ class LindiH5ZarrStore(Store):
         if h5_item.chunks is not None:
             # Set up progress bar for manual updates because h5py chunk_iter used in _apply_to_all_chunk_info
             # does not provide a way to hook in a progress bar
+            # We use max number of chunks instead of actual number of chunks because get_num_chunks is slow
+            # for remote datasets.
             num_chunks = _get_max_num_chunks(h5_item)  # NOTE: unallocated chunks are counted
             pbar = tqdm(
                 total=num_chunks,
