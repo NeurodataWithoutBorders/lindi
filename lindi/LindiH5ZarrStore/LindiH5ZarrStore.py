@@ -492,8 +492,13 @@ class LindiH5ZarrStore(Store):
                             )
                     assert chunk_index == _get_chunk_index(h5_item, chunk_coords)
 
-                    byte_offset = chunk_info[chunk_index].byte_offset
-                    byte_count = chunk_info[chunk_index].size
+                    # use chunk_info if available on this system because it is more efficient,
+                    # otherwise use the slower _get_chunk_byte_range
+                    if chunk_info is not None:
+                        byte_offset = chunk_info[chunk_index].byte_offset
+                        byte_count = chunk_info[chunk_index].size
+                    else:
+                        byte_offset, byte_count = _get_chunk_byte_range(h5_item, chunk_coords)
                 except Exception as e:
                     raise Exception(
                         f"Error getting byte range for chunk {key_parent}/{key_name}. Shape: {h5_item.shape}, Chunks: {h5_item.chunks}, Chunk coords: {chunk_coords}: {e}"
