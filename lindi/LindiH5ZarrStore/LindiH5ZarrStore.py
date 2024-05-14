@@ -1,6 +1,6 @@
 import json
 import base64
-from typing import Tuple, Union, List, IO, Any, Dict
+from typing import Tuple, Union, List, IO, Any, Dict, Callable
 import numpy as np
 import zarr
 from zarr.storage import Store, MemoryStore
@@ -429,10 +429,13 @@ class LindiH5ZarrStore(Store):
         self,
         key_parent: str,
         key_names: List[str],
-        add_ref: callable,
-        add_ref_chunk: callable
+        add_ref: Callable,
+        add_ref_chunk: Callable
     ):
+        if self._h5f is None:
+            raise Exception("Store is closed")
         h5_item = self._h5f.get('/' + key_parent, None)
+        assert isinstance(h5_item, h5py.Dataset)
 
         # For the case of a scalar dataset, we need to check a few things
         if h5_item.ndim == 0:
@@ -449,7 +452,7 @@ class LindiH5ZarrStore(Store):
         if inline_array.is_inline:
             if len(key_names) != 1 or key_names[0] != inline_array.chunk_fname:
                 raise Exception(
-                    f"Chunk name {key_name[0]} does not match dataset dimensions for inline array {key_parent}"
+                    f"Chunk name {key_names[0]} does not match dataset dimensions for inline array {key_parent}"
                 )
             inline_data = inline_array.chunk_bytes
             add_ref(f"{key_parent}/{key_names[0]}", inline_data)
@@ -470,6 +473,7 @@ class LindiH5ZarrStore(Store):
                 leave=True,
                 delay=2  # do not show progress bar until 2 seconds have passed
             ):
+                chunk_coords = None  # so that chunk_coords is not unbound on exception
                 try:
                     # TODO remove this code through the assert after verifying order of key_names
                     # Get the chunk coords from the file name

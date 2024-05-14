@@ -54,6 +54,7 @@ def _get_chunk_index(h5_dataset: h5py.Dataset, chunk_coords: tuple) -> int:
         chunk_index += int(chunk_coords[i] * np.prod(chunk_coords_shape[i + 1:]))
     return chunk_index
 
+
 def _get_chunk_byte_range(h5_dataset: h5py.Dataset, chunk_coords: tuple) -> tuple:
     """Get the byte range in the file for a chunk of an h5py dataset.
 
