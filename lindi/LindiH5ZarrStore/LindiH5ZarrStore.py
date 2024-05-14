@@ -406,21 +406,17 @@ class LindiH5ZarrStore(Store):
                 raise Exception(
                     f"Chunk coordinates {chunk_coords} out of range for dataset {key_parent} with dtype {h5_item.dtype}"
                 )
-
         if h5_item.chunks is not None:
             # Get the byte range in the file for the chunk.
             try:
-                # Get the chunk coords from the file name
                 byte_offset, byte_count = _get_chunk_byte_range(h5_item, chunk_coords)
             except Exception as e:
                 raise Exception(
                     f"Error getting byte range for chunk {key_parent}/{key_name}. Shape: {h5_item.shape}, Chunks: {h5_item.chunks}, Chunk coords: {chunk_coords}: {e}"
                 )
-
         else:
             # In this case (contiguous dataset), we need to check that the chunk
             # coordinates are (0, 0, 0, ...)
-            chunk_coords = tuple(int(x) for x in key_name.split("."))
             if chunk_coords != (0,) * h5_item.ndim:
                 raise Exception(
                     f"Chunk coordinates {chunk_coords} are not (0, 0, 0, ...) for contiguous dataset {key_parent} with dtype {h5_item.dtype} and shape {h5_item.shape}"
@@ -502,7 +498,6 @@ class LindiH5ZarrStore(Store):
 
                 # In this case we reference a chunk of data in a separate file
                 add_ref_chunk(f"{key_parent}/{key_name}", (self._url, byte_offset, byte_count))
-
         else:
             # In this case (contiguous dataset), we need to check that the chunk
             # coordinates are (0, 0, 0, ...)
