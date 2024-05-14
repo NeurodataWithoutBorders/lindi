@@ -8,6 +8,7 @@ import h5py
 from tqdm import tqdm
 from ._util import (
     _read_bytes,
+    _get_max_num_chunks,
     _apply_to_all_chunk_info,
     _get_chunk_byte_range,
     _get_byte_range_for_contiguous_dataset,
@@ -450,8 +451,7 @@ class LindiH5ZarrStore(Store):
         if h5_item.chunks is not None:
             # Set up progress bar for manual updates because h5py chunk_iter used in _apply_to_all_chunk_info
             # does not provide a way to hook in a progress bar
-            dsid = h5_item.id
-            num_chunks = dsid.get_num_chunks()  # NOTE: this is very slow if dataset is remote and has many chunks
+            num_chunks = _get_max_num_chunks(h5_item)  # NOTE: unallocated chunks are counted
             pbar = tqdm(
                 total=num_chunks,
                 desc=f"Writing chunk info for {key_parent}",

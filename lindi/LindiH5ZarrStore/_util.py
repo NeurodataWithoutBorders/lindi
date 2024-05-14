@@ -2,6 +2,7 @@ from typing import IO, List, Callable
 import json
 import numpy as np
 import h5py
+import math
 import warnings
 
 
@@ -9,6 +10,17 @@ def _read_bytes(file: IO, offset: int, count: int):
     """Read a range of bytes from a file-like object."""
     file.seek(offset)
     return file.read(count)
+
+
+def _get_max_num_chunks(h5_dataset: h5py.Dataset):
+    """Get the maximum number of chunks in an h5py dataset.
+
+    This is similar to h5_dataset.id.get_num_chunks() but significantly faster. It does not account for
+    whether some chunks are allocated.
+    """
+    chunk_size = h5_dataset.chunks
+    assert chunk_size is not None
+    return math.prod([math.ceil(a / b) for a, b in zip(h5_dataset.shape, chunk_size)])
 
 
 def _apply_to_all_chunk_info(h5_dataset: h5py.Dataset, callback: Callable):
@@ -32,7 +44,7 @@ def _apply_to_all_chunk_info(h5_dataset: h5py.Dataset, callback: Callable):
         dsid.chunk_iter(callback)
     except AttributeError:
         # chunk_iter is not available
-        num_chunks = dsid.get_num_chunks()  # NOTE: this is very slow if dataset is remote and has many chunks
+        num_chunks = _get_max_num_chunks(dsid)
         if num_chunks > 100:
             warnings.warn(
                 f"Dataset {h5_dataset.name} has {num_chunks} chunks. Using get_chunk_info is slow. "
