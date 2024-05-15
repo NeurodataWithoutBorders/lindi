@@ -443,7 +443,7 @@ class LindiH5ZarrStore(Store):
                 if self._url is not None:
                     self._external_array_links[parent_key] = {
                         "link_type": "hdf5_dataset",
-                        "url": self._url,  # url is not going to be null based on the check in __init__
+                        "url": self._url,
                         "name": parent_key,
                     }
                 else:
