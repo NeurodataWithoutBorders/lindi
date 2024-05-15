@@ -11,6 +11,7 @@ class LindiH5ZarrStoreOpts:
         num_dataset_chunks_threshold (Union[int, None]): For each dataset in the
         HDF5 file, if the number of chunks is greater than this threshold, then
         the dataset will be represented as an external array link. If None, then
-        the threshold is not used. Default is 1000.
+        no datasets will be represented as external array links (equivalent to a
+        threshold of 0). Default is 1000.
     """
     num_dataset_chunks_threshold: Union[int, None] = 1000
