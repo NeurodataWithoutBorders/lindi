@@ -1,13 +1,58 @@
-from typing import IO, List
+from typing import IO, List, Callable
 import json
 import numpy as np
 import h5py
+import math
+import warnings
 
 
 def _read_bytes(file: IO, offset: int, count: int):
     """Read a range of bytes from a file-like object."""
     file.seek(offset)
     return file.read(count)
+
+
+def _get_max_num_chunks(h5_dataset: h5py.Dataset):
+    """Get the maximum number of chunks in an h5py dataset.
+
+    This is similar to h5_dataset.id.get_num_chunks() but significantly faster. It does not account for
+    whether some chunks are allocated.
+    """
+    chunk_size = h5_dataset.chunks
+    assert chunk_size is not None
+    return math.prod([math.ceil(a / b) for a, b in zip(h5_dataset.shape, chunk_size)])
+
+
+def _apply_to_all_chunk_info(h5_dataset: h5py.Dataset, callback: Callable):
+    """Apply the callback function to each chunk of an h5py dataset.
+    The chunks are iterated in order such that the last dimension changes the fastest,
+    e.g., chunk coordinates could be:
+    [0, 0, 0], [0, 0, 1], [0, 0, 2], ..., [0, 1, 0], [0, 1, 1], [0, 1, 2], ..., [1, 0, 0], [1, 0, 1], [1, 0, 2], ...
+
+    This method tries to use the `chunk_iter` method if it is available. The `chunk_iter` method requires
+    HDF5 1.12.3 and above. If it is not available, this method falls back to the `get_chunk_info` method,
+    which is significantly slower and not recommended if the dataset has many chunks.
+
+    `chunk_iter` takes 1-5 seconds for all chunks for a dataset with 1e6 chunks.
+    `get_chunk_info` takes about 0.2 seconds per chunk for a dataset with 1e6 chunks.
+
+    NOTE: This method might be very slow if the dataset is stored remotely.
+    """
+    assert h5_dataset.chunks is not None
+    dsid = h5_dataset.id
+    try:
+        dsid.chunk_iter(callback)
+    except AttributeError:
+        # chunk_iter is not available
+        num_chunks = dsid.get_num_chunks()  # NOTE: this can be slow for remote datasets with many chunks
+        if num_chunks > 100:
+            warnings.warn(
+                f"Dataset {h5_dataset.name} has {num_chunks} chunks. Using get_chunk_info is slow. "
+                f"Consider upgrading to HDF5 1.12.3 or above for faster performance."
+            )
+        for index in range(num_chunks):
+            chunk_info = dsid.get_chunk_info(index)
+            callback(chunk_info)
 
 
 def _get_chunk_byte_range(h5_dataset: h5py.Dataset, chunk_coords: tuple) -> tuple:
@@ -36,7 +81,8 @@ def _get_chunk_byte_range(h5_dataset: h5py.Dataset, chunk_coords: tuple) -> tupl
 def _get_chunk_byte_range_for_chunk_index(h5_dataset: h5py.Dataset, chunk_index: int) -> tuple:
     """Get the byte range in the file for a chunk of an h5py dataset.
 
-    This involves some low-level functions from the h5py library.
+    This involves some low-level functions from the h5py library. Use _apply_to_all_chunk_info instead of
+    calling this repeatedly for many chunks of the same dataset.
     """
     # got hints from kerchunk source code
     dsid = h5_dataset.id
@@ -66,6 +112,7 @@ def _join(a: str, b: str) -> str:
         return f"{a}/{b}"
 
 
+# NOTE: this is no longer used
 def _get_chunk_names_for_dataset(chunk_coords_shape: List[int]) -> List[str]:
     """Get the chunk names for a dataset with the given chunk coords shape.
 
