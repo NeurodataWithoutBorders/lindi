@@ -39,7 +39,7 @@ class LocalCacheSQLiteClient:
                 url TEXT,
                 offset BIGINT,
                 size BIGINT,
-                data BLOB,
+                data LONGBLOB,
                 PRIMARY KEY (url, offset, size)
             )
             """
