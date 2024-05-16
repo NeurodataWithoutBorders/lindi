@@ -130,8 +130,8 @@ class LindiReferenceFileSystemStore(ZarrStore):
             if len(x) != 3:
                 raise Exception("list must have 3 elements")  # pragma: no cover
             url = x[0]
-            offset = x[1]
-            length = x[2]
+            offset = int(x[1])
+            length = int(x[2])
             if '{{' in url and '}}' in url and 'templates' in self.rfs:
                 for k, v in self.rfs["templates"].items():
                     url = url.replace("{{" + k + "}}", v)
