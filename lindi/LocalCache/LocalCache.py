@@ -18,6 +18,7 @@ class LocalCache:
     def put_remote_chunk(self, *, url: str, offset: int, size: int, data: bytes):
         if len(data) != size:
             raise ValueError("data size does not match size")
+        print(f'Put remote chunk: url="{url}", offset={offset}, size={size}, type of data={type(data)}, length of data={len(data)}')
         self._sqlite_client.put_remote_chunk(url=url, offset=offset, size=size, data=data)
 
 
