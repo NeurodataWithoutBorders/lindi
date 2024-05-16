@@ -37,8 +37,8 @@ class LocalCacheSQLiteClient:
             """
             CREATE TABLE IF NOT EXISTS remote_chunks (
                 url TEXT,
-                offset INTEGER,
-                size INTEGER,
+                offset BIGINT,
+                size BIGINT,
                 data BLOB,
                 PRIMARY KEY (url, offset, size)
             )
