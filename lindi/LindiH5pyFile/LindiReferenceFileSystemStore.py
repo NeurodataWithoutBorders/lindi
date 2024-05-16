@@ -140,7 +140,7 @@ class LindiReferenceFileSystemStore(ZarrStore):
                 if x is not None:
                     return x
             val = _read_bytes_from_url_or_path(url, offset, length)
-            if val and self.local_cache is not None:
+            if val and self.local_cache is not None and length < 1024 * 1024 * 100:
                 self.local_cache.put_remote_chunk(url=url, offset=offset, size=length, data=val)
             return val
         else:
