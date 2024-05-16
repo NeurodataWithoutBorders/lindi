@@ -216,7 +216,7 @@ class LindiRemfile:
         if self._smart_loader_chunk_sequence_length == 1:
             if self._local_cache is None:
                 self._memory_chunks[chunk_index] = x
-            if self._local_cache is not None:
+            if x and self._local_cache is not None:
                 self._local_cache.put_remote_chunk(
                     url=self._url,
                     offset=chunk_index * self._min_chunk_size,

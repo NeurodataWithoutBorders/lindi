@@ -341,7 +341,7 @@ class LindiH5ZarrStore(Store):
                 if ch is not None:
                     return ch
             buf = _read_bytes(self._file, byte_offset, byte_count)
-            if self._local_cache is not None:
+            if buf and self._local_cache is not None:
                 assert self._url is not None, "Unexpected: url is None but local_cache is not None"
                 self._local_cache.put_remote_chunk(
                     url=self._url,
