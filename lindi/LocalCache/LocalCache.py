@@ -18,6 +18,11 @@ class LocalCache:
     def put_remote_chunk(self, *, url: str, offset: int, size: int, data: bytes):
         if len(data) != size:
             raise ValueError("data size does not match size")
+        if size >= 1000 * 1000 * 900:
+            # This is a sqlite limitation/configuration
+            # https://www.sqlite.org/limits.html
+            # For some reason 1000 * 1000 * 1000 seems to be too large, whereas 1000 * 1000 * 900 is fine
+            raise ValueError("Cannot store blobs larger than 900 MB in LocalCache")
         self._sqlite_client.put_remote_chunk(url=url, offset=offset, size=size, data=data)
 
 

@@ -345,12 +345,15 @@ class LindiH5ZarrStore(Store):
             buf = _read_bytes(self._file, byte_offset, byte_count)
             if self._local_cache is not None:
                 assert self._url is not None, "Unexpected: url is None but local_cache is not None"
-                self._local_cache.put_remote_chunk(
-                    url=self._url,
-                    offset=byte_offset,
-                    size=byte_count,
-                    data=buf
-                )
+                if byte_count < 1000 * 1000 * 900:
+                    self._local_cache.put_remote_chunk(
+                        url=self._url,
+                        offset=byte_offset,
+                        size=byte_count,
+                        data=buf
+                    )
+                else:
+                    print(f"Warning: Not storing chunk of size {byte_count} in local cache in LindiH5ZarrStore (key: {key_parent}/{key_name})")
             return buf
 
     def _get_chunk_file_bytes_data(self, key_parent: str, key_name: str):
