@@ -12,7 +12,7 @@ In HDF5, datasets can be scalar, but Zarr does not natively support scalar array
 
 ### `_SOFT_LINK = { 'path': '...' }`
 
-Soft links in HDF5 are pointers to other groups within the file. LINDI utilizes the `_SOFT_LINK` attribute on a Zarr group to represent this relationship. The `path` key within the attribute specifies the target group within the Zarr structure. Soft link groups in Zarr should be otherwise empty, serving only as a reference to another location in the dataset.
+Soft links in HDF5 are pointers to other groups within the file. LINDI utilizes the `_SOFT_LINK` attribute on a Zarr group to represent this relationship. The `path` key within the attribute specifies the target group or dataset within the Zarr structure. Soft link groups in Zarr should be otherwise empty, serving only as a reference to another location in the dataset.
 
 Note that we do not currently support external links.
 
