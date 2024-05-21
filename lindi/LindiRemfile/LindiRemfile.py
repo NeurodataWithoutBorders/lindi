@@ -218,15 +218,12 @@ class LindiRemfile:
                 self._memory_chunks[chunk_index] = x
             if self._local_cache is not None:
                 size = min(self._min_chunk_size, self.length - chunk_index * self._min_chunk_size)
-                if size < 1000 * 1000 * 900:
-                    self._local_cache.put_remote_chunk(
-                        url=self._url,
-                        offset=chunk_index * self._min_chunk_size,
-                        size=size,
-                        data=x
-                    )
-                else:
-                    raise Exception(f'Unexpected large size for chunk when caching: {size}')
+                self._local_cache.put_remote_chunk(
+                    url=self._url,
+                    offset=chunk_index * self._min_chunk_size,
+                    size=size,
+                    data=x
+                )
             self._memory_chunk_indices.append(chunk_index)
         else:
             for i in range(self._smart_loader_chunk_sequence_length):
@@ -242,15 +239,12 @@ class LindiRemfile:
                     data = x[i * self._min_chunk_size: (i + 1) * self._min_chunk_size]
                     if len(data) != size:
                         raise ValueError(f'Unexpected: len(data) != size: {len(data)} != {size}')
-                    if size < 1000 * 1000 * 900:
-                        self._local_cache.put_remote_chunk(
-                            url=self._url,
-                            offset=(chunk_index + i) * self._min_chunk_size,
-                            size=size,
-                            data=data
-                        )
-                    else:
-                        raise Exception(f'Unexpected large size for chunk when caching: {size}')
+                    self._local_cache.put_remote_chunk(
+                        url=self._url,
+                        offset=(chunk_index + i) * self._min_chunk_size,
+                        size=size,
+                        data=data
+                    )
         self._smart_loader_last_chunk_index_accessed = (
             chunk_index + self._smart_loader_chunk_sequence_length - 1
         )

@@ -62,7 +62,7 @@ def test_put_local_cache():
         )
         assert data == data2
         data_too_large = b'x' * (1000 * 1000 * 900)
-        with pytest.raises(ValueError):
+        with pytest.raises(lindi.ChunkTooLargeError):
             local_cache.put_remote_chunk(
                 url='dummy',
                 offset=0,

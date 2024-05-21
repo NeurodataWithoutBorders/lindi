@@ -20,7 +20,7 @@ from ..conversion.reformat_json import reformat_json
 from ..conversion.h5_filters_to_codecs import h5_filters_to_codecs
 from ..conversion.create_zarr_dataset_from_h5_data import create_zarr_dataset_from_h5_data
 from ..LindiH5pyFile.LindiReferenceFileSystemStore import LindiReferenceFileSystemStore
-from ..LocalCache.LocalCache import LocalCache
+from ..LocalCache.LocalCache import ChunkTooLargeError, LocalCache
 from ..LindiRemfile.LindiRemfile import LindiRemfile
 from .LindiH5ZarrStoreOpts import LindiH5ZarrStoreOpts
 
@@ -346,15 +346,15 @@ class LindiH5ZarrStore(Store):
             buf = _read_bytes(self._file, byte_offset, byte_count)
             if self._local_cache is not None:
                 assert self._url is not None, "Unexpected: url is None but local_cache is not None"
-                if byte_count < 1000 * 1000 * 900:
+                try:
                     self._local_cache.put_remote_chunk(
                         url=self._url,
                         offset=byte_offset,
                         size=byte_count,
                         data=buf
                     )
-                else:
-                    print(f"Warning: Not storing chunk of size {byte_count} in local cache in LindiH5ZarrStore (key: {key_parent}/{key_name})")
+                except ChunkTooLargeError:
+                    print(f"Warning: Unable to store chunk of size {byte_count} in local cache in LindiH5ZarrStore (key: {key_parent}/{key_name})")
             return buf
 
     def _get_chunk_file_bytes_data(self, key_parent: str, key_name: str):
