@@ -45,5 +45,31 @@ def test_remote_data_1():
                 assert elapsed_1 < elapsed_0 * 0.3  # type: ignore
 
 
+def test_put_local_cache():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        local_cache = lindi.LocalCache(cache_dir=tmpdir + '/local_cache')
+        data = b'x' * (1000 * 1000 * 900 - 1)
+        local_cache.put_remote_chunk(
+            url='dummy',
+            offset=0,
+            size=len(data),
+            data=data
+        )
+        data2 = local_cache.get_remote_chunk(
+            url='dummy',
+            offset=0,
+            size=len(data)
+        )
+        assert data == data2
+        data_too_large = b'x' * (1000 * 1000 * 900)
+        with pytest.raises(lindi.ChunkTooLargeError):
+            local_cache.put_remote_chunk(
+                url='dummy',
+                offset=0,
+                size=len(data_too_large),
+                data=data_too_large
+            )
+
+
 if __name__ == "__main__":
-    test_remote_data_1()
+    test_put_local_cache()

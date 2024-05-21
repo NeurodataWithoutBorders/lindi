@@ -4,7 +4,7 @@ import base64
 import requests
 from zarr.storage import Store as ZarrStore
 
-from ..LocalCache.LocalCache import LocalCache
+from ..LocalCache.LocalCache import ChunkTooLargeError, LocalCache
 
 
 class LindiReferenceFileSystemStore(ZarrStore):
@@ -141,7 +141,10 @@ class LindiReferenceFileSystemStore(ZarrStore):
                     return x
             val = _read_bytes_from_url_or_path(url, offset, length)
             if self.local_cache is not None:
-                self.local_cache.put_remote_chunk(url=url, offset=offset, size=length, data=val)
+                try:
+                    self.local_cache.put_remote_chunk(url=url, offset=offset, size=length, data=val)
+                except ChunkTooLargeError:
+                    print(f'Warning: unable to cache chunk of size {length} on LocalCache (key: {key})')
             return val
         else:
             # should not happen given checks in __init__, but self.rfs is mutable
