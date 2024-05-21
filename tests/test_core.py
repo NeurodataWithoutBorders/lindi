@@ -48,7 +48,7 @@ def test_variety():
             assert target_1.attrs["test_attr2"] == target_2.attrs["test_attr2"]  # type: ignore
 
 
-def test_soft_links():
+def test_group_soft_links():
     with tempfile.TemporaryDirectory() as tmpdir:
         filename = f"{tmpdir}/test.h5"
         with h5py.File(filename, "w") as f:
@@ -94,6 +94,33 @@ def test_soft_links():
             ds2 = h5f_rfs['group_target/dataset1']
             assert isinstance(ds2, h5py.Dataset)
             assert arrays_are_equal(ds1[()], ds2[()])
+
+
+def test_dataset_soft_links():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        filename = f"{tmpdir}/test.h5"
+        with h5py.File(filename, "w") as f:
+            g = f.create_group('group_target')
+            d = g.create_dataset('dataset1', data=[5, 6, 7])
+            d.attrs['foo'] = 'bar'
+            f['dataset_soft_link'] = h5py.SoftLink('/group_target/dataset1')
+        h5f = h5py.File(filename, "r")
+        with LindiH5ZarrStore.from_file(filename, url=filename) as store:
+            rfs = store.to_reference_file_system()
+            h5f_rfs = lindi.LindiH5pyFile.from_reference_file_system(rfs)
+            h1 = h5f['dataset_soft_link']
+            assert isinstance(h1, h5py.Dataset)
+            h2 = h5f_rfs['dataset_soft_link']
+            assert isinstance(h2, h5py.Dataset)
+            assert arrays_are_equal(h1[()], h2[()])
+            assert h1.attrs['foo'] == h2.attrs['foo']  # type: ignore
+            # this is tricky: it seems that with h5py, the name of the soft link
+            # is the source name. So the following assertion will fail.
+            # assert h1.name == h2.name
+            k1 = h5f.get('dataset_soft_link', getlink=True)
+            k2 = h5f_rfs.get('dataset_soft_link', getlink=True)
+            assert isinstance(k1, h5py.SoftLink)
+            assert isinstance(k2, h5py.SoftLink)
 
 
 def test_arrays_of_compound_dtype():

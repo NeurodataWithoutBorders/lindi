@@ -230,7 +230,7 @@ class LindiH5ZarrStore(Store):
             raise Exception(f"Item {parent_key} is not a group or dataset. It is {type(h5_item)}")  # pragma: no cover
 
         # Check whether this is a soft link
-        if isinstance(h5_item, h5py.Group) and parent_key != '':
+        if isinstance(h5_item, (h5py.Group, h5py.Dataset)) and parent_key != '':
             link = self._h5f.get('/' + parent_key, getlink=True)
             if isinstance(link, h5py.ExternalLink):
                 raise Exception(f"External links not supported: {parent_key}")
@@ -268,7 +268,8 @@ class LindiH5ZarrStore(Store):
         if self._h5f is None:
             raise Exception("Store is closed")
         h5_item = self._h5f.get('/' + parent_key, None)
-        if not isinstance(h5_item, h5py.Group):
+        link = self._h5f.get('/' + parent_key, getlink=True) if parent_key != '' else None
+        if not isinstance(link, h5py.SoftLink) and not isinstance(h5_item, h5py.Group):
             # Important to raise a KeyError here because that's what zarr expects
             raise KeyError(f"Item {parent_key} is not a group")
         # We create a dummy zarr group and then get the .zgroup JSON text
@@ -611,22 +612,32 @@ class LindiH5ZarrStore(Store):
                         # recursively process subgroups
                         _process_group(_join(key, k), subitem)
                     elif isinstance(subitem, h5py.Dataset):
-                        _process_dataset(_join(key, k))
+                        _process_dataset(_join(key, k), subitem)
 
-        def _process_dataset(key):
-            # Add the .zattrs and .zarray files for the dataset=
+        def _process_dataset(key, item: h5py.Dataset):
+            # Add the .zattrs and .zarray files for the dataset
             zattrs_bytes = self[f"{key}/.zattrs"]
             assert zattrs_bytes is not None
             if zattrs_bytes != b"{}":  # don't include empty zattrs
                 _add_ref(f"{key}/.zattrs", zattrs_bytes)
-            zattrs_dict = json.loads(zattrs_bytes.decode("utf-8"))
-            external_array_link = zattrs_dict.get(
-                "_EXTERNAL_ARRAY_LINK", None
-            )
+
+            # check if this is a soft link
+            link = item.file.get('/' + key, getlink=True) if key != '' else None
+            if isinstance(link, h5py.SoftLink):
+                # if it's a soft link, we create a zgroup and don't include
+                # the .zarray or array chunks because those should be in the
+                # target of the soft link
+                _add_ref(_join(key, ".zgroup"), self.get(_join(key, ".zgroup")))
+                return
+
             zarray_bytes = self.get(f"{key}/.zarray")
             assert zarray_bytes is not None
             _add_ref(f"{key}/.zarray", zarray_bytes)
 
+            zattrs_dict = json.loads(zattrs_bytes.decode("utf-8"))
+            external_array_link = zattrs_dict.get(
+                "_EXTERNAL_ARRAY_LINK", None
+            )
             if external_array_link is None:
                 # Only add chunk references for datasets without an external array link
                 self._add_chunk_info_to_refs(key, _add_ref, _add_ref_chunk)
