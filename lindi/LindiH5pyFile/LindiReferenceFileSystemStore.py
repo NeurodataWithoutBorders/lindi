@@ -115,6 +115,9 @@ class LindiReferenceFileSystemStore(ZarrStore):
         self.local_cache = local_cache
 
     # These methods are overridden from MutableMapping
+    def __contains__(self, key: str):
+        return key in self.rfs["refs"]
+
     def __getitem__(self, key: str):
         if key not in self.rfs["refs"]:
             raise KeyError(key)
@@ -251,6 +254,7 @@ def _read_bytes_from_url_or_path(url_or_path: str, offset: int, length: int):
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3",
             "Range": range_header
         }
+        print(headers)
         response = requests.get(url_resolved, headers=headers)
         response.raise_for_status()
         return response.content
