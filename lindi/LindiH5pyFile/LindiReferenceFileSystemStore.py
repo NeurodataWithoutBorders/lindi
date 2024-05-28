@@ -115,6 +115,9 @@ class LindiReferenceFileSystemStore(ZarrStore):
         self.local_cache = local_cache
 
     # These methods are overridden from MutableMapping
+    def __contains__(self, key: str):
+        return key in self.rfs["refs"]
+
     def __getitem__(self, key: str):
         if key not in self.rfs["refs"]:
             raise KeyError(key)
