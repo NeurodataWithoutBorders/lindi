@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "lindi"
-version = "0.3.7"
+version = "8"
 description = ""
 authors = [
     "Jeremy Magland <jmagland@flatironinstitute.org>",
