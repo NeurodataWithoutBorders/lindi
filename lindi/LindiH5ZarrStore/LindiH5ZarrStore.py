@@ -303,16 +303,22 @@ class LindiH5ZarrStore(Store):
         # dtype, and filters and then copy the .zarray JSON text from it
         memory_store = MemoryStore()
         dummy_group = zarr.group(store=memory_store)
+        chunks = h5_item.chunks
+        if chunks is None:
+            # It's important to not have chunks be None here because that would
+            # let zarr choose an optimal chunking, whereas we need this to reflect
+            # the actual chunking in the HDF5 file.
+            chunks = h5_item.shape
+            if np.prod(chunks) == 0:
+                # A chunking of (0,) or (0, 0) or (0, 0, 0), etc. is not allowed in Zarr
+                chunks = [1] * len(chunks)
         # Importantly, I'm pretty sure this doesn't actually create the
         # chunks in the memory store. That's important because we just need
         # to get the .zarray JSON text from the dummy group.
         dummy_group.create_dataset(
             name="dummy_array",
             shape=h5_item.shape,
-            # It's important to not have chunks be None here because that would
-            # let zarr choose an optimal chunking, whereas we need this to reflect
-            # the actual chunking in the HDF5 file.
-            chunks=h5_item.chunks if h5_item.chunks is not None else h5_item.shape,
+            chunks=chunks,
             dtype=h5_item.dtype,
             compressor=None,
             order="C",
@@ -433,6 +439,10 @@ class LindiH5ZarrStore(Store):
             raise Exception("Store is closed")
         h5_item = self._h5f.get('/' + key_parent, None)
         assert isinstance(h5_item, h5py.Dataset)
+
+        # If the shape is (0,), (0, 0), (0, 0, 0), etc., then do not add any chunk references
+        if np.prod(h5_item.shape) == 0:
+            return
 
         # For the case of a scalar dataset, we need to check a few things
         if h5_item.ndim == 0:
@@ -589,8 +599,10 @@ class LindiH5ZarrStore(Store):
                     )
 
         def _add_ref_chunk(key: str, data: Tuple[str, int, int]):
-            assert data[1] is not None
-            assert data[2] is not None
+            assert data[1] is not None, \
+                f"{key} chunk data is invalid. Element at index 1 cannot be None: {data}"
+            assert data[2] is not None, \
+                f"{key} chunk data is invalid. Element at index 2 cannot be None: {data}"
             ret["refs"][key] = list(data)  # downstream expects a list like on read from a JSON file
 
         def _process_group(key, item: h5py.Group):
