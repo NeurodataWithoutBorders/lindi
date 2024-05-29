@@ -575,5 +575,27 @@ def test_numpy_array_of_byte_strings():
             assert lists_are_equal(X1[:].tolist(), X2[:].tolist())  # type: ignore
 
 
+def test_dataset_zero_shape():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        filename = f"{tmpdir}/test.h5"
+        with h5py.File(filename, "w") as f:
+            f.create_dataset("X1D", data=np.array([], dtype=np.int32), shape=(0,))  # NOTE this is not a scalar
+            f.create_dataset("X3D", data=np.array([], dtype=np.int32), shape=(0,0,0))
+        h5f = h5py.File(filename, "r")
+        with LindiH5ZarrStore.from_file(filename, url=filename) as store:
+            rfs = store.to_reference_file_system()
+            h5f_2 = lindi.LindiH5pyFile.from_reference_file_system(rfs)
+            X1 = h5f['X1D']
+            assert isinstance(X1, h5py.Dataset)
+            X2 = h5f_2['X1D']
+            assert isinstance(X2, h5py.Dataset)
+            assert arrays_are_equal(X1[:], X2[:])
+            X1 = h5f['X3D']
+            assert isinstance(X1, h5py.Dataset)
+            X2 = h5f_2['X3D']
+            assert isinstance(X2, h5py.Dataset)
+            assert arrays_are_equal(X1[:], X2[:])
+
+
 if __name__ == '__main__':
     pass
