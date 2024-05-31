@@ -77,12 +77,7 @@ h5_url = "https://api.dandiarchive.org/api/assets/11f512ba-5bcf-4230-a8cb-dc8d36
 # Create the h5py-like client
 client = lindi.LindiH5pyFile.from_hdf5_file(h5_url)
 
-# Generate a reference file system
-rfs = client.to_reference_file_system()
-
-# Save it to a file for later use
-with open("example.lindi.json", "w") as f:
-    json.dump(rfs, f, indent=2)
+client.write_lindi_file('example.lindi.json')
 
 # See the next example for how to read this file
 ```
@@ -116,7 +111,7 @@ url = 'https://lindi.neurosift.org/dandi/dandisets/000939/assets/56d875d6-a705-4
 
 # Load the h5py-like client for the reference file system
 # in read-write mode
-client = lindi.LindiH5pyFile.from_reference_file_system(url, mode="r+")
+client = lindi.LindiH5pyFile.from_lindi_file(url, mode="r+")
 
 # Edit an attribute
 client.attrs['new_attribute'] = 'new_value'
