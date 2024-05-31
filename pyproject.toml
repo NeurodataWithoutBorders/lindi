@@ -10,12 +10,12 @@ authors = [
 readme = "README.md"
 
 [tool.poetry.dependencies]
-python = "^3.8"
-numcodecs = "^0.12.1"
-zarr = "^2.16.1"
-h5py = "^3.10.0"
-requests = "^2.31.0"
-tqdm = "^4.66.4"
+python = ">=3.8"
+numcodecs = ">=0.11.0"
+zarr = ">=2.16.1"
+h5py = ">=3.11.0"
+requests = ">=2.31.0"
+tqdm = ">=4.66.2"
 
 [tool.poetry.group.dev.dependencies]
 pynwb = "^2.6.0"
