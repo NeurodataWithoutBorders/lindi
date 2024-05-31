@@ -12,10 +12,10 @@ readme = "README.md"
 [tool.poetry.dependencies]
 python = ">=3.8"
 numcodecs = ">=0.11.0"
-zarr = ">=2.16.1"
-h5py = ">=3.11.0"
+zarr = ">=2.13.3"
+h5py = ">=3.7.0"
 requests = ">=2.31.0"
-tqdm = ">=4.66.2"
+tqdm = ">=4.66.1"
 
 [tool.poetry.group.dev.dependencies]
 pynwb = "^2.6.0"
