@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "lindi"
-version = "0.3.9"
+version = "0.3.10"
 description = ""
 authors = [
     "Jeremy Magland <jmagland@flatironinstitute.org>",
@@ -10,8 +10,8 @@ authors = [
 readme = "README.md"
 
 [tool.poetry.dependencies]
-python = "^3.8"
-numcodecs = "^0.12.1"
+python = ">=3.8"
+numcodecs = ">=0.11.0" # relax version requirement for use with pyodide
 zarr = "^2.16.1"
 h5py = "^3.10.0"
 requests = "^2.31.0"
