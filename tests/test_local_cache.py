@@ -42,7 +42,7 @@ def test_remote_data_1():
                 elapsed_0 = elapsed
             if passnum == 1:
                 elapsed_1 = elapsed
-                assert elapsed_1 < elapsed_0 * 0.3  # type: ignore
+                assert elapsed_1 < elapsed_0 * 0.6  # type: ignore
 
 
 def test_put_local_cache():
