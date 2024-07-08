@@ -519,11 +519,11 @@ class LindiH5ZarrStore(Store):
             if expected_num_chunks > self._opts.num_dataset_chunks_threshold:
                 use_external_array_link = True
 
-        # Or if we have a single chunk that is very large, then we create an
-        # external array link.
-        if self._opts.single_chunk_size_threshold is not None:
-            if expected_num_chunks == 1:
-                if np.prod(h5_item.shape) > self._opts.single_chunk_size_threshold:
+        # Or if we have a single uncompressed chunk that is very large, then we
+        # create an external array link.
+        if self._opts.single_uncompressed_chunk_size_threshold is not None:
+            if expected_num_chunks == 1 and h5_item.compression is None:
+                if np.prod(h5_item.shape) * h5_item.dtype.itemsize > self._opts.single_uncompressed_chunk_size_threshold:
                     use_external_array_link = True
 
         if use_external_array_link:
