@@ -55,7 +55,7 @@ def _apply_to_all_chunk_info(h5_dataset: h5py.Dataset, callback: Callable):
             callback(chunk_info)
 
 
-def _get_chunk_byte_range(h5_dataset: h5py.Dataset, chunk_coords: tuple) -> tuple:
+def _get_chunk_byte_range(h5_dataset: h5py.Dataset, chunk_coords):
     """Get the byte range in the file for a chunk of an h5py dataset.
 
     This involves some low-level functions from the h5py library. First we need
