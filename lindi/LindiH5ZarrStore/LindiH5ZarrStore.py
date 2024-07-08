@@ -500,28 +500,43 @@ class LindiH5ZarrStore(Store):
             return self._external_array_links[parent_key]
         # Important to set it to None so that we don't keep checking it
         self._external_array_links[parent_key] = None
-        if h5_item.chunks and self._opts.num_dataset_chunks_threshold is not None:
-            # We compute the expected number of chunks using the shape and chunks
-            # and compare it to the threshold. If it's greater, then we create an
-            # external array link.
+
+        use_external_array_link = False
+        if h5_item.chunks:
             shape = h5_item.shape
             chunks = h5_item.chunks
             chunk_coords_shape = [
                 (shape[i] + chunks[i] - 1) // chunks[i] if chunks[i] != 0 else 0
                 for i in range(len(shape))
             ]
-            num_chunks = np.prod(chunk_coords_shape)
-            if num_chunks > self._opts.num_dataset_chunks_threshold:
-                if self._url is not None:
-                    self._external_array_links[parent_key] = {
-                        "link_type": "hdf5_dataset",
-                        "url": self._url,
-                        "name": parent_key,
-                    }
-                else:
-                    raise Exception(
-                        f"Unable to create external array link for {parent_key}: url is not set"
-                    )
+            expected_num_chunks = np.prod(chunk_coords_shape)
+        else:
+            expected_num_chunks = 1
+
+        if self._opts.num_dataset_chunks_threshold is not None:
+            # If the expected number of chunks is greater than the threshold,
+            # then we create an external array link.
+            if expected_num_chunks > self._opts.num_dataset_chunks_threshold:
+                use_external_array_link = True
+
+        # Or if we have a single chunk that is very large, then we create an
+        # external array link.
+        if self._opts.single_chunk_size_threshold is not None:
+            if expected_num_chunks == 1:
+                if np.prod(h5_item.shape) > self._opts.single_chunk_size_threshold:
+                    use_external_array_link = True
+
+        if use_external_array_link:
+            if self._url is not None:
+                self._external_array_links[parent_key] = {
+                    "link_type": "hdf5_dataset",
+                    "url": self._url,
+                    "name": parent_key,
+                }
+            else:
+                raise Exception(
+                    f"Unable to create external array link for {parent_key}: url is not set"
+                )
         return self._external_array_links[parent_key]
 
     def listdir(self, path: str = "") -> List[str]:
