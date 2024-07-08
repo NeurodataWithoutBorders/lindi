@@ -196,7 +196,7 @@ class LindiH5ZarrStore(Store):
                 chunk_coords_shape = (1,) * h5_item.ndim
             else:
                 shape = h5_item.shape
-                chunks = h5_item.chunks or shape
+                chunks = _get_chunk_shape_for_dataset_h5_item(h5_item) or shape
                 chunk_coords_shape = [
                     (shape[i] + chunks[i] - 1) // chunks[i] if chunks[i] != 0 else 0
                     for i in range(len(shape))
@@ -303,7 +303,7 @@ class LindiH5ZarrStore(Store):
         # dtype, and filters and then copy the .zarray JSON text from it
         memory_store = MemoryStore()
         dummy_group = zarr.group(store=memory_store)
-        chunks = h5_item.chunks
+        chunks = _get_chunk_shape_for_dataset_h5_item(h5_item)
         if chunks is None:
             # It's important to not have chunks be None here because that would
             # let zarr choose an optimal chunking, whereas we need this to reflect
@@ -312,6 +312,7 @@ class LindiH5ZarrStore(Store):
             if np.prod(chunks) == 0:
                 # A chunking of (0,) or (0, 0) or (0, 0, 0), etc. is not allowed in Zarr
                 chunks = [1] * len(chunks)
+
         # Importantly, I'm pretty sure this doesn't actually create the
         # chunks in the memory store. That's important because we just need
         # to get the .zarray JSON text from the dummy group.
@@ -405,6 +406,8 @@ class LindiH5ZarrStore(Store):
         if h5_item.ndim == 0:
             raise Exception(f"No inline data for scalar dataset {key_parent}")
 
+        h5_item_chunk_shape = _get_chunk_shape_for_dataset_h5_item(h5_item)
+
         # Get the chunk coords from the file name
         chunk_name_parts = key_name.split(".")
         if len(chunk_name_parts) != h5_item.ndim:
@@ -415,10 +418,10 @@ class LindiH5ZarrStore(Store):
                 raise Exception(
                     f"Chunk coordinates {chunk_coords} out of range for dataset {key_parent} with dtype {h5_item.dtype}"
                 )
-        if h5_item.chunks is not None:
+        if h5_item_chunk_shape is not None:
             # Get the byte range in the file for the chunk.
             try:
-                byte_offset, byte_count = _get_chunk_byte_range(h5_item, chunk_coords)
+                byte_offset, byte_count = _get_chunk_byte_range_for_dataset_h5_item(h5_item, chunk_coords)
             except Exception as e:
                 raise Exception(
                     f"Error getting byte range for chunk {key_parent}/{key_name}. Shape: {h5_item.shape}, Chunks: {h5_item.chunks}, Chunk coords: {chunk_coords}: {e}"
@@ -738,3 +741,54 @@ class InlineArray:
     @property
     def chunk_bytes(self):
         return self._chunk_bytes
+
+
+def _should_split_contiguous_unfiltered_dataset(h5_item: h5py.Dataset) -> bool:
+    if h5_item.chunks is None:
+        single_chunk = True
+    else:
+        single_chunk = True
+        for i in range(h5_item.ndim):
+            if h5_item.chunks[i] < h5_item.shape[i]:
+                single_chunk = False
+    if not single_chunk:
+        return False
+    codecs = h5_filters_to_codecs(h5_item)
+    if codecs is not None and len(codecs) > 0:
+        return False
+    chunk_size = np.prod(h5_item.shape) * h5_item.dtype.itemsize
+    if chunk_size <= 1000 * 1000 * 20:
+        return False
+    return True
+
+
+def _get_chunk_shape_for_split_contiguous_unfiltered_dataset(h5_item: h5py.Dataset) -> Tuple[int, ...]:
+    if h5_item.ndim == 0:
+        return (1,)
+    shape_excluding_first_dim = h5_item.shape[1:]
+    # we want the size of chunk to be 20 MB
+    desired_chunk_size_bytes = 1000 * 1000 * 20
+    desired_chunk_size = desired_chunk_size_bytes // h5_item.dtype.itemsize
+    desired_chunk_size_first_dim = desired_chunk_size // np.prod(shape_excluding_first_dim)
+    if desired_chunk_size_first_dim == 0:
+        desired_chunk_size_first_dim = 1
+    return (desired_chunk_size_first_dim,) + shape_excluding_first_dim
+
+
+def _get_chunk_shape_for_dataset_h5_item(h5_item: h5py.Dataset):
+    if _should_split_contiguous_unfiltered_dataset(h5_item):
+        chunk_shape = _get_chunk_shape_for_split_contiguous_unfiltered_dataset(h5_item)
+        return chunk_shape
+    else:
+        return h5_item.chunks
+
+
+def _get_chunk_byte_range_for_dataset_h5_item(h5_item: h5py.Dataset, chunk_coords: Tuple[int, ...]) -> Tuple[int, int]:
+    if _should_split_contiguous_unfiltered_dataset(h5_item):
+        chunk_shape = _get_chunk_shape_for_split_contiguous_unfiltered_dataset(h5_item)
+        byte_offset, byte_count = _get_chunk_byte_range(h5_item, chunk_coords)
+        byte_offset += chunk_coords[0] * np.prod(chunk_shape) * h5_item.dtype.itemsize
+        byte_count = np.prod(chunk_shape) * h5_item.dtype.itemsize
+        return byte_offset, byte_count
+    else:
+        return _get_chunk_byte_range(h5_item, chunk_coords)
