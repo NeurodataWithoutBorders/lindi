@@ -23,6 +23,7 @@ from ..LindiH5pyFile.LindiReferenceFileSystemStore import LindiReferenceFileSyst
 from ..LocalCache.LocalCache import ChunkTooLargeError, LocalCache
 from ..LindiRemfile.LindiRemfile import LindiRemfile
 from .LindiH5ZarrStoreOpts import LindiH5ZarrStoreOpts
+from ..LindiH5pyFile.LindiReferenceFileSystemStore import _is_chunk_base_key, _pad_chunk, _get_itemsize
 
 
 class SplitDatasetH5Item:
@@ -215,6 +216,27 @@ class LindiH5ZarrStore(Store):
         self._file = None
 
     def __getitem__(self, key):
+        val = self._get_helper(key)
+
+        # Here's the hack
+        base_key = key.split('/')[-1]
+        if val and _is_chunk_base_key(base_key):
+            parent_key = key.split('/')[:-1]
+            zarray_key = '/'.join(parent_key) + '/.zarray'
+            if zarray_key in self:
+                zarray_json = self.__getitem__(zarray_key)
+                assert isinstance(zarray_json, bytes)
+                zarray = json.loads(zarray_json)
+                chunk_shape = zarray['chunks']
+                dtype = zarray['dtype']
+                expected_chunk_size = int(np.prod(chunk_shape)) * _get_itemsize(dtype)
+                if len(val) != expected_chunk_size:
+                    # we need to pad it
+                    val = _pad_chunk(val, expected_chunk_size)
+
+        return val
+
+    def _get_helper(self, key: str):
         """Get an item from the store (required by base class)."""
         parts = [part for part in key.split("/") if part]
         if len(parts) == 0:

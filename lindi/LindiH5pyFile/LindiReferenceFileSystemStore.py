@@ -1,6 +1,7 @@
 from typing import Literal, Dict, Union
 import json
 import base64
+import numpy as np
 import requests
 from zarr.storage import Store as ZarrStore
 
@@ -121,6 +122,27 @@ class LindiReferenceFileSystemStore(ZarrStore):
         return key in self.rfs["refs"]
 
     def __getitem__(self, key: str):
+        val = self._get_helper(key)
+
+        # Here's the hack
+        base_key = key.split('/')[-1]
+        if val and _is_chunk_base_key(base_key):
+            parent_key = key.split('/')[:-1]
+            zarray_key = '/'.join(parent_key) + '/.zarray'
+            if zarray_key in self:
+                zarray_json = self.__getitem__(zarray_key)
+                assert isinstance(zarray_json, bytes)
+                zarray = json.loads(zarray_json)
+                chunk_shape = zarray['chunks']
+                dtype = zarray['dtype']
+                expected_chunk_size = int(np.prod(chunk_shape)) * _get_itemsize(dtype)
+                if len(val) != expected_chunk_size:
+                    # we need to pad it
+                    val = _pad_chunk(val, expected_chunk_size)
+
+        return val
+
+    def _get_helper(self, key: str):
         if key not in self.rfs["refs"]:
             raise KeyError(key)
         x = self.rfs["refs"][key]
@@ -263,3 +285,25 @@ def _read_bytes_from_url_or_path(url_or_path: str, offset: int, length: int):
         with open(url_or_path, 'rb') as f:
             f.seek(offset)
             return f.read(length)
+
+
+def _is_chunk_base_key(base_key: str) -> bool:
+    a = base_key.split('.')
+    if len(a) == 0:
+        return False
+    for x in a:
+        # check if integer
+        try:
+            int(x)
+        except ValueError:
+            return False
+    return True
+
+
+def _get_itemsize(dtype: str) -> int:
+    d = np.dtype(dtype)
+    return d.itemsize
+
+
+def _pad_chunk(data: bytes, expected_chunk_size: int) -> bytes:
+    return data + b'\0' * (expected_chunk_size - len(data))
