@@ -117,7 +117,7 @@ def create_zarr_dataset_from_h5_data(
                 # than 1 million elements. This is because zarr may default to
                 # suboptimal chunking. Note that the default for h5py is to use the
                 # entire dataset as a single chunk.
-                total_size = np.prod(h5_shape) if len(h5_shape) > 0 else 1
+                total_size = int(np.prod(h5_shape)) if len(h5_shape) > 0 else 1
                 if total_size > 1000 * 1000:
                     raise Exception(f'Chunks must be specified explicitly when writing dataset of shape {h5_shape}')
             # Note that we are not using the same filters as in the h5py dataset

@@ -12,15 +12,16 @@ def _read_bytes(file: IO, offset: int, count: int):
     return file.read(count)
 
 
-def _get_max_num_chunks(h5_dataset: h5py.Dataset):
+def _get_max_num_chunks(*, shape, chunk_size):
     """Get the maximum number of chunks in an h5py dataset.
 
     This is similar to h5_dataset.id.get_num_chunks() but significantly faster. It does not account for
     whether some chunks are allocated.
     """
-    chunk_size = h5_dataset.chunks
     assert chunk_size is not None
-    return math.prod([math.ceil(a / b) for a, b in zip(h5_dataset.shape, chunk_size)])
+    if np.prod(chunk_size) == 0:
+        return 0
+    return math.prod([math.ceil(a / b) for a, b in zip(shape, chunk_size)])
 
 
 def _apply_to_all_chunk_info(h5_dataset: h5py.Dataset, callback: Callable):

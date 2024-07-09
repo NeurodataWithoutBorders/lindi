@@ -5,7 +5,7 @@ set -ex
 
 cd lindi
 flake8 .
-pyright
+pyright .
 cd ..
 
 pytest --cov=lindi --cov-report=xml --cov-report=term tests/

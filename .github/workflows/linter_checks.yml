@@ -19,4 +19,4 @@ jobs:
     - name: Run flake8
       run: cd lindi && flake8 --config ../.flake8
     - name: Run pyright
-      run: cd lindi && pyright
+      run: cd lindi && pyright .
