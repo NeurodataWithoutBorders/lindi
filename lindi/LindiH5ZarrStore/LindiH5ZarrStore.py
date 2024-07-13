@@ -41,12 +41,21 @@ class SplitDatasetH5Item:
                 if h5_item.chunks is None or h5_item.chunks == h5_item.shape:  # only one chunk
                     if h5_item.dtype.kind in ['i', 'u', 'f']:  # integer or float
                         size_bytes = int(np.prod(h5_item.shape)) * h5_item.dtype.itemsize
+                        print('---- size_bytes', size_bytes)
                         if size_bytes > contiguous_dataset_max_chunk_size:  # large enough to split
                             should_split = True
         self._do_split = should_split
         if should_split:
             size0 = int(np.prod(h5_item.shape[1:])) * h5_item.dtype.itemsize
+            # We want each chunk to be of size around
+            # contiguous_dataset_max_chunk_size. So if nn is the size of a chunk
+            # in the first dimension, then nn * size0 should be approximately
+            # contiguous_dataset_max_chunk_size. So nn should be approximately
+            # contiguous_dataset_max_chunk_size // size0
             nn = contiguous_dataset_max_chunk_size // size0
+            if nn == 0:
+                # The chunk size should not be zero
+                nn = 1
             self._split_chunk_shape = (nn,) + h5_item.shape[1:]
             if h5_item.chunks is not None:
                 zero_chunk_coords = (0,) * h5_item.ndim
@@ -61,6 +70,7 @@ class SplitDatasetH5Item:
                 byte_offset, byte_count = _get_byte_range_for_contiguous_dataset(h5_item)
             self._split_chunk_byte_offset = byte_offset
             self._split_chunk_byte_count = byte_count
+            print('----', h5_item.shape, self._split_chunk_shape)
             self._num_chunks = int(np.prod(h5_item.shape[0:]) + np.prod(self._split_chunk_shape) - 1) // int(np.prod(self._split_chunk_shape))
         else:
             self._split_chunk_shape = None
