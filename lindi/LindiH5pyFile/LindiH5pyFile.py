@@ -446,6 +446,12 @@ class LindiH5pyFile(h5py.File):
             raise Exception("Getting class is not allowed")
         return self._get_item(name, getlink=getlink, default=default)
 
+    def keys(self):  # type: ignore
+        return self._the_group.keys()
+
+    def items(self):
+        return self._the_group.items()
+
     def __iter__(self):
         return self._the_group.__iter__()
 
