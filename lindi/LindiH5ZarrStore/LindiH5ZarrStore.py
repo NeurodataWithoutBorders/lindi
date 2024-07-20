@@ -226,7 +226,10 @@ class LindiH5ZarrStore(Store):
     def __getitem__(self, key):
         val = self._get_helper(key)
 
-        # Here's the hack
+        # If the key is a chunk and it's smaller than the expected size, then we
+        # need to pad it with zeros. This can happen if this is the final chunk
+        # in a contiguous hdf5 dataset. See
+        # https://github.com/NeurodataWithoutBorders/lindi/pull/84
         base_key = key.split('/')[-1]
         if val and _is_chunk_base_key(base_key):
             parent_key = key.split('/')[:-1]
@@ -238,9 +241,10 @@ class LindiH5ZarrStore(Store):
                 chunk_shape = zarray['chunks']
                 dtype = zarray['dtype']
                 expected_chunk_size = int(np.prod(chunk_shape)) * _get_itemsize(dtype)
-                if len(val) != expected_chunk_size:
-                    # we need to pad it
+                if len(val) < expected_chunk_size:
                     val = _pad_chunk(val, expected_chunk_size)
+                elif len(val) > expected_chunk_size:
+                    raise Exception(f"Chunk size is larger than expected: {len(val)} > {expected_chunk_size}")
 
         return val
 
