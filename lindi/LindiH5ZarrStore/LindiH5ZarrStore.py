@@ -23,7 +23,7 @@ from ..LindiH5pyFile.LindiReferenceFileSystemStore import LindiReferenceFileSyst
 from ..LocalCache.LocalCache import ChunkTooLargeError, LocalCache
 from ..LindiRemfile.LindiRemfile import LindiRemfile
 from .LindiH5ZarrStoreOpts import LindiH5ZarrStoreOpts
-from ..LindiH5pyFile.LindiReferenceFileSystemStore import _is_chunk_base_key, _pad_chunk, _get_itemsize
+from ..LindiH5pyFile.LindiReferenceFileSystemStore import _get_padded_size, _pad_chunk
 
 
 class SplitDatasetH5Item:
@@ -226,25 +226,10 @@ class LindiH5ZarrStore(Store):
     def __getitem__(self, key):
         val = self._get_helper(key)
 
-        # If the key is a chunk and it's smaller than the expected size, then we
-        # need to pad it with zeros. This can happen if this is the final chunk
-        # in a contiguous hdf5 dataset. See
-        # https://github.com/NeurodataWithoutBorders/lindi/pull/84
-        base_key = key.split('/')[-1]
-        if val and _is_chunk_base_key(base_key):
-            parent_key = key.split('/')[:-1]
-            zarray_key = '/'.join(parent_key) + '/.zarray'
-            if zarray_key in self:
-                zarray_json = self.__getitem__(zarray_key)
-                assert isinstance(zarray_json, bytes)
-                zarray = json.loads(zarray_json)
-                chunk_shape = zarray['chunks']
-                dtype = zarray['dtype']
-                expected_chunk_size = int(np.prod(chunk_shape)) * _get_itemsize(dtype)
-                if len(val) < expected_chunk_size:
-                    val = _pad_chunk(val, expected_chunk_size)
-                elif len(val) > expected_chunk_size:
-                    raise Exception(f"Chunk size is larger than expected: {len(val)} > {expected_chunk_size}")
+        if val is not None:
+            padded_size = _get_padded_size(self, key, val)
+            if padded_size is not None:
+                val = _pad_chunk(val, padded_size)
 
         return val
 
