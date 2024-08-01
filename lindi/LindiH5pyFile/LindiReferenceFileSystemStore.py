@@ -69,7 +69,7 @@ class LindiReferenceFileSystemStore(ZarrStore):
     It is okay for rfs to be modified outside of this class, and the changes
     will be reflected immediately in the store.
     """
-    def __init__(self, rfs: dict, *, mode: Literal["r", "r+"] = "r+", local_cache: Union[LocalCache, None] = None):
+    def __init__(self, rfs: dict, *, mode: Literal["r", "r+"] = "r+", local_cache: Union[LocalCache, None] = None, _source_url_or_path: Union[str, None] = None):
         """
         Create a LindiReferenceFileSystemStore.
 
@@ -114,6 +114,7 @@ class LindiReferenceFileSystemStore(ZarrStore):
         self.rfs = rfs
         self.mode = mode
         self.local_cache = local_cache
+        self._source_url_or_path = _source_url_or_path
 
     # These methods are overridden from MutableMapping
     def __contains__(self, key: object):
@@ -155,6 +156,9 @@ class LindiReferenceFileSystemStore(ZarrStore):
                 x = self.local_cache.get_remote_chunk(url=url, offset=offset, size=length)
                 if x is not None:
                     return x
+            if url == '.' and self._source_url_or_path:
+                # this is where the file refers to bytes in the same file (lindi binary format)
+                url = self._source_url_or_path
             val = _read_bytes_from_url_or_path(url, offset, length)
             if self.local_cache is not None:
                 try:
