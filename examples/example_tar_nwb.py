@@ -106,7 +106,7 @@ def _create_sample_nwb_file():
 
     nwbfile.add_acquisition(raw_electrical_series)
 
-    lfp_data = np.random.randn(50, 12)
+    lfp_data = np.random.randn(5000, 12)
     lfp_electrical_series = ElectricalSeries(
         name="ElectricalSeries",
         data=lfp_data,
@@ -127,7 +127,7 @@ def _create_sample_nwb_file():
     firing_rate = 20
     n_units = 10
     res = 1000
-    duration = 20
+    duration = 2000
     for n_units_per_shank in range(n_units):
         spike_times = (
             np.where(np.random.rand((res * duration)) < (firing_rate / res))[0] / res
