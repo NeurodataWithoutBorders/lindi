@@ -10,63 +10,19 @@ INITIAL_TAR_INDEX_JSON_SIZE = 1024 * 256
 INITIAL_LINDI_JSON_SIZE = 1024 * 256
 
 
-def _pad_bytes_to_leave_room_for_growth(x: str, initial_size: int) -> bytes:
-    total_size = initial_size
-    while total_size < len(x) * 4:
-        total_size *= 2
-    padding = b" " * (total_size - len(x))
-    return x.encode() + padding
-
-
-def _fix_checksum_in_header(f, header_start_byte):
-    f.seek(header_start_byte)
-    header = f.read(512)
-
-    # From https://en.wikipedia.org/wiki/Tar_(computing)
-    # The checksum is calculated by taking the sum of the unsigned byte values
-    # of the header record with the eight checksum bytes taken to be ASCII
-    # spaces (decimal value 32). It is stored as a six digit octal number with
-    # leading zeroes followed by a NUL and then a space. Various implementations
-    # do not adhere to this format. In addition, some historic tar
-    # implementations treated bytes as signed. Implementations typically
-    # calculate the checksum both ways, and treat it as good if either the
-    # signed or unsigned sum matches the included checksum.
-
-    header_byte_list = []
-    for byte in header:
-        header_byte_list.append(byte)
-    for i in range(148, 156):
-        header_byte_list[i] = 32
-    sum = 0
-    for byte in header_byte_list:
-        sum += byte
-    checksum = oct(sum).encode()[2:]
-    while len(checksum) < 6:
-        checksum = b"0" + checksum
-    checksum += b"\0 "
-    f.seek(header_start_byte + 148)
-    f.write(checksum)
-
-
-def _create_random_string():
-    return "".join(random.choices("abcdefghijklmnopqrstuvwxyz", k=10))
-
-
 class LindiTarFile:
-    def __init__(self, tar_file_path: str):
-        self._tar_file_path = tar_file_path
+    def __init__(self, tar_path_or_url: str):
+        self._tar_path_or_url = tar_path_or_url
+        self._is_remote = tar_path_or_url.startswith("http://") or tar_path_or_url.startswith("https://")
 
-        with open(self._tar_file_path, "rb") as f:
-            # Load the entry json
-            f.seek(512)
-            entry_json = f.read(TAR_ENTRY_JSON_SIZE)
-            entry = json.loads(entry_json)
-            index_info = entry['index']
+        # Load the entry json
+        entry_json = _load_bytes_from_local_or_remote_file(self._tar_path_or_url, 512, 512 + TAR_ENTRY_JSON_SIZE)
+        entry = json.loads(entry_json)
+        index_info = entry['index']
 
-            # Load the index json
-            f.seek(index_info['d'])
-            index_json = f.read(index_info['s'])
-            self._index = json.loads(index_json)
+        # Load the index json
+        index_json = _load_bytes_from_local_or_remote_file(self._tar_path_or_url, index_info['d'], index_info['d'] + index_info['s'])
+        self._index = json.loads(index_json)
 
     def get_file_info(self, file_name: str):
         for file in self._index['files']:
@@ -75,21 +31,25 @@ class LindiTarFile:
         return None
 
     def overwrite_file_content(self, file_name: str, data: bytes):
+        if self._is_remote:
+            raise ValueError("Cannot overwrite file content in a remote tar file")
         info = self.get_file_info(file_name)
         if info is None:
             raise FileNotFoundError(f"File {file_name} not found")
         if info['s'] != len(data):
             raise ValueError("Unexpected problem in overwrite_file_content(): data size must match the size of the existing file")
-        with open(self._tar_file_path, "r+b") as f:
+        with open(self._tar_path_or_url, "r+b") as f:
             f.seek(info['d'])
             f.write(data)
 
     def trash_file(self, file_name: str, do_write_index=True):
+        if self._is_remote:
+            raise ValueError("Cannot trash a file in a remote tar file")
         info = self.get_file_info(file_name)
         if info is None:
             raise FileNotFoundError(f"File {file_name} not found")
         zeros = b"-" * info['s']
-        with open(self._tar_file_path, "r+b") as f:
+        with open(self._tar_path_or_url, "r+b") as f:
             f.seek(info['d'])
             f.write(zeros)
         self._change_name_of_file(file_name, f'.trash/{file_name}.{_create_random_string()}', do_write_index=do_write_index)
@@ -125,13 +85,15 @@ class LindiTarFile:
         return info['d'], info['d'] + info['s']
 
     def _change_name_of_file(self, file_name: str, new_file_name: str, do_write_index=True):
+        if self._is_remote:
+            raise ValueError("Cannot change the name of a file in a remote tar file")
         info = self.get_file_info(file_name)
         if info is None:
             raise FileNotFoundError(f"File {file_name} not found")
         header_start_byte = info['o']
         file_name_byte_range = (header_start_byte + 0, header_start_byte + 100)
         file_name_prefix_byte_range = (header_start_byte + 345, header_start_byte + 345 + 155)
-        with open(self._tar_file_path, "r+b") as f:
+        with open(self._tar_path_or_url, "r+b") as f:
             f.seek(file_name_byte_range[0])
             f.write(new_file_name.encode())
             # set the rest of the field to zeros
@@ -150,12 +112,14 @@ class LindiTarFile:
             self._update_index()
 
     def write_file(self, file_name: str, data: bytes):
-        with tarfile.open(self._tar_file_path, "a") as tar:
+        if self._is_remote:
+            raise ValueError("Cannot write a file in a remote tar file")
+        with tarfile.open(self._tar_path_or_url, "a") as tar:
             tarinfo = tarfile.TarInfo(name=file_name)
             tarinfo.size = len(data)
             fileobj = io.BytesIO(data)
             tar.addfile(tarinfo, fileobj)
-        with tarfile.open(self._tar_file_path, "r") as tar:
+        with tarfile.open(self._tar_path_or_url, "r") as tar:
             # TODO: do not call getmember here, because it may be slow instead
             # parse the header of the new file directly and get the offset from
             # there
@@ -174,9 +138,7 @@ class LindiTarFile:
             raise FileNotFoundError(f"File {file_name} not found")
         start_byte = info['d']
         size = info['s']
-        with open(self._tar_file_path, "rb") as f:
-            f.seek(start_byte)
-            return f.read(size)
+        return _load_bytes_from_local_or_remote_file(self._tar_path_or_url, start_byte, start_byte + size)
 
     @staticmethod
     def create(fname: str):
@@ -235,6 +197,8 @@ class LindiTarFile:
                 f.write(initial_index_json)
 
     def _update_index(self):
+        if self._is_remote:
+            raise ValueError("Cannot update the index in a remote tar file")
         existing_index_json = self.read_file(".tar_index.json")
         new_index_json = json.dumps(self._index, indent=2, sort_keys=True)
         if len(new_index_json) <= len(existing_index_json):
@@ -264,7 +228,7 @@ class LindiTarFile:
                 }
             }, indent=2, sort_keys=True)
             new_entry_json = new_entry_json.encode() + b" " * (TAR_ENTRY_JSON_SIZE - len(new_entry_json))
-            with open(self._tar_file_path, "r+b") as f:
+            with open(self._tar_path_or_url, "r+b") as f:
                 # we assume the first file is the entry file, and we assume the header is 512 bytes
                 # this is to avoid calling the potentially expensive getmember() method
                 f.seek(512)
@@ -279,3 +243,54 @@ def _download_file_byte_range(url: str, start: int, end: int) -> bytes:
     req = urllib.request.Request(url, headers=headers)
     with urllib.request.urlopen(req) as response:
         return response.read()
+
+
+def _load_bytes_from_local_or_remote_file(path_or_url: str, start: int, end: int) -> bytes:
+    if path_or_url.startswith("http://") or path_or_url.startswith("https://"):
+        return _download_file_byte_range(path_or_url, start, end)
+    else:
+        with open(path_or_url, "rb") as f:
+            f.seek(start)
+            return f.read(end - start)
+
+
+def _pad_bytes_to_leave_room_for_growth(x: str, initial_size: int) -> bytes:
+    total_size = initial_size
+    while total_size < len(x) * 4:
+        total_size *= 2
+    padding = b" " * (total_size - len(x))
+    return x.encode() + padding
+
+
+def _fix_checksum_in_header(f, header_start_byte):
+    f.seek(header_start_byte)
+    header = f.read(512)
+
+    # From https://en.wikipedia.org/wiki/Tar_(computing)
+    # The checksum is calculated by taking the sum of the unsigned byte values
+    # of the header record with the eight checksum bytes taken to be ASCII
+    # spaces (decimal value 32). It is stored as a six digit octal number with
+    # leading zeroes followed by a NUL and then a space. Various implementations
+    # do not adhere to this format. In addition, some historic tar
+    # implementations treated bytes as signed. Implementations typically
+    # calculate the checksum both ways, and treat it as good if either the
+    # signed or unsigned sum matches the included checksum.
+
+    header_byte_list = []
+    for byte in header:
+        header_byte_list.append(byte)
+    for i in range(148, 156):
+        header_byte_list[i] = 32
+    sum = 0
+    for byte in header_byte_list:
+        sum += byte
+    checksum = oct(sum).encode()[2:]
+    while len(checksum) < 6:
+        checksum = b"0" + checksum
+    checksum += b"\0 "
+    f.seek(header_start_byte + 148)
+    f.write(checksum)
+
+
+def _create_random_string():
+    return "".join(random.choices("abcdefghijklmnopqrstuvwxyz", k=10))
