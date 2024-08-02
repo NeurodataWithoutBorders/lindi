@@ -6,6 +6,7 @@ import requests
 from zarr.storage import Store as ZarrStore
 
 from ..LocalCache.LocalCache import ChunkTooLargeError, LocalCache
+from ..tar.lindi_tar import LindiTarFile
 
 
 class LindiReferenceFileSystemStore(ZarrStore):
@@ -69,7 +70,15 @@ class LindiReferenceFileSystemStore(ZarrStore):
     It is okay for rfs to be modified outside of this class, and the changes
     will be reflected immediately in the store.
     """
-    def __init__(self, rfs: dict, *, mode: Literal["r", "r+"] = "r+", local_cache: Union[LocalCache, None] = None):
+    def __init__(
+            self,
+            rfs: dict,
+            *,
+            mode: Literal["r", "r+"] = "r+",
+            local_cache: Union[LocalCache, None] = None,
+            _source_url_or_path: Union[str, None] = None,
+            _source_tar_file: Union[LindiTarFile, None] = None
+    ):
         """
         Create a LindiReferenceFileSystemStore.
 
@@ -114,6 +123,8 @@ class LindiReferenceFileSystemStore(ZarrStore):
         self.rfs = rfs
         self.mode = mode
         self.local_cache = local_cache
+        self._source_file_path = _source_url_or_path
+        self._source_tar_file = _source_tar_file
 
     # These methods are overridden from MutableMapping
     def __contains__(self, key: object):
@@ -145,22 +156,44 @@ class LindiReferenceFileSystemStore(ZarrStore):
         elif isinstance(x, list):
             if len(x) != 3:
                 raise Exception("list must have 3 elements")  # pragma: no cover
-            url = x[0]
+            url_or_path = x[0]
             offset = x[1]
             length = x[2]
-            if '{{' in url and '}}' in url and 'templates' in self.rfs:
+            if '{{' in url_or_path and '}}' in url_or_path and 'templates' in self.rfs:
                 for k, v in self.rfs["templates"].items():
-                    url = url.replace("{{" + k + "}}", v)
-            if self.local_cache is not None:
-                x = self.local_cache.get_remote_chunk(url=url, offset=offset, size=length)
-                if x is not None:
-                    return x
-            val = _read_bytes_from_url_or_path(url, offset, length)
-            if self.local_cache is not None:
-                try:
-                    self.local_cache.put_remote_chunk(url=url, offset=offset, size=length, data=val)
-                except ChunkTooLargeError:
-                    print(f'Warning: unable to cache chunk of size {length} on LocalCache (key: {key})')
+                    url_or_path = url_or_path.replace("{{" + k + "}}", v)
+            is_url = url_or_path.startswith('http://') or url_or_path.startswith('https://')
+            if url_or_path.startswith('./'):
+                if self._source_file_path is None:
+                    raise Exception(f"Cannot resolve relative path {url_or_path} without source file path")
+                if self._source_tar_file is None:
+                    raise Exception(f"Cannot resolve relative path {url_or_path} without source file type")
+                if self._source_tar_file:
+                    start_byte, end_byte = self._source_tar_file.get_file_byte_range(file_name=url_or_path[2:])
+                    if start_byte + offset + length > end_byte:
+                        raise Exception(f"Chunk {key} is out of bounds in tar file {url_or_path}")
+                    url_or_path = self._source_file_path
+                    offset = offset + start_byte
+                else:
+                    if is_url:
+                        raise Exception(f"Cannot resolve relative path {url_or_path} for URL that is not a tar")
+                    else:
+                        source_file_parent_dir = '/'.join(self._source_file_path.split('/')[:-1])
+                        abs_path = source_file_parent_dir + '/' + url_or_path[2:]
+                        url_or_path = abs_path
+            if is_url:
+                if self.local_cache is not None:
+                    x = self.local_cache.get_remote_chunk(url=url_or_path, offset=offset, size=length)
+                    if x is not None:
+                        return x
+                val = _read_bytes_from_url_or_path(url_or_path, offset, length)
+                if self.local_cache is not None:
+                    try:
+                        self.local_cache.put_remote_chunk(url=url_or_path, offset=offset, size=length, data=val)
+                    except ChunkTooLargeError:
+                        print(f'Warning: unable to cache chunk of size {length} on LocalCache (key: {key})')
+            else:
+                val = _read_bytes_from_url_or_path(url_or_path, offset, length)
             return val
         else:
             # should not happen given checks in __init__, but self.rfs is mutable
