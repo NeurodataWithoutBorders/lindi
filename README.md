@@ -140,6 +140,8 @@ with lindi.StagingArea.create(base_dir='lindi_staging') as staging_area:
     # upload the changes to the remote .nwb.lindi.json file
 ```
 
+See [this complete example](https://github.com/NeurodataWithoutBorders/lindi/blob/main/examples/example3.py).
+
 ### Upload a .nwb.lindi.json file with staged datasets to a cloud storage service such as DANDI
 
 See [this example](https://github.com/magland/lindi-dandi/blob/main/devel/lindi_test_2.py).
