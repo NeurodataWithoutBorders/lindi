@@ -141,7 +141,7 @@ class LindiTarFile:
         return _load_bytes_from_local_or_remote_file(self._tar_path_or_url, start_byte, start_byte + size)
 
     @staticmethod
-    def create(fname: str):
+    def create(fname: str, *, rfs: dict):
         with tarfile.open(fname, "w") as tar:
             # write the initial entry file this MUST be the first file in the
             # tar file
@@ -195,6 +195,10 @@ class LindiTarFile:
             with open(fname, "r+b") as f:
                 f.seek(tar_index_json_info.offset_data)
                 f.write(initial_index_json)
+
+        # write the rfs file
+        tf = LindiTarFile(fname)
+        tf.write_rfs(rfs)
 
     def _update_index(self):
         if self._is_remote:

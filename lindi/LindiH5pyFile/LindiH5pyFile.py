@@ -333,7 +333,7 @@ class LindiH5pyFile(h5py.File):
 
     def write_lindi_file(self, filename: str, *, generation_metadata: Union[dict, None] = None):
         """
-        Write the reference file system to a .lindi.json file.
+        Write the reference file system to a lindi or .lindi.json file.
 
         Parameters
         ----------
@@ -344,12 +344,19 @@ class LindiH5pyFile(h5py.File):
             system, by default None. This information dict is simply set to the
             'generationMetadata' key in the reference file system.
         """
-        if not filename.endswith(".lindi.json"):
-            raise Exception("Filename must end with '.lindi.json'")
+        if self._source_tar_file:
+            raise Exception("Cannot write to lindi file if the source is a lindi tar file because it would not be able to resolve the local references within the tar file.")
+        if not filename.endswith(".lindi.json") and not filename.endswith(".lindi") and not filename.endswith(".lindi.tar"):
+            raise Exception("Filename must end with '.lindi.json' or '.lindi' or '.lindi.tar'")
         rfs = self.to_reference_file_system()
         if generation_metadata is not None:
             rfs['generationMetadata'] = generation_metadata
-        _write_rfs_to_file(rfs=rfs, output_file_name=filename)
+        if filename.endswith(".lindi.json"):
+            _write_rfs_to_file(rfs=rfs, output_file_name=filename)
+        elif filename.endswith(".lindi") or filename.endswith(".lindi.tar"):
+            LindiTarFile.create(filename, rfs=rfs)
+        else:
+            raise Exception("Unhandled file extension")
 
     @property
     def attrs(self):  # type: ignore
@@ -731,18 +738,18 @@ def _download_file_byte_range(url: str, start: int, end: int) -> bytes:
         return response.read()
 
 
-def _create_empty_lindi_file(fname: str, *, tar: bool = False):
-    empty_rfs = {
-        "refs": {
-            ".zgroup": {
-                "zarr_format": 2
-            }
+empty_rfs = {
+    "refs": {
+        ".zgroup": {
+            "zarr_format": 2
         }
     }
+}
+
+
+def _create_empty_lindi_file(fname: str, *, tar: bool = False):
     if tar:
-        LindiTarFile.create(fname)
-        tf = LindiTarFile(fname)
-        tf.write_rfs(empty_rfs)
+        LindiTarFile.create(fname, rfs=empty_rfs)
     else:
         with open(fname, "w") as f:
             json.dump(empty_rfs, f)
