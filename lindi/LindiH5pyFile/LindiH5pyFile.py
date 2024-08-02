@@ -390,8 +390,6 @@ class LindiH5pyFile(h5py.File):
             is_url = self._source_url_or_path.startswith("http://") or self._source_url_or_path.startswith("https://")
             if is_url:
                 raise Exception("Cannot write to URL")
-            if self._source_tar_file is None:
-                raise Exception("_source_tar_file is None even though _source_url_or_path is not None")
             rfs = self.to_reference_file_system()
             if self._source_tar_file:
                 self._source_tar_file.write_rfs(rfs)
