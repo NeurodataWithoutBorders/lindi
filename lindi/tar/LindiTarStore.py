@@ -1,4 +1,5 @@
 import random
+import numpy as np
 from zarr.storage import Store as ZarrStore
 from ..LindiH5pyFile.LindiReferenceFileSystemStore import LindiReferenceFileSystemStore
 from .lindi_tar import LindiTarFile
@@ -19,7 +20,10 @@ class LindiTarStore(ZarrStore):
             inline = True
         else:
             # presumably it is a chunk of an array
+            if isinstance(value, np.ndarray):
+                value = value.tobytes()
             if not isinstance(value, bytes):
+                print(f"key: {key}, value type: {type(value)}")
                 raise ValueError("Value must be bytes")
             size = len(value)
             inline = size < 1000  # this should be a configurable threshold

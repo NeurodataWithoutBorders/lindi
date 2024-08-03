@@ -19,7 +19,7 @@ def create_zarr_dataset_from_h5_data(
     name: str,
     label: str,
     h5_chunks: Union[Tuple, None],
-    zarr_compressor: Union[Codec, Literal['default']] = 'default'
+    zarr_compressor: Union[Codec, Literal['default'], None] = 'default'
 ):
     """Create a zarr dataset from an h5py dataset.
 
@@ -43,9 +43,9 @@ def create_zarr_dataset_from_h5_data(
         The name of the h5py dataset for error messages.
     h5_chunks : tuple
         The chunk shape of the h5py dataset.
-    zarr_compressor : numcodecs.abc.Codec
+    zarr_compressor : numcodecs.abc.Codec, 'default', or None
         The codec compressor to use when writing the dataset. If default, the
-        default compressor will be used.
+        default compressor will be used. When None, no compressor will be used.
     """
     if h5_dtype is None:
         raise Exception(f'No dtype in h5_to_zarr_dataset_prep for dataset {label}')
@@ -58,7 +58,7 @@ def create_zarr_dataset_from_h5_data(
         if h5_data is None:
             raise Exception(f'Data must be provided for scalar dataset {label}')
 
-        if zarr_compressor != 'default':
+        if zarr_compressor != 'default' and zarr_compressor is not None:
             raise Exception('zarr_compressor is not supported for scalar datasets')
 
         if _is_numeric_dtype(h5_dtype) or h5_dtype in [bool, np.bool_]:
@@ -131,7 +131,7 @@ def create_zarr_dataset_from_h5_data(
             )
         elif h5_dtype.kind == 'O':
             # For type object, we are going to use the JSON codec
-            if zarr_compressor != 'default':
+            if zarr_compressor != 'default' and zarr_compressor is not None:
                 raise Exception('zarr_compressor is not supported for object datasets')
             if h5_data is not None:
                 if isinstance(h5_data, h5py.Dataset):
@@ -149,7 +149,7 @@ def create_zarr_dataset_from_h5_data(
                 object_codec=object_codec
             )
         elif h5_dtype.kind == 'S':  # byte string
-            if zarr_compressor != 'default':
+            if zarr_compressor != 'default' and zarr_compressor is not None:
                 raise Exception('zarr_compressor is not supported for byte string datasets')
             if h5_data is None:
                 raise Exception(f'Data must be provided when converting dataset {label} with dtype {h5_dtype}')
@@ -161,11 +161,11 @@ def create_zarr_dataset_from_h5_data(
                 data=h5_data
             )
         elif h5_dtype.kind == 'U':  # unicode string
-            if zarr_compressor != 'default':
+            if zarr_compressor != 'default' and zarr_compressor is not None:
                 raise Exception('zarr_compressor is not supported for unicode string datasets')
             raise Exception(f'Array of unicode strings not supported: dataset {label} with dtype {h5_dtype} and shape {h5_shape}')
         elif h5_dtype.kind == 'V' and h5_dtype.fields is not None:  # compound dtype
-            if zarr_compressor != 'default':
+            if zarr_compressor != 'default' and zarr_compressor is not None:
                 raise Exception('zarr_compressor is not supported for compound datasets')
             if h5_data is None:
                 raise Exception(f'Data must be provided when converting compound dataset {label}')

@@ -400,6 +400,7 @@ class LindiH5pyFile(h5py.File):
             rfs = self.to_reference_file_system()
             if self._source_tar_file:
                 self._source_tar_file.write_rfs(rfs)
+                self._source_tar_file._update_index()  # very important
             else:
                 _write_rfs_to_file(rfs=rfs, output_file_name=self._source_url_or_path)
 

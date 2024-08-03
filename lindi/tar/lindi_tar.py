@@ -6,8 +6,8 @@ import urllib.request
 
 
 TAR_ENTRY_JSON_SIZE = 1024
-INITIAL_TAR_INDEX_JSON_SIZE = 1024 * 256
-INITIAL_LINDI_JSON_SIZE = 1024 * 256
+INITIAL_TAR_INDEX_JSON_SIZE = 1024 * 8
+INITIAL_LINDI_JSON_SIZE = 1024 * 8
 
 
 class LindiTarFile:
@@ -23,6 +23,24 @@ class LindiTarFile:
         # Load the index json
         index_json = _load_bytes_from_local_or_remote_file(self._tar_path_or_url, index_info['d'], index_info['d'] + index_info['s'])
         self._index = json.loads(index_json)
+        self._index_has_changed = False
+
+        self._index_lookup = {}
+        for file in self._index['files']:
+            self._index_lookup[file['n']] = file
+
+        self._file = open(self._tar_path_or_url, "r+b") if not self._is_remote else None
+
+    def close(self):
+        self._update_index()
+        if self._file is not None:
+            self._file.close()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        self.close()
 
     def get_file_info(self, file_name: str):
         for file in self._index['files']:
@@ -33,25 +51,27 @@ class LindiTarFile:
     def overwrite_file_content(self, file_name: str, data: bytes):
         if self._is_remote:
             raise ValueError("Cannot overwrite file content in a remote tar file")
+        if self._file is None:
+            raise ValueError("File is not open")
         info = self.get_file_info(file_name)
         if info is None:
             raise FileNotFoundError(f"File {file_name} not found")
         if info['s'] != len(data):
             raise ValueError("Unexpected problem in overwrite_file_content(): data size must match the size of the existing file")
-        with open(self._tar_path_or_url, "r+b") as f:
-            f.seek(info['d'])
-            f.write(data)
+        self._file.seek(info['d'])
+        self._file.write(data)
 
     def trash_file(self, file_name: str, do_write_index=True):
         if self._is_remote:
             raise ValueError("Cannot trash a file in a remote tar file")
+        if self._file is None:
+            raise ValueError("File is not open")
         info = self.get_file_info(file_name)
         if info is None:
             raise FileNotFoundError(f"File {file_name} not found")
         zeros = b"-" * info['s']
-        with open(self._tar_path_or_url, "r+b") as f:
-            f.seek(info['d'])
-            f.write(zeros)
+        self._file.seek(info['d'])
+        self._file.write(zeros)
         self._change_name_of_file(file_name, f'.trash/{file_name}.{_create_random_string()}', do_write_index=do_write_index)
 
     def write_rfs(self, rfs: dict):
@@ -87,50 +107,49 @@ class LindiTarFile:
     def _change_name_of_file(self, file_name: str, new_file_name: str, do_write_index=True):
         if self._is_remote:
             raise ValueError("Cannot change the name of a file in a remote tar file")
+        if self._file is None:
+            raise ValueError("File is not open")
         info = self.get_file_info(file_name)
         if info is None:
             raise FileNotFoundError(f"File {file_name} not found")
         header_start_byte = info['o']
         file_name_byte_range = (header_start_byte + 0, header_start_byte + 100)
         file_name_prefix_byte_range = (header_start_byte + 345, header_start_byte + 345 + 155)
-        with open(self._tar_path_or_url, "r+b") as f:
-            f.seek(file_name_byte_range[0])
-            f.write(new_file_name.encode())
-            # set the rest of the field to zeros
-            f.write(b"\0" * (file_name_byte_range[1] - file_name_byte_range[0] - len(new_file_name)))
+        self._file.seek(file_name_byte_range[0])
+        self._file.write(new_file_name.encode())
+        # set the rest of the field to zeros
+        self._file.write(b"\0" * (file_name_byte_range[1] - file_name_byte_range[0] - len(new_file_name)))
 
-            f.seek(file_name_prefix_byte_range[0])
-            f.write(b"\0" * (file_name_prefix_byte_range[1] - file_name_prefix_byte_range[0]))
+        self._file.seek(file_name_prefix_byte_range[0])
+        self._file.write(b"\0" * (file_name_prefix_byte_range[1] - file_name_prefix_byte_range[0]))
 
-            _fix_checksum_in_header(f, header_start_byte)
-        try:
-            file_in_index = next(file for file in self._index['files'] if file['n'] == file_name)
-        except StopIteration:
+        _fix_checksum_in_header(self._file, header_start_byte)
+        file_in_index = self._index_lookup.get(file_name, None)
+        if file_in_index is None:
             raise ValueError(f"File {file_name} not found in index")
         file_in_index['n'] = new_file_name
-        if do_write_index:
-            self._update_index()
+        self._index_has_changed = True
 
     def write_file(self, file_name: str, data: bytes):
         if self._is_remote:
             raise ValueError("Cannot write a file in a remote tar file")
-        with tarfile.open(self._tar_path_or_url, "a") as tar:
-            tarinfo = tarfile.TarInfo(name=file_name)
-            tarinfo.size = len(data)
-            fileobj = io.BytesIO(data)
-            tar.addfile(tarinfo, fileobj)
-        with tarfile.open(self._tar_path_or_url, "r") as tar:
-            # TODO: do not call getmember here, because it may be slow instead
-            # parse the header of the new file directly and get the offset from
-            # there
-            info = tar.getmember(file_name)
-            self._index['files'].append({
-                'n': file_name,
-                'o': info.offset,
-                'd': info.offset_data,
-                's': info.size
-            })
-        self._update_index()
+        if self._file is None:
+            raise ValueError("File is not open")
+        self._file.seek(0, 2)  # seek to the end of the file
+        file_pos = self._file.tell()
+        # write a dummy header
+        self._file.write(b" " * 512)
+        # write the data
+        self._file.write(data)
+        x = {
+            'n': file_name,
+            'o': file_pos,
+            'd': file_pos + 512,  # we assume the header is 512 bytes
+            's': len(data)
+        }
+        self._index['files'].append(x)
+        self._index_lookup[file_name] = x
+        self._index_has_changed = True
 
     def read_file(self, file_name: str) -> bytes:
         info = self.get_file_info(file_name)
@@ -199,10 +218,15 @@ class LindiTarFile:
         # write the rfs file
         tf = LindiTarFile(fname)
         tf.write_rfs(rfs)
+        tf.close()
 
     def _update_index(self):
+        if not self._index_has_changed:
+            return
         if self._is_remote:
             raise ValueError("Cannot update the index in a remote tar file")
+        if self._file is None:
+            raise ValueError("File is not open")
         existing_index_json = self.read_file(".tar_index.json")
         new_index_json = json.dumps(self._index, indent=2, sort_keys=True)
         if len(new_index_json) <= len(existing_index_json):
@@ -220,15 +244,24 @@ class LindiTarFile:
             self.write_file(".tar_index.json", new_index_json)
 
             # now we need to update the entry file
-            tar_index_info = self.get_file_info(".tar_index.json")
-            if tar_index_info is None:
-                raise ValueError("tar_index_info is None")
+            # tar_index_info = self.get_file_info(".tar_index.json")
+            # if tar_index_info is None:
+            #     raise ValueError("tar_index_info is None")
+            # new_entry_json = json.dumps({
+            #     'index': {
+            #         'n': tar_index_info.name,
+            #         'o': tar_index_info.offset,
+            #         'd': tar_index_info.offset_data,
+            #         's': tar_index_info.size
+            #     }
+            # }, indent=2, sort_keys=True)
+            tar_index_info = next(file for file in self._index['files'] if file['n'] == ".tar_index.json")
             new_entry_json = json.dumps({
                 'index': {
-                    'n': tar_index_info.name,
-                    'o': tar_index_info.offset,
-                    'd': tar_index_info.offset_data,
-                    's': tar_index_info.size
+                    'n': tar_index_info['n'],
+                    'o': tar_index_info['o'],
+                    'd': tar_index_info['d'],
+                    's': tar_index_info['s']
                 }
             }, indent=2, sort_keys=True)
             new_entry_json = new_entry_json.encode() + b" " * (TAR_ENTRY_JSON_SIZE - len(new_entry_json))
@@ -237,6 +270,8 @@ class LindiTarFile:
                 # this is to avoid calling the potentially expensive getmember() method
                 f.seek(512)
                 f.write(new_entry_json)
+        self._file.flush()
+        self._index_has_changed = False
 
 
 def _download_file_byte_range(url: str, start: int, end: int) -> bytes:
