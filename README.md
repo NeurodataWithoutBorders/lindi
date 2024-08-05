@@ -18,7 +18,7 @@ There are two types of LINDI files: JSON/text format (.lindi.json) and binary fo
 
 One use case is to represent a NWB file on DANDI using a condensed JSON file so that the entire group structure can be downloaded in a single request. Neurosift uses pre-generated LINDI JSON files to efficiently load NWB files from DANDI.
 
-Another use case is to create ammended NWB files that add additional data objects to existing NWB files without redundantly storing the entire NWB file. This is done by creating a binary LINDI file that references the original NWB file and adds additional data objects that are stored as internal data chunks.
+Another use case is to create amended NWB files that add additional data objects to existing NWB files without redundantly storing the entire NWB file. This is done by creating a binary LINDI file that references the original NWB file and adds additional data objects that are stored as internal data chunks.
 
 **Why not use Zarr?**
 
@@ -131,7 +131,7 @@ with pynwb.NWBHDF5IO(file=g, mode="r") as io:
     print(nwbfile.electrodes.group[0])  # type: ignore
 ```
 
-## Ammending an NWB file
+## Amending an NWB file
 
 Basically you save the remote NWB as a local binary LINDI file, and then add additional data objects to it.
 
