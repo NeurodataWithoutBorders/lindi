@@ -1,3 +1,4 @@
+benchmark.*
 *.lindi
 *.lindi.json*
 *.nwb

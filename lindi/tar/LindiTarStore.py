@@ -1,4 +1,3 @@
-import random
 import numpy as np
 from zarr.storage import Store as ZarrStore
 from ..LindiH5pyFile.LindiReferenceFileSystemStore import LindiReferenceFileSystemStore
@@ -33,8 +32,12 @@ class LindiTarStore(ZarrStore):
         else:
             # If not inline, save it as a new file in the tar file
             key_without_initial_slash = key if not key.startswith("/") else key[1:]
-            random_string = _create_random_string(8)
-            fname_in_tar = f'blobs/{random_string}/{key_without_initial_slash}'
+            fname_in_tar = f'blobs/{key_without_initial_slash}'
+            if self._tar_file.has_file_with_name(fname_in_tar):
+                v = 2
+                while self._tar_file.has_file_with_name(f'{fname_in_tar}.v{v}'):
+                    v += 1
+                fname_in_tar = f'{fname_in_tar}.v{v}'
             self._tar_file.write_file(fname_in_tar, value)
 
             self._set_ref_reference(key_without_initial_slash, f'./{fname_in_tar}', 0, len(value))
@@ -73,7 +76,3 @@ class LindiTarStore(ZarrStore):
             offset,
             size
         ]
-
-
-def _create_random_string(num_chars: int) -> str:
-    return ''.join(random.choices("abcdefghijklmnopqrstuvwxyz", k=num_chars))

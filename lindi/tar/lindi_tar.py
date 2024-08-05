@@ -1,8 +1,7 @@
 import json
-import tarfile
 import random
-import io
 import urllib.request
+from .create_tar_header import create_tar_header
 
 
 TAR_ENTRY_JSON_SIZE = 1024
@@ -43,10 +42,7 @@ class LindiTarFile:
         self.close()
 
     def get_file_info(self, file_name: str):
-        for file in self._index['files']:
-            if file['n'] == file_name:
-                return file
-        return None
+        return self._index_lookup.get(file_name, None)
 
     def overwrite_file_content(self, file_name: str, data: bytes):
         if self._is_remote:
@@ -104,6 +100,9 @@ class LindiTarFile:
             raise FileNotFoundError(f"File {file_name} not found in tar file")
         return info['d'], info['d'] + info['s']
 
+    def has_file_with_name(self, file_name: str) -> bool:
+        return self.get_file_info(file_name) is not None
+
     def _change_name_of_file(self, file_name: str, new_file_name: str, do_write_index=True):
         if self._is_remote:
             raise ValueError("Cannot change the name of a file in a remote tar file")
@@ -118,10 +117,10 @@ class LindiTarFile:
         self._file.seek(file_name_byte_range[0])
         self._file.write(new_file_name.encode())
         # set the rest of the field to zeros
-        self._file.write(b"\0" * (file_name_byte_range[1] - file_name_byte_range[0] - len(new_file_name)))
+        self._file.write(b"\x00" * (file_name_byte_range[1] - file_name_byte_range[0] - len(new_file_name)))
 
         self._file.seek(file_name_prefix_byte_range[0])
-        self._file.write(b"\0" * (file_name_prefix_byte_range[1] - file_name_prefix_byte_range[0]))
+        self._file.write(b"\x00" * (file_name_prefix_byte_range[1] - file_name_prefix_byte_range[0]))
 
         _fix_checksum_in_header(self._file, header_start_byte)
         file_in_index = self._index_lookup.get(file_name, None)
@@ -135,18 +134,34 @@ class LindiTarFile:
             raise ValueError("Cannot write a file in a remote tar file")
         if self._file is None:
             raise ValueError("File is not open")
-        self._file.seek(0, 2)  # seek to the end of the file
+        self._file.seek(-1024, 2)
+        hh = self._file.read(1024)
+        if hh != b"\x00" * 1024:
+            raise ValueError("The tar file does not end with 1024 bytes of zeros")
+        self._file.seek(-1024, 2)
+
         file_pos = self._file.tell()
-        # write a dummy header
-        self._file.write(b" " * 512)
-        # write the data
-        self._file.write(data)
         x = {
             'n': file_name,
             'o': file_pos,
             'd': file_pos + 512,  # we assume the header is 512 bytes
             's': len(data)
         }
+
+        # write the tar header
+        tar_header = create_tar_header(file_name, len(data))
+        self._file.write(tar_header)
+        # write the data
+        self._file.write(data)
+
+        # pad up to blocks of 512
+        if len(data) % 512 != 0:
+            padding = b"\x00" * (512 - len(data) % 512)
+            self._file.write(padding)
+
+        # write the 1024 bytes marking the end of the file
+        self._file.write(b"\x00" * 1024)
+
         self._index['files'].append(x)
         self._index_lookup[file_name] = x
         self._index_has_changed = True
@@ -161,59 +176,62 @@ class LindiTarFile:
 
     @staticmethod
     def create(fname: str, *, rfs: dict):
-        with tarfile.open(fname, "w") as tar:
-            # write the initial entry file this MUST be the first file in the
-            # tar file
+        with open(fname, "wb") as f:
+            # Define the sizes and names of the entry and index files
             tar_entry_json_name = ".tar_entry.json"
-            tarinfo = tarfile.TarInfo(name=tar_entry_json_name)
-            tarinfo.size = TAR_ENTRY_JSON_SIZE
-            tar.addfile(tarinfo, io.BytesIO(b" " * TAR_ENTRY_JSON_SIZE))
-
-            # write the initial index file this will start as the second file in
-            # the tar file but as it grows it will be replaced. Importantly, the
-            # entry will always be the first file.
+            tar_entry_json_size = TAR_ENTRY_JSON_SIZE
             tar_index_json_size = INITIAL_TAR_INDEX_JSON_SIZE
             tar_index_json_name = ".tar_index.json"
-            tarinfo = tarfile.TarInfo(name=tar_index_json_name)
-            tarinfo.size = tar_index_json_size
-            tar.addfile(tarinfo, io.BytesIO(b" " * tar_index_json_size))
+            tar_index_json_offset = 512 + TAR_ENTRY_JSON_SIZE
+            tar_index_json_offset_data = tar_index_json_offset + 512
 
-        # It seems that we need to close and then open it again in order
-        # to get the correct data offsets for the files.
-        with tarfile.open(fname, "r") as tar:
-            tar_entry_json_info = tar.getmember(tar_entry_json_name)
-            tar_index_json_info = tar.getmember(tar_index_json_name)
-
-            # fill the entry file
+            # Define the content of .tar_entry.json
             initial_entry_json = json.dumps({
                 'index': {
                     'n': tar_index_json_name,
-                    'o': tar_index_json_info.offset,
-                    'd': tar_index_json_info.offset_data,
-                    's': tar_index_json_info.size
+                    'o': tar_index_json_offset,
+                    'd': tar_index_json_offset_data,
+                    's': tar_index_json_size
                 }
             }, indent=2, sort_keys=True)
-            initial_entry_json = initial_entry_json.encode() + b" " * (tar_entry_json_info.size - len(initial_entry_json))
-            with open(fname, "r+b") as f:
-                f.seek(tar_entry_json_info.offset_data)
-                f.write(initial_entry_json)
+            initial_entry_json = initial_entry_json.encode() + b" " * (tar_entry_json_size - len(initial_entry_json))
 
-            # fill the index file
+            # Define the content of .tar_index.json
             initial_index_json = json.dumps({
                 'files': [
                     {
-                        'n': info.name,
-                        'o': info.offset,
-                        'd': info.offset_data,
-                        's': info.size
+                        'n': tar_entry_json_name,
+                        'o': 0,
+                        'd': 512,
+                        's': tar_entry_json_size
+                    },
+                    {
+                        'n': tar_index_json_name,
+                        'o': tar_index_json_offset,
+                        'd': tar_index_json_offset_data,
+                        's': tar_index_json_size
                     }
-                    for info in [tar_entry_json_info, tar_index_json_info]
                 ]
             }, indent=2, sort_keys=True)
             initial_index_json = initial_index_json.encode() + b" " * (tar_index_json_size - len(initial_index_json))
-            with open(fname, "r+b") as f:
-                f.seek(tar_index_json_info.offset_data)
-                f.write(initial_index_json)
+
+            # Write the initial entry file (.tar_entry.json). This will always
+            # be the first file in the tar file, and has a fixed size.
+            header = create_tar_header(tar_entry_json_name, tar_entry_json_size)
+            f.write(header)
+            f.write(initial_entry_json)
+
+            # Write the initial index file (.tar_index.json) this will start as
+            # the second file in the tar file but as it grows outside the
+            # initial bounds, a new index file will be appended to the end of
+            # the tar, and then entry file will be updated accordingly to point
+            # to the new index file.
+            header = create_tar_header(tar_index_json_name, tar_index_json_size)
+            f.write(header)
+            f.write(initial_index_json)
+
+            with open(fname, "ab") as f:
+                f.write(b"\x00" * 1024)
 
         # write the rfs file
         tf = LindiTarFile(fname)
@@ -326,7 +344,7 @@ def _fix_checksum_in_header(f, header_start_byte):
     checksum = oct(sum).encode()[2:]
     while len(checksum) < 6:
         checksum = b"0" + checksum
-    checksum += b"\0 "
+    checksum += b"\x00 "
     f.seek(header_start_byte + 148)
     f.write(checksum)
 
