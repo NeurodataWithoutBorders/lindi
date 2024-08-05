@@ -12,11 +12,11 @@ LINDI is a cloud-friendly file format and Python library for working with scient
 
 You can think of a LINDI file as a differently-formatted HDF5 file that is cloud-friendly and capable of linking to data chunks in remote files (such as on DANDI Archive).
 
-There are two types of LINDI files: JSON/text format (.lindi.json) and binary format (.lindi or .lindi.tar). In the JSON format, the hierarchical group structure, attributes, a small datasets are all stored in a JSON structure, with references to larger data chunks store in external files. The binary format is a .tar file that contains this JSON file as well as optional internal data chunks that can be referenced by the JSON file in addition to the external chunks. The advantage of the JSON LINDI format is that it is human-readable and easily inspected and edited. The advantage of the binary LINDI format is that it can contain internal data chunks. Both formats are cloud-friendly in that they can be efficiently downloaded from cloud storage with random access.
+There are two types of LINDI files: JSON/text format (.lindi.json) and binary format (.lindi or .lindi.tar). In the JSON format, the hierarchical group structure, attributes, a small datasets are all stored in a JSON structure, with references to larger data chunks stored in external files. The binary format is a .tar file that contains this JSON file as well as optional internal data chunks that can be referenced by the JSON file in addition to the external chunks. The advantage of the JSON LINDI format is that it is human-readable and easily inspected and edited. The advantage of the binary LINDI format is that it can contain internal data chunks. Both formats are cloud-friendly in that they can be efficiently downloaded from cloud storage with random access.
 
 **What are the main use cases?**
 
-One use case is to represent a NWB file on DANDI using a condensed JSON file so that the entire group structure can be downloaded in a single request. Neurosift uses pre-generated LINDI JSON files to efficiently load NWB files from DANDI.
+One use case is to represent a NWB file on DANDI using a condensed JSON file so that the entire group structure can be downloaded in a single request. For example, eurosift uses pre-generated LINDI JSON files to efficiently load NWB files from DANDI.
 
 Another use case is to create amended NWB files that add additional data objects to existing NWB files without redundantly storing the entire NWB file. This is done by creating a binary LINDI file that references the original NWB file and adds additional data objects that are stored as internal data chunks.
 
@@ -26,11 +26,15 @@ Zarr provides a cloud-friendly alternative to HDF5, but an important limitation 
 
 **Why not use HDF5?**
 
-HDF5 is not cloud-friendly in that if you have a remote HDF5 file, many small requests are required to obtain metadata before larger data chunks can be downloaded. Both JSON and binary LINDI files solve this problem by storing the entire group structure in a single JSON structure that can be downloaded in a single request. Furthermore, as with HDF5, there is no built-in mechanism for referencing chunks in external datasets.
+HDF5 is not cloud-friendly in that if you have a remote HDF5 file, many small requests are required to obtain metadata before larger data chunks can be downloaded. Both JSON and binary LINDI files solve this problem by storing the entire group structure in a single JSON structure that can be downloaded in a single request. Furthermore, as with Zarr, there is no built-in mechanism for referencing chunks in external datasets.
 
 **Does LINDI use Zarr?**
 
 Yes, LINDI uses the Zarr format to store data, including attributes and group hierarchies. But instead of using directories and files, it stores all of the data in a single JSON data structure, with references to large data chunks, which can either be found in remote files (e.g., in a HDF5 NWB file on DANDI) or in internal data chunks in the binary LINDI file. However, NWB depends on certain HDF5 features that are not supported by Zarr, so LINDI also provides mechanism for representing these features in Zarr.
+
+**Is tar format really cloud-friendly**
+
+With LINDI, yes. TODO: discuss
 
 ## Installation
 
