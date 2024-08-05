@@ -13,34 +13,43 @@ class LindiTarStore(ZarrStore):
         return self._base_store.__getitem__(key)
 
     def __setitem__(self, key: str, value: bytes):
-        key_parts = key.split("/")
-        key_base_name = key_parts[-1]
-        if key_base_name.startswith('.') or key_base_name.endswith('.json'):  # always inline .zattrs, .zgroup, .zarray, zarr.json
-            inline = True
-        else:
-            # presumably it is a chunk of an array
-            if isinstance(value, np.ndarray):
-                value = value.tobytes()
-            if not isinstance(value, bytes):
-                print(f"key: {key}, value type: {type(value)}")
-                raise ValueError("Value must be bytes")
-            size = len(value)
-            inline = size < 1000  # this should be a configurable threshold
-        if inline:
-            # If inline, save in memory
-            return self._base_store.__setitem__(key, value)
-        else:
-            # If not inline, save it as a new file in the tar file
-            key_without_initial_slash = key if not key.startswith("/") else key[1:]
-            fname_in_tar = f'blobs/{key_without_initial_slash}'
-            if self._tar_file.has_file_with_name(fname_in_tar):
-                v = 2
-                while self._tar_file.has_file_with_name(f'{fname_in_tar}.v{v}'):
-                    v += 1
-                fname_in_tar = f'{fname_in_tar}.v{v}'
-            self._tar_file.write_file(fname_in_tar, value)
+        self.setitems({key: value})
 
-            self._set_ref_reference(key_without_initial_slash, f'./{fname_in_tar}', 0, len(value))
+    def setitems(self, items_dict: dict):
+        for key, value in items_dict.items():
+            key_parts = key.split("/")
+            key_base_name = key_parts[-1]
+
+            files_to_write_to_tar = {}
+
+            if key_base_name.startswith('.') or key_base_name.endswith('.json'):  # always inline .zattrs, .zgroup, .zarray, zarr.json
+                inline = True
+            else:
+                # presumably it is a chunk of an array
+                if isinstance(value, np.ndarray):
+                    value = value.tobytes()
+                if not isinstance(value, bytes):
+                    print(f"key: {key}, value type: {type(value)}")
+                    raise ValueError("Value must be bytes")
+                size = len(value)
+                inline = size < 1000  # this should be a configurable threshold
+            if inline:
+                # If inline, save in memory
+                return self._base_store.__setitem__(key, value)
+            else:
+                # If not inline, save it as a new file in the tar file
+                key_without_initial_slash = key if not key.startswith("/") else key[1:]
+                fname_in_tar = f'blobs/{key_without_initial_slash}'
+                if self._tar_file.has_file_with_name(fname_in_tar):
+                    v = 2
+                    while self._tar_file.has_file_with_name(f'{fname_in_tar}.v{v}'):
+                        v += 1
+                    fname_in_tar = f'{fname_in_tar}.v{v}'
+                files_to_write_to_tar[fname_in_tar] = value
+
+                self._set_ref_reference(key_without_initial_slash, f'./{fname_in_tar}', 0, len(value))
+
+            self._tar_file.write_files(files_to_write_to_tar)
 
     def __delitem__(self, key: str):
         # We don't actually delete the file from the tar, but maybe it would be

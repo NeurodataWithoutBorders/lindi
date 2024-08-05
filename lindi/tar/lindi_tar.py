@@ -130,6 +130,9 @@ class LindiTarFile:
         self._index_has_changed = True
 
     def write_file(self, file_name: str, data: bytes):
+        self.write_files({file_name: data})
+
+    def write_files(self, files: dict):
         if self._is_remote:
             raise ValueError("Cannot write a file in a remote tar file")
         if self._file is None:
@@ -141,30 +144,35 @@ class LindiTarFile:
         self._file.seek(-1024, 2)
 
         file_pos = self._file.tell()
-        x = {
-            'n': file_name,
-            'o': file_pos,
-            'd': file_pos + 512,  # we assume the header is 512 bytes
-            's': len(data)
-        }
 
-        # write the tar header
-        tar_header = create_tar_header(file_name, len(data))
-        self._file.write(tar_header)
-        # write the data
-        self._file.write(data)
+        for file_name, data in files.items():
+            x = {
+                'n': file_name,
+                'o': file_pos,
+                'd': file_pos + 512,  # we assume the header is 512 bytes
+                's': len(data)
+            }
 
-        # pad up to blocks of 512
-        if len(data) % 512 != 0:
-            padding = b"\x00" * (512 - len(data) % 512)
-            self._file.write(padding)
+            # write the tar header
+            tar_header = create_tar_header(file_name, len(data))
+
+            # pad up to blocks of 512
+            if len(data) % 512 != 0:
+                padding_len = 512 - len(data) % 512
+            else:
+                padding_len = 0
+
+            self._file.write(tar_header)
+            self._file.write(data)
+            self._file.write(b"\x00" * padding_len)
+            file_pos += 512 + len(data) + padding_len
+
+            self._index['files'].append(x)
+            self._index_lookup[file_name] = x
+            self._index_has_changed = True
 
         # write the 1024 bytes marking the end of the file
         self._file.write(b"\x00" * 1024)
-
-        self._index['files'].append(x)
-        self._index_lookup[file_name] = x
-        self._index_has_changed = True
 
     def read_file(self, file_name: str) -> bytes:
         info = self.get_file_info(file_name)
