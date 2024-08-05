@@ -26,7 +26,7 @@ Zarr provides a cloud-friendly alternative to HDF5, but an important limitation 
 
 **Why not use HDF5?**
 
-HDF5 is not cloud-friendly in that if you have a remote HDF5 file, many small requests are required to obtain metadata before larger data chunks can be downloaded. Both JSON and binary LINDI files solve this problem by storing the entire group structure in a single JSON structure that can be downloaded in a single request. Furthermore, as with HDF5, there is no built-in mechanism for referencing chunks in external datasets.
+HDF5 is not cloud-friendly in that if you have a remote HDF5 file, many small requests are required to obtain metadata before larger data chunks can be downloaded. Both JSON and binary LINDI files solve this problem by storing the entire group structure in a single JSON structure that can be downloaded in a single request. Furthermore, as with Zarr, there is no built-in mechanism for referencing chunks in external datasets.
 
 **Does LINDI use Zarr?**
 
