@@ -38,7 +38,7 @@ Yes, LINDI leverages the Zarr format to store data, including attributes and gro
 
 **Is tar format really cloud-friendly**
 
-With LINDI, yes. TODO: discuss
+With LINDI, yes. See [docs/tar.md](docs/tar.md) for details.
 
 ## Installation
 
