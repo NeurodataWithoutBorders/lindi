@@ -238,8 +238,7 @@ class LindiTarFile:
             f.write(header)
             f.write(initial_index_json)
 
-            with open(fname, "ab") as f:
-                f.write(b"\x00" * 1024)
+            f.write(b"\x00" * 1024)
 
         # write the rfs file
         tf = LindiTarFile(fname)

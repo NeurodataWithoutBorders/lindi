@@ -32,7 +32,7 @@ UploadFileFunc = Callable[[str], str]
 
 
 class LindiH5pyFile(h5py.File):
-    def __init__(self, _zarr_group: zarr.Group, *, _zarr_store: Union[ZarrStore, None] = None, _mode: LindiFileMode = "r", _local_cache: Union[LocalCache, None] = None, _source_url_or_path: Union[str, None] = None, _source_tar_file: Union[LindiTarFile, None] = None):
+    def __init__(self, _zarr_group: zarr.Group, *, _zarr_store: Union[ZarrStore, None] = None, _mode: LindiFileMode = "r", _local_cache: Union[LocalCache, None] = None, _source_url_or_path: Union[str, None] = None, _source_tar_file: Union[LindiTarFile, None] = None, _close_source_tar_file_on_close: bool = False):
         """
         Do not use this constructor directly. Instead, use: from_lindi_file,
         from_h5py_file, from_reference_file_system, from_zarr_store, or
@@ -45,9 +45,12 @@ class LindiH5pyFile(h5py.File):
         self._local_cache = _local_cache
         self._source_url_or_path = _source_url_or_path
         self._source_tar_file = _source_tar_file
+        self._close_source_tar_file_on_close = _close_source_tar_file_on_close
 
         # see comment in LindiH5pyGroup
         self._id = f'{id(self._zarr_group)}/'
+
+        self._is_open = True
 
     @staticmethod
     def from_lindi_file(url_or_path: str, *, mode: LindiFileMode = "r", staging_area: Union[StagingArea, None] = None, local_cache: Union[LocalCache, None] = None):
@@ -105,7 +108,7 @@ class LindiH5pyFile(h5py.File):
         )
 
     @staticmethod
-    def from_reference_file_system(rfs: Union[dict, str, None], *, mode: LindiFileMode = "r", staging_area: Union[StagingArea, None] = None, local_cache: Union[LocalCache, None] = None, _source_url_or_path: Union[str, None] = None, _source_tar_file: Union[LindiTarFile, None] = None):
+    def from_reference_file_system(rfs: Union[dict, str, None], *, mode: LindiFileMode = "r", staging_area: Union[StagingArea, None] = None, local_cache: Union[LocalCache, None] = None, _source_url_or_path: Union[str, None] = None, _source_tar_file: Union[LindiTarFile, None] = None, _close_source_tar_file_on_close: bool = False):
         """
         Create a LindiH5pyFile from a reference file system.
 
@@ -125,6 +128,8 @@ class LindiH5pyFile(h5py.File):
         _source_url_or_path : Union[str, None], optional
             Internal use only
         _source_tar_file : Union[LindiTarFile, None], optional
+            Internal use only
+        _close_source_tar_file_on_close : bool, optional
             Internal use only
         """
         if rfs is None:
@@ -149,7 +154,8 @@ class LindiH5pyFile(h5py.File):
                     mode=mode,
                     staging_area=staging_area,
                     local_cache=local_cache,
-                    _source_tar_file=tar_file
+                    _source_tar_file=tar_file,
+                    _close_source_tar_file_on_close=_close_source_tar_file_on_close
                 )
             else:
                 # local file
@@ -188,7 +194,8 @@ class LindiH5pyFile(h5py.File):
                     staging_area=staging_area,
                     local_cache=local_cache,
                     _source_url_or_path=rfs,
-                    _source_tar_file=tar_file
+                    _source_tar_file=tar_file,
+                    _close_source_tar_file_on_close=True
                 )
         elif isinstance(rfs, dict):
             # This store does not need to be closed
@@ -210,13 +217,14 @@ class LindiH5pyFile(h5py.File):
                 mode=mode,
                 local_cache=local_cache,
                 _source_url_or_path=_source_url_or_path,
-                _source_tar_file=_source_tar_file
+                _source_tar_file=_source_tar_file,
+                _close_source_tar_file_on_close=_close_source_tar_file_on_close
             )
         else:
             raise Exception(f"Unhandled type for rfs: {type(rfs)}")
 
     @staticmethod
-    def from_zarr_store(zarr_store: ZarrStore, mode: LindiFileMode = "r", local_cache: Union[LocalCache, None] = None, _source_url_or_path: Union[str, None] = None, _source_tar_file: Union[LindiTarFile, None] = None):
+    def from_zarr_store(zarr_store: ZarrStore, mode: LindiFileMode = "r", local_cache: Union[LocalCache, None] = None, _source_url_or_path: Union[str, None] = None, _source_tar_file: Union[LindiTarFile, None] = None, _close_source_tar_file_on_close: bool = False):
         """
         Create a LindiH5pyFile from a zarr store.
 
@@ -233,10 +241,10 @@ class LindiH5pyFile(h5py.File):
         # does not need to be closed
         zarr_group = zarr.open(store=zarr_store, mode=mode)
         assert isinstance(zarr_group, zarr.Group)
-        return LindiH5pyFile.from_zarr_group(zarr_group, _zarr_store=zarr_store, mode=mode, local_cache=local_cache, _source_url_or_path=_source_url_or_path, _source_tar_file=_source_tar_file)
+        return LindiH5pyFile.from_zarr_group(zarr_group, _zarr_store=zarr_store, mode=mode, local_cache=local_cache, _source_url_or_path=_source_url_or_path, _source_tar_file=_source_tar_file, _close_source_tar_file_on_close=_close_source_tar_file_on_close)
 
     @staticmethod
-    def from_zarr_group(zarr_group: zarr.Group, *, mode: LindiFileMode = "r", _zarr_store: Union[ZarrStore, None] = None, local_cache: Union[LocalCache, None] = None, _source_url_or_path: Union[str, None] = None, _source_tar_file: Union[LindiTarFile, None] = None):
+    def from_zarr_group(zarr_group: zarr.Group, *, mode: LindiFileMode = "r", _zarr_store: Union[ZarrStore, None] = None, local_cache: Union[LocalCache, None] = None, _source_url_or_path: Union[str, None] = None, _source_tar_file: Union[LindiTarFile, None] = None, _close_source_tar_file_on_close: bool = False):
         """
         Create a LindiH5pyFile from a zarr group.
 
@@ -254,7 +262,7 @@ class LindiH5pyFile(h5py.File):
 
         See from_zarr_store().
         """
-        return LindiH5pyFile(zarr_group, _zarr_store=_zarr_store, _mode=mode, _local_cache=local_cache, _source_url_or_path=_source_url_or_path, _source_tar_file=_source_tar_file)
+        return LindiH5pyFile(zarr_group, _zarr_store=_zarr_store, _mode=mode, _local_cache=local_cache, _source_url_or_path=_source_url_or_path, _source_tar_file=_source_tar_file, _close_source_tar_file_on_close=_close_source_tar_file_on_close)
 
     def to_reference_file_system(self):
         """
@@ -390,7 +398,13 @@ class LindiH5pyFile(h5py.File):
         raise Exception("Getting swmr_mode is not allowed")
 
     def close(self):
+        if not self._is_open:
+            print('Warning: LINDI file already closed.')
+            return
         self.flush()
+        if self._close_source_tar_file_on_close and self._source_tar_file:
+            self._source_tar_file.close()
+        self._is_open = False
 
     def flush(self):
         if self._mode != 'r' and self._source_url_or_path is not None:
