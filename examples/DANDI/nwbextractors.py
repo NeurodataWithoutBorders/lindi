@@ -54,7 +54,7 @@ def read_file_from_backend(
         assert file_path is not None, "file_path must be specified when using stream_mode='ros3'"
 
         drivers = h5py.registered_drivers()
-        assertion_msg = "ROS3 support not enbabled, use: install -c conda-forge h5py>=3.2 to enable streaming"
+        assertion_msg = "ROS3 support not enabled, use: install -c conda-forge h5py>=3.2 to enable streaming"
         assert "ros3" in drivers, assertion_msg
         open_file = h5py.File(name=file_path, mode="r", driver="ros3")
 
