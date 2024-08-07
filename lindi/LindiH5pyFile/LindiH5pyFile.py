@@ -407,6 +407,8 @@ class LindiH5pyFile(h5py.File):
         self._is_open = False
 
     def flush(self):
+        if not self._is_open:
+            return
         if self._mode != 'r' and self._source_url_or_path is not None:
             is_url = self._source_url_or_path.startswith("http://") or self._source_url_or_path.startswith("https://")
             if is_url:
@@ -414,7 +416,7 @@ class LindiH5pyFile(h5py.File):
             rfs = self.to_reference_file_system()
             if self._source_tar_file:
                 self._source_tar_file.write_rfs(rfs)
-                self._source_tar_file._update_index()  # very important
+                self._source_tar_file._update_index_in_file()  # very important
             else:
                 _write_rfs_to_file(rfs=rfs, output_file_name=self._source_url_or_path)
 
