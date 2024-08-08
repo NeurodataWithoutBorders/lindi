@@ -796,7 +796,7 @@ def _update_internal_references_to_remote_tar_file(rfs: dict, remote_url: str, r
                     num_bytes = info['s']
                     v[0] = remote_url
                     v[1] = start_byte + v[1]
-                    if v[1] + v[2] > num_bytes:
+                    if v[1] + v[2] > start_byte + num_bytes:
                         raise Exception(f"Reference goes beyond end of file: {v[1] + v[2]} > {num_bytes}")
                     # v[2] stays the same, it is the size
             elif len(v) == 1:
