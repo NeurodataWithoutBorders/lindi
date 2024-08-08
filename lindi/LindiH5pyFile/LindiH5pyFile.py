@@ -353,11 +353,15 @@ class LindiH5pyFile(h5py.File):
             system, by default None. This information dict is simply set to the
             'generationMetadata' key in the reference file system.
         """
-        if self._source_tar_file:
-            raise Exception("Cannot write to lindi file if the source is a lindi tar file because it would not be able to resolve the local references within the tar file.")
         if not filename.endswith(".lindi.json") and not filename.endswith(".lindi") and not filename.endswith(".lindi.tar"):
             raise Exception("Filename must end with '.lindi.json' or '.lindi' or '.lindi.tar'")
         rfs = self.to_reference_file_system()
+        if self._source_tar_file:
+            source_is_remote = self._source_url_or_path is not None and (self._source_url_or_path.startswith("http://") or self._source_url_or_path.startswith("https://"))
+            if not source_is_remote:
+                raise Exception("Cannot write to lindi file if the source is a local lindi tar file because it would not be able to resolve the local references within the tar file.")
+            assert self._source_url_or_path is not None
+            _update_internal_references_to_remote_tar_file(rfs, self._source_url_or_path, self._source_tar_file)
         if generation_metadata is not None:
             rfs['generationMetadata'] = generation_metadata
         if filename.endswith(".lindi.json"):
@@ -771,3 +775,42 @@ def _create_empty_lindi_file(fname: str, *, tar: bool = False):
     else:
         with open(fname, "w") as f:
             json.dump(empty_rfs, f)
+
+
+def _update_internal_references_to_remote_tar_file(rfs: dict, remote_url: str, remote_tar_file: LindiTarFile):
+    # This is tricky. This happens when the source is a remote tar file and we
+    # are trying to write the lindi file locally, but we need to update the
+    # internal references to point to the remote tar file. Yikes.
+
+    # First we remove all templates to simplify the process. We will restore them below.
+    LindiReferenceFileSystemStore.remove_templates_in_rfs(rfs)
+
+    for k, v in rfs['refs'].items():
+        if isinstance(v, list):
+            if len(v) == 3:
+                url = v[0]
+                if url.startswith('./'):
+                    internal_path = url[2:]
+                    info = remote_tar_file.get_file_info(internal_path)
+                    start_byte = info['d']
+                    num_bytes = info['s']
+                    v[0] = remote_url
+                    v[1] = start_byte + v[1]
+                    if v[1] + v[2] > num_bytes:
+                        raise Exception(f"Reference goes beyond end of file: {v[1] + v[2]} > {num_bytes}")
+                    # v[2] stays the same, it is the size
+            elif len(v) == 1:
+                # This is a reference to the full file
+                url = v[0]
+                if url.startswith('./'):
+                    internal_path = url[2:]
+                    info = remote_tar_file.get_file_info(internal_path)
+                    start_byte = info['d']
+                    num_bytes = info['s']
+                    v[0] = remote_url
+                    v.append(start_byte)
+                    v.append(num_bytes)
+            else:
+                raise Exception(f"Unexpected length for reference: {len(v)}")
+
+    LindiReferenceFileSystemStore.use_templates_in_rfs(rfs)

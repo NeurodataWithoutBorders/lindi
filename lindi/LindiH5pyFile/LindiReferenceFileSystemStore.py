@@ -285,6 +285,22 @@ class LindiReferenceFileSystemStore(ZarrStore):
                 if url in template_names_for_urls:
                     v[0] = '{{' + template_names_for_urls[url] + '}}'
 
+    @staticmethod
+    def remove_templates_in_rfs(rfs: dict) -> None:
+        """
+        Utility for removing templates from an rfs. This is the opposite of
+        use_templates_in_rfs.
+        """
+        templates0 = rfs.get('templates', {})
+        for k, v in rfs['refs'].items():
+            if isinstance(v, list):
+                url = v[0]
+                if '{{' in url and '}}' in url:
+                    template_name = url[2:-2].strip()
+                    if template_name in templates0:
+                        v[0] = templates0[template_name]
+        rfs['templates'] = {}
+
 
 def _read_bytes_from_url_or_path(url_or_path: str, offset: int, length: int):
     """
