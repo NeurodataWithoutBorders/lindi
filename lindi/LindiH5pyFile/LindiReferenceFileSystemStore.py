@@ -123,7 +123,7 @@ class LindiReferenceFileSystemStore(ZarrStore):
         self.rfs = rfs
         self.mode = mode
         self.local_cache = local_cache
-        self._source_file_path = _source_url_or_path
+        self._source_url_or_path = _source_url_or_path
         self._source_tar_file = _source_tar_file
 
     # These methods are overridden from MutableMapping
@@ -164,7 +164,7 @@ class LindiReferenceFileSystemStore(ZarrStore):
                     url_or_path = url_or_path.replace("{{" + k + "}}", v)
             is_url = url_or_path.startswith('http://') or url_or_path.startswith('https://')
             if url_or_path.startswith('./'):
-                if self._source_file_path is None:
+                if self._source_url_or_path is None:
                     raise Exception(f"Cannot resolve relative path {url_or_path} without source file path")
                 if self._source_tar_file is None:
                     raise Exception(f"Cannot resolve relative path {url_or_path} without source file type")
@@ -172,13 +172,13 @@ class LindiReferenceFileSystemStore(ZarrStore):
                     start_byte, end_byte = self._source_tar_file.get_file_byte_range(file_name=url_or_path[2:])
                     if start_byte + offset + length > end_byte:
                         raise Exception(f"Chunk {key} is out of bounds in tar file {url_or_path}")
-                    url_or_path = self._source_file_path
+                    url_or_path = self._source_url_or_path
                     offset = offset + start_byte
                 else:
                     if is_url:
                         raise Exception(f"Cannot resolve relative path {url_or_path} for URL that is not a tar")
                     else:
-                        source_file_parent_dir = '/'.join(self._source_file_path.split('/')[:-1])
+                        source_file_parent_dir = '/'.join(self._source_url_or_path.split('/')[:-1])
                         abs_path = source_file_parent_dir + '/' + url_or_path[2:]
                         url_or_path = abs_path
             if is_url:

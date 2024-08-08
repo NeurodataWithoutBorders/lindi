@@ -155,6 +155,7 @@ class LindiH5pyFile(h5py.File):
                     staging_area=staging_area,
                     local_cache=local_cache,
                     _source_tar_file=tar_file,
+                    _source_url_or_path=rfs,
                     _close_source_tar_file_on_close=_close_source_tar_file_on_close
                 )
             else:
