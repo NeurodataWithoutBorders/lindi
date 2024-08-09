@@ -4,7 +4,7 @@ import h5py
 import lindi
 
 
-nwb_lindi_fname = 'example.nwb.lindi'
+nwb_lindi_fname = 'example.nwb.lindi.tar'
 nwb_fname = 'example.nwb'
 
 

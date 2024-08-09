@@ -185,7 +185,7 @@ class LindiH5pyFile(h5py.File):
                 else:
                     raise Exception(f"Unhandled mode: {mode}")
                 if need_to_create_empty_file:
-                    tar = rfs.endswith(".tar") or rfs.endswith(".lindi")
+                    tar = rfs.endswith(".tar")
                     _create_empty_lindi_file(rfs, tar=tar)
                 data, tar_file = _load_rfs_from_local_file(rfs)
                 assert isinstance(data, dict)  # prevent infinite recursion
@@ -353,8 +353,8 @@ class LindiH5pyFile(h5py.File):
             system, by default None. This information dict is simply set to the
             'generationMetadata' key in the reference file system.
         """
-        if not filename.endswith(".lindi.json") and not filename.endswith(".lindi") and not filename.endswith(".lindi.tar"):
-            raise Exception("Filename must end with '.lindi.json' or '.lindi' or '.lindi.tar'")
+        if not filename.endswith(".lindi.json") and not filename.endswith(".lindi.tar"):
+            raise Exception("Filename must end with '.lindi.json' or '.lindi.tar'")
         rfs = self.to_reference_file_system()
         if self._source_tar_file:
             source_is_remote = self._source_url_or_path is not None and (self._source_url_or_path.startswith("http://") or self._source_url_or_path.startswith("https://"))
@@ -366,7 +366,7 @@ class LindiH5pyFile(h5py.File):
             rfs['generationMetadata'] = generation_metadata
         if filename.endswith(".lindi.json"):
             _write_rfs_to_file(rfs=rfs, output_file_name=filename)
-        elif filename.endswith(".lindi") or filename.endswith(".lindi.tar"):
+        elif filename.endswith(".lindi.tar"):
             LindiTarFile.create(filename, rfs=rfs)
         else:
             raise Exception("Unhandled file extension")

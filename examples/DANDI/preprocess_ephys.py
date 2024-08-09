@@ -16,12 +16,12 @@ def preprocess_ephys():
 
     print('Creating LINDI file')
     with lindi.LindiH5pyFile.from_hdf5_file(url) as f:
-        f.write_lindi_file("example.nwb.lindi")
+        f.write_lindi_file("example.nwb.lindi.tar")
 
     cache = lindi.LocalCache()
 
     print('Reading LINDI file')
-    with lindi.LindiH5pyFile.from_lindi_file("example.nwb.lindi", mode="r", local_cache=cache) as f:
+    with lindi.LindiH5pyFile.from_lindi_file("example.nwb.lindi.tar", mode="r", local_cache=cache) as f:
         electrical_series_path = '/acquisition/ElectricalSeries'
 
         print("Loading recording")
@@ -82,7 +82,7 @@ def preprocess_ephys():
     print(f'Compression ratio: {compression_ratio}')
 
     print("Writing filtered recording to LINDI file")
-    with lindi.LindiH5pyFile.from_lindi_file("example.nwb.lindi", mode="a", local_cache=cache) as f:
+    with lindi.LindiH5pyFile.from_lindi_file("example.nwb.lindi.tar", mode="a", local_cache=cache) as f:
         with pynwb.NWBHDF5IO(file=f, mode='a') as io:
             nwbfile = io.read()
 

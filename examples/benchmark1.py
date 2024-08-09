@@ -99,7 +99,7 @@ def benchmark_h5py(file_path, num_small_datasets, num_large_datasets, small_size
 
 if __name__ == "__main__":
     file_path_h5 = "benchmark.h5"
-    file_path_lindi = "benchmark.lindi"
+    file_path_lindi = "benchmark.lindi.tar"
     file_path_dat = "benchmark.dat"
     file_path_zarr = "benchmark.zarr"
     num_small_datasets = 0
