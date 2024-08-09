@@ -347,7 +347,7 @@ class LindiH5pyFile(h5py.File):
         Parameters
         ----------
         filename : str
-            The filename to write to. It must end with '.lindi.json'.
+            The filename to write to. It must end with '.lindi.json' or '.lindi.tar'.
         generation_metadata : Union[dict, None], optional
             The optional generation metadata to include in the reference file
             system, by default None. This information dict is simply set to the
