@@ -330,6 +330,7 @@ def _read_bytes_from_url_or_path(url_or_path: str, offset: int, length: int):
                     delay = 0.1 * 2 ** try_num
                     print(f'Retry load data from {url_or_path} in {delay} seconds')
                     time.sleep(delay)
+        raise Exception(f"Failed to load data from {url_or_path}")
     else:
         with open(url_or_path, 'rb') as f:
             f.seek(offset)
