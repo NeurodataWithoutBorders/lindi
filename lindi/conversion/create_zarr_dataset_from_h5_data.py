@@ -113,13 +113,14 @@ def create_zarr_dataset_from_h5_data(
         if _is_numeric_dtype(h5_dtype) or h5_dtype in [bool, np.bool_]:  # integer, unsigned integer, float, bool
             # This is the normal case of a chunked dataset with a numeric (or boolean) dtype
             if h5_chunks is None:
-                # We require that chunks be specified when writing a dataset with more
-                # than 1 million elements. This is because zarr may default to
-                # suboptimal chunking. Note that the default for h5py is to use the
-                # entire dataset as a single chunk.
-                total_size = int(np.prod(h5_shape)) if len(h5_shape) > 0 else 1
-                if total_size > 1000 * 1000:
-                    raise Exception(f'Chunks must be specified explicitly when writing dataset of shape {h5_shape}')
+                # # We require that chunks be specified when writing a dataset with more
+                # # than 1 million elements. This is because zarr may default to
+                # # suboptimal chunking. Note that the default for h5py is to use the
+                # # entire dataset as a single chunk.
+                # total_size = int(np.prod(h5_shape)) if len(h5_shape) > 0 else 1
+                # if total_size > 1000 * 1000:
+                #     raise Exception(f'Chunks must be specified explicitly when writing dataset of shape {h5_shape}')
+                h5_chunks = _get_default_chunks(h5_shape, h5_dtype)
             # Note that we are not using the same filters as in the h5py dataset
             return zarr_parent_group.create_dataset(
                 name,
@@ -252,3 +253,15 @@ def h5_object_data_to_zarr_data(h5_data: Union[np.ndarray, list], *, h5f: Union[
         else:
             raise Exception(f'Cannot handle value of type {type(val)} in dataset {label} with dtype {h5_data.dtype} and shape {h5_data.shape}')
     return zarr_data
+
+
+def _get_default_chunks(shape: Tuple, dtype: Any) -> Tuple:
+    dtype_size = np.dtype(dtype).itemsize
+    shape_prod_0 = np.prod(shape[1:])
+    optimal_chunk_size_bytes = 1024 * 1024 * 20  # 20 MB
+    optimal_chunk_size = optimal_chunk_size_bytes // (dtype_size * shape_prod_0)
+    if optimal_chunk_size <= shape[0]:
+        return shape
+    if optimal_chunk_size < 1:
+        return (1,) + shape[1:]
+    return (optimal_chunk_size,) + shape[1:]
