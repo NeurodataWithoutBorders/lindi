@@ -1,5 +1,6 @@
 from typing import Literal, Dict, Union
 import json
+import time
 import base64
 import numpy as np
 import requests
@@ -308,17 +309,27 @@ def _read_bytes_from_url_or_path(url_or_path: str, offset: int, length: int):
     """
     from ..LindiRemfile.LindiRemfile import _resolve_url
     if url_or_path.startswith('http://') or url_or_path.startswith('https://'):
-        url_resolved = _resolve_url(url_or_path)  # handle DANDI auth
-        range_start = offset
-        range_end = offset + length - 1
-        range_header = f"bytes={range_start}-{range_end}"
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3",
-            "Range": range_header
-        }
-        response = requests.get(url_resolved, headers=headers)
-        response.raise_for_status()
-        return response.content
+        num_retries = 8
+        for try_num in range(num_retries):
+            try:
+                url_resolved = _resolve_url(url_or_path)  # handle DANDI auth
+                range_start = offset
+                range_end = offset + length - 1
+                range_header = f"bytes={range_start}-{range_end}"
+                headers = {
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3",
+                    "Range": range_header
+                }
+                response = requests.get(url_resolved, headers=headers)
+                response.raise_for_status()
+                return response.content
+            except Exception as e:
+                if try_num == num_retries - 1:
+                    raise e
+                else:
+                    delay = 0.1 * 2 ** try_num
+                    print(f'Retry load data from {url_or_path} in {delay} seconds')
+                    time.sleep(delay)
     else:
         with open(url_or_path, 'rb') as f:
             f.seek(offset)
