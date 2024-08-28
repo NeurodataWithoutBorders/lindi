@@ -1,4 +1,5 @@
 from typing import Literal, Dict, Union
+import os
 import json
 import time
 import base64
@@ -169,12 +170,20 @@ class LindiReferenceFileSystemStore(ZarrStore):
                     raise Exception(f"Cannot resolve relative path {url_or_path} without source file path")
                 if self._source_tar_file is None:
                     raise Exception(f"Cannot resolve relative path {url_or_path} without source file type")
-                if self._source_tar_file:
+                if self._source_tar_file and (not self._source_tar_file._dir_representation):
                     start_byte, end_byte = self._source_tar_file.get_file_byte_range(file_name=url_or_path[2:])
                     if start_byte + offset + length > end_byte:
                         raise Exception(f"Chunk {key} is out of bounds in tar file {url_or_path}")
                     url_or_path = self._source_url_or_path
                     offset = offset + start_byte
+                elif self._source_tar_file and self._source_tar_file._dir_representation:
+                    fname = self._source_tar_file._tar_path_or_url + '/' + url_or_path[2:]
+                    if not os.path.exists(fname):
+                        raise Exception(f"File does not exist: {fname}")
+                    file_size = os.path.getsize(fname)
+                    if offset + length > file_size:
+                        raise Exception(f"Chunk {key} is out of bounds in tar file {url_or_path}: {fname}")
+                    url_or_path = fname
                 else:
                     if is_url:
                         raise Exception(f"Cannot resolve relative path {url_or_path} for URL that is not a tar")

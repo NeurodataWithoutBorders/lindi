@@ -159,7 +159,7 @@ class LindiH5pyFile(h5py.File):
                     _close_source_tar_file_on_close=_close_source_tar_file_on_close
                 )
             else:
-                # local file
+                # local file (or directory)
                 need_to_create_empty_file = False
                 if mode == "r":
                     # Readonly, file must exist (default)
@@ -185,9 +185,10 @@ class LindiH5pyFile(h5py.File):
                 else:
                     raise Exception(f"Unhandled mode: {mode}")
                 if need_to_create_empty_file:
-                    tar = rfs.endswith(".tar")
-                    _create_empty_lindi_file(rfs, tar=tar)
-                data, tar_file = _load_rfs_from_local_file(rfs)
+                    is_tar = rfs.endswith(".tar")
+                    is_dir = rfs.endswith(".d")
+                    _create_empty_lindi_file(rfs, is_tar=is_tar, is_dir=is_dir)
+                data, tar_file = _load_rfs_from_local_file_or_dir(rfs)
                 assert isinstance(data, dict)  # prevent infinite recursion
                 return LindiH5pyFile.from_reference_file_system(
                     data,
@@ -368,6 +369,8 @@ class LindiH5pyFile(h5py.File):
             _write_rfs_to_file(rfs=rfs, output_file_name=filename)
         elif filename.endswith(".lindi.tar"):
             LindiTarFile.create(filename, rfs=rfs)
+        elif filename.endswith(".d"):
+            LindiTarFile.create(filename, rfs=rfs, dir_representation=True)
         else:
             raise Exception("Unhandled file extension")
 
@@ -683,7 +686,7 @@ def _load_rfs_from_url(url: str):
         with tempfile.TemporaryDirectory() as tmpdir:
             tmp_fname = f"{tmpdir}/temp.lindi.json"
             _download_file(url, tmp_fname)
-            data, tar_file = _load_rfs_from_local_file(tmp_fname)
+            data, tar_file = _load_rfs_from_local_file_or_dir(tmp_fname)
             return data, tar_file
     else:
         # if it's a large file, we start by downloading the entry file and then the index file
@@ -703,7 +706,12 @@ def _load_rfs_from_url(url: str):
                     return json.load(f), None
 
 
-def _load_rfs_from_local_file(fname: str):
+def _load_rfs_from_local_file_or_dir(fname: str):
+    if os.path.isdir(fname):
+        dir_file = LindiTarFile(fname, dir_representation=True)
+        rfs_json = dir_file.read_file("lindi.json")
+        rfs = json.loads(rfs_json)
+        return rfs, dir_file
     file_size = os.path.getsize(fname)
     if file_size >= 512:
         # Read first bytes to check if it's a tar file
@@ -769,9 +777,13 @@ empty_rfs = {
 }
 
 
-def _create_empty_lindi_file(fname: str, *, tar: bool = False):
-    if tar:
+def _create_empty_lindi_file(fname: str, *, is_tar: bool = False, is_dir: bool = False):
+    if is_tar:
+        if is_dir:
+            raise Exception("Cannot be both tar and dir")
         LindiTarFile.create(fname, rfs=empty_rfs)
+    elif is_dir:
+        LindiTarFile.create(fname, rfs=empty_rfs, dir_representation=True)
     else:
         with open(fname, "w") as f:
             json.dump(empty_rfs, f)
@@ -791,25 +803,31 @@ def _update_internal_references_to_remote_tar_file(rfs: dict, remote_url: str, r
                 url = v[0]
                 if url.startswith('./'):
                     internal_path = url[2:]
-                    info = remote_tar_file.get_file_info(internal_path)
-                    start_byte = info['d']
-                    num_bytes = info['s']
-                    v[0] = remote_url
-                    v[1] = start_byte + v[1]
-                    if v[1] + v[2] > start_byte + num_bytes:
-                        raise Exception(f"Reference goes beyond end of file: {v[1] + v[2]} > {num_bytes}")
-                    # v[2] stays the same, it is the size
+                    if not remote_tar_file._dir_representation:
+                        info = remote_tar_file.get_file_info(internal_path)
+                        start_byte = info['d']
+                        num_bytes = info['s']
+                        v[0] = remote_url
+                        v[1] = start_byte + v[1]
+                        if v[1] + v[2] > start_byte + num_bytes:
+                            raise Exception(f"Reference goes beyond end of file: {v[1] + v[2]} > {num_bytes}")
+                        # v[2] stays the same, it is the size
+                    else:
+                        v[0] = remote_url + '/' + internal_path
             elif len(v) == 1:
                 # This is a reference to the full file
                 url = v[0]
                 if url.startswith('./'):
                     internal_path = url[2:]
-                    info = remote_tar_file.get_file_info(internal_path)
-                    start_byte = info['d']
-                    num_bytes = info['s']
-                    v[0] = remote_url
-                    v.append(start_byte)
-                    v.append(num_bytes)
+                    if not remote_tar_file._dir_representation:
+                        info = remote_tar_file.get_file_info(internal_path)
+                        start_byte = info['d']
+                        num_bytes = info['s']
+                        v[0] = remote_url
+                        v.append(start_byte)
+                        v.append(num_bytes)
+                    else:
+                        v[0] = remote_url + '/' + internal_path
             else:
                 raise Exception(f"Unexpected length for reference: {len(v)}")
 
