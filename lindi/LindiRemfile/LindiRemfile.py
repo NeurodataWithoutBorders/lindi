@@ -2,6 +2,7 @@ from typing import Union
 import time
 import os
 import requests
+from .additional_url_resolvers import get_additional_url_resolvers
 from ..LocalCache.LocalCache import LocalCache
 
 default_min_chunk_size = 128 * 1024  # This is different from Remfile - this is an important decision because it determines the chunk size in the LocalCache
@@ -41,6 +42,7 @@ class LindiRemfile:
             Does not support using multiple threads
             Does not use memory cache if LocalCache is specified
             Handles DANDI authentication
+            Handles additional_url_resolver
 
         A note:
             In the context of LINDI, this LindiRemfile is going to be used for loading
@@ -367,6 +369,8 @@ def _resolve_dandi_url(url: str):
 
 
 def _resolve_url(url: str):
+    for aur in get_additional_url_resolvers():
+        url = aur(url)
     if url in _global_resolved_urls:
         elapsed = time.time() - _global_resolved_urls[url]["timestamp"]
         if elapsed < 60 * 10:
