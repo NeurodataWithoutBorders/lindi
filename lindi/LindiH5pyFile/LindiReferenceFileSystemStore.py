@@ -1,10 +1,14 @@
 from typing import Literal, Dict, Union
+import os
 import json
+import time
 import base64
+import numpy as np
 import requests
 from zarr.storage import Store as ZarrStore
 
 from ..LocalCache.LocalCache import ChunkTooLargeError, LocalCache
+from ..tar.lindi_tar import LindiTarFile
 
 
 class LindiReferenceFileSystemStore(ZarrStore):
@@ -68,7 +72,15 @@ class LindiReferenceFileSystemStore(ZarrStore):
     It is okay for rfs to be modified outside of this class, and the changes
     will be reflected immediately in the store.
     """
-    def __init__(self, rfs: dict, *, mode: Literal["r", "r+"] = "r+", local_cache: Union[LocalCache, None] = None):
+    def __init__(
+            self,
+            rfs: dict,
+            *,
+            mode: Literal["r", "r+"] = "r+",
+            local_cache: Union[LocalCache, None] = None,
+            _source_url_or_path: Union[str, None] = None,
+            _source_tar_file: Union[LindiTarFile, None] = None
+    ):
         """
         Create a LindiReferenceFileSystemStore.
 
@@ -113,6 +125,8 @@ class LindiReferenceFileSystemStore(ZarrStore):
         self.rfs = rfs
         self.mode = mode
         self.local_cache = local_cache
+        self._source_url_or_path = _source_url_or_path
+        self._source_tar_file = _source_tar_file
 
     # These methods are overridden from MutableMapping
     def __contains__(self, key: object):
@@ -121,6 +135,16 @@ class LindiReferenceFileSystemStore(ZarrStore):
         return key in self.rfs["refs"]
 
     def __getitem__(self, key: str):
+        val = self._get_helper(key)
+
+        if val is not None:
+            padded_size = _get_padded_size(self, key, val)
+            if padded_size is not None:
+                val = _pad_chunk(val, padded_size)
+
+        return val
+
+    def _get_helper(self, key: str):
         if key not in self.rfs["refs"]:
             raise KeyError(key)
         x = self.rfs["refs"][key]
@@ -134,22 +158,52 @@ class LindiReferenceFileSystemStore(ZarrStore):
         elif isinstance(x, list):
             if len(x) != 3:
                 raise Exception("list must have 3 elements")  # pragma: no cover
-            url = x[0]
+            url_or_path = x[0]
             offset = x[1]
             length = x[2]
-            if '{{' in url and '}}' in url and 'templates' in self.rfs:
+            if '{{' in url_or_path and '}}' in url_or_path and 'templates' in self.rfs:
                 for k, v in self.rfs["templates"].items():
-                    url = url.replace("{{" + k + "}}", v)
-            if self.local_cache is not None:
-                x = self.local_cache.get_remote_chunk(url=url, offset=offset, size=length)
-                if x is not None:
-                    return x
-            val = _read_bytes_from_url_or_path(url, offset, length)
-            if self.local_cache is not None:
-                try:
-                    self.local_cache.put_remote_chunk(url=url, offset=offset, size=length, data=val)
-                except ChunkTooLargeError:
-                    print(f'Warning: unable to cache chunk of size {length} on LocalCache (key: {key})')
+                    url_or_path = url_or_path.replace("{{" + k + "}}", v)
+            is_url = url_or_path.startswith('http://') or url_or_path.startswith('https://')
+            if url_or_path.startswith('./'):
+                if self._source_url_or_path is None:
+                    raise Exception(f"Cannot resolve relative path {url_or_path} without source file path")
+                if self._source_tar_file is None:
+                    raise Exception(f"Cannot resolve relative path {url_or_path} without source file type")
+                if self._source_tar_file and (not self._source_tar_file._dir_representation):
+                    start_byte, end_byte = self._source_tar_file.get_file_byte_range(file_name=url_or_path[2:])
+                    if start_byte + offset + length > end_byte:
+                        raise Exception(f"Chunk {key} is out of bounds in tar file {url_or_path}")
+                    url_or_path = self._source_url_or_path
+                    offset = offset + start_byte
+                elif self._source_tar_file and self._source_tar_file._dir_representation:
+                    fname = self._source_tar_file._tar_path_or_url + '/' + url_or_path[2:]
+                    if not os.path.exists(fname):
+                        raise Exception(f"File does not exist: {fname}")
+                    file_size = os.path.getsize(fname)
+                    if offset + length > file_size:
+                        raise Exception(f"Chunk {key} is out of bounds in tar file {url_or_path}: {fname}")
+                    url_or_path = fname
+                else:
+                    if is_url:
+                        raise Exception(f"Cannot resolve relative path {url_or_path} for URL that is not a tar")
+                    else:
+                        source_file_parent_dir = '/'.join(self._source_url_or_path.split('/')[:-1])
+                        abs_path = source_file_parent_dir + '/' + url_or_path[2:]
+                        url_or_path = abs_path
+            if is_url:
+                if self.local_cache is not None:
+                    x = self.local_cache.get_remote_chunk(url=url_or_path, offset=offset, size=length)
+                    if x is not None:
+                        return x
+                val = _read_bytes_from_url_or_path(url_or_path, offset, length)
+                if self.local_cache is not None:
+                    try:
+                        self.local_cache.put_remote_chunk(url=url_or_path, offset=offset, size=length, data=val)
+                    except ChunkTooLargeError:
+                        print(f'Warning: unable to cache chunk of size {length} on LocalCache (key: {key})')
+            else:
+                val = _read_bytes_from_url_or_path(url_or_path, offset, length)
             return val
         else:
             # should not happen given checks in __init__, but self.rfs is mutable
@@ -241,6 +295,22 @@ class LindiReferenceFileSystemStore(ZarrStore):
                 if url in template_names_for_urls:
                     v[0] = '{{' + template_names_for_urls[url] + '}}'
 
+    @staticmethod
+    def remove_templates_in_rfs(rfs: dict) -> None:
+        """
+        Utility for removing templates from an rfs. This is the opposite of
+        use_templates_in_rfs.
+        """
+        templates0 = rfs.get('templates', {})
+        for k, v in rfs['refs'].items():
+            if isinstance(v, list):
+                url = v[0]
+                if '{{' in url and '}}' in url:
+                    template_name = url[2:-2].strip()
+                    if template_name in templates0:
+                        v[0] = templates0[template_name]
+        rfs['templates'] = {}
+
 
 def _read_bytes_from_url_or_path(url_or_path: str, offset: int, length: int):
     """
@@ -248,18 +318,74 @@ def _read_bytes_from_url_or_path(url_or_path: str, offset: int, length: int):
     """
     from ..LindiRemfile.LindiRemfile import _resolve_url
     if url_or_path.startswith('http://') or url_or_path.startswith('https://'):
-        url_resolved = _resolve_url(url_or_path)  # handle DANDI auth
-        range_start = offset
-        range_end = offset + length - 1
-        range_header = f"bytes={range_start}-{range_end}"
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3",
-            "Range": range_header
-        }
-        response = requests.get(url_resolved, headers=headers)
-        response.raise_for_status()
-        return response.content
+        num_retries = 8
+        for try_num in range(num_retries):
+            try:
+                url_resolved = _resolve_url(url_or_path)  # handle DANDI auth
+                range_start = offset
+                range_end = offset + length - 1
+                range_header = f"bytes={range_start}-{range_end}"
+                headers = {
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3",
+                    "Range": range_header
+                }
+                response = requests.get(url_resolved, headers=headers)
+                response.raise_for_status()
+                return response.content
+            except Exception as e:
+                if try_num == num_retries - 1:
+                    raise e
+                else:
+                    delay = 0.1 * 2 ** try_num
+                    print(f'Retry load data from {url_or_path} in {delay} seconds')
+                    time.sleep(delay)
+        raise Exception(f"Failed to load data from {url_or_path}")
     else:
         with open(url_or_path, 'rb') as f:
             f.seek(offset)
             return f.read(length)
+
+
+def _is_chunk_base_key(base_key: str) -> bool:
+    a = base_key.split('.')
+    if len(a) == 0:
+        return False
+    for x in a:
+        # check if integer
+        try:
+            int(x)
+        except ValueError:
+            return False
+    return True
+
+
+def _get_itemsize(dtype: str) -> int:
+    d = np.dtype(dtype)
+    return d.itemsize
+
+
+def _pad_chunk(data: bytes, expected_chunk_size: int) -> bytes:
+    return data + b'\0' * (expected_chunk_size - len(data))
+
+
+def _get_padded_size(store, key: str, val: bytes):
+    # If the key is a chunk and it's smaller than the expected size, then we
+    # need to pad it with zeros. This can happen if this is the final chunk
+    # in a contiguous hdf5 dataset. See
+    # https://github.com/NeurodataWithoutBorders/lindi/pull/84
+    base_key = key.split('/')[-1]
+    if val and _is_chunk_base_key(base_key):
+        parent_key = key.split('/')[:-1]
+        zarray_key = '/'.join(parent_key) + '/.zarray'
+        if zarray_key in store:
+            zarray_json = store.__getitem__(zarray_key)
+            assert isinstance(zarray_json, bytes)
+            zarray = json.loads(zarray_json)
+            chunk_shape = zarray['chunks']
+            dtype = zarray['dtype']
+            if np.dtype(dtype).kind in ['i', 'u', 'f']:
+                expected_chunk_size = int(np.prod(chunk_shape)) * _get_itemsize(dtype)
+                if len(val) < expected_chunk_size:
+                    return expected_chunk_size
+
+    return None
