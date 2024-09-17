@@ -61,6 +61,9 @@ def create_zarr_dataset_from_h5_data(
         if zarr_compressor != 'default' and zarr_compressor is not None:
             raise Exception('zarr_compressor is not supported for scalar datasets')
 
+        if np.issubdtype(h5_dtype, np.complexfloating):
+            raise Exception(f'Complex scalar datasets are not supported: dataset {label} with dtype {h5_dtype}')
+
         if _is_numeric_dtype(h5_dtype) or h5_dtype in [bool, np.bool_]:
             # Handle the simple numeric types
             ds = zarr_parent_group.create_dataset(
@@ -109,6 +112,9 @@ def create_zarr_dataset_from_h5_data(
         if isinstance(h5_data, list):
             # If we have a list, then we need to convert it to an array
             h5_data = np.array(h5_data)
+
+        if np.issubdtype(h5_dtype, np.complexfloating):
+            raise Exception(f'Complex datasets are not supported: dataset {label} with dtype {h5_dtype}')
 
         if _is_numeric_dtype(h5_dtype) or h5_dtype in [bool, np.bool_]:  # integer, unsigned integer, float, bool
             # This is the normal case of a chunked dataset with a numeric (or boolean) dtype
