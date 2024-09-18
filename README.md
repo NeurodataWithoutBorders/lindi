@@ -26,7 +26,7 @@ LINDI files are particularly useful in the following scenarios:
 
 **Why not use Zarr?**
 
-When comparing LINDI to Zarr it should be noted that LINDI files are in fact valid Zarr archives that can be accessed via the Zarr API. Indeed, a LINDI file is a special type of Zarr store that allows for external links to chunks (see [kerchunk](https://github.com/fsspec/kerchunk)) and special conventions for represeenting HDF5 features used by NWB that are not natively supported in Zarr.
+When comparing LINDI to Zarr it should be noted that LINDI files are in fact valid Zarr archives that can be accessed via the Zarr API. Indeed, a LINDI file is a special type of Zarr store that allows for external links to chunks (see [kerchunk](https://github.com/fsspec/kerchunk)) and special conventions for representing HDF5 features used by NWB that are not natively supported in Zarr.
 
 Traditional Zarr directory stores have some limitations. First, Zarr archives often consist of tens of thousands of individual files, making them cumbersome to manage. In contrast, LINDI adopts a single file approach similar to HDF5, enhancing manageability while retaining cloud-friendliness. Another limitation (as mentioned) is the lack of a mechanism to reference data chunks in external datasets as LINDI has. Finally, Zarr does not natively support certain features utilized by NWB, such as compound data types and references. These are supported by both HDF5 and LINDI.
 
@@ -98,7 +98,7 @@ with lindi.LindiH5pyFile.from_lindi_file('example.lindi.tar', mode='r') as f:
 
 **Loading a remote NWB file from DANDI**
 
-With LINDI, it is easy to load an NWB file stored on DANDI. The following example demonstrates how to load an NWB file from DANDI, view it using the pynwb library, and save it as a relatively smalle .lindi.json file. The LINDI JSON file can then be read directly to access the NWB file.
+With LINDI, it is easy to load an NWB file stored on DANDI. The following example demonstrates how to load an NWB file from DANDI, view it using the pynwb library, and save it as a relatively smaller .lindi.json file. The LINDI JSON file can then be read directly to access the NWB file.
 
 ```python
 import json
