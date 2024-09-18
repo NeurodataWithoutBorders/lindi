@@ -12,7 +12,7 @@ A LINDI file is a cloud-friendly format for storing scientific data, designed to
 
 In the JSON format, the hierarchical group structure, attributes, and small datasets are stored in a JSON structure, with references to larger data chunks stored in external files (inspired by [kerchunk](https://github.com/fsspec/kerchunk)). This format is human-readable and easily inspected and edited.
 
-The binary format is a .tar file that contains the JSON file (lindi.json) along with optional internal data chunks referenced by the JSON file, in addition to external chunks. This format allows for efficient cloud storage and random access. This format can be used to create a new NWB file that builds on an existing NWB file without duplicating it and adds new data objects (see below).
+The binary format is a .tar file that contains the JSON file (lindi.json) along with optional internal data chunks referenced by the JSON file, in addition to external chunks. This format can be used to create a new NWB file that builds on an existing NWB file without duplicating it and adds new data objects (see below).
 
 The directory format is similar to the .tar format but it stores the lindi.json and the binary chunks in a directory rather than in a .tar.
 
@@ -22,7 +22,7 @@ LINDI files are particularly useful in the following scenarios:
 
 **Efficient NWB File Representation on DANDI**: A LINDI JSON file can represent an NWB file stored on the DANDI Archive (or other remote system). By downloading a condensed JSON file, the entire group structure can be retrieved in a single request, facilitating efficient loading of NWB files. For instance, [Neurosift](https://github.com/flatironinstitute/neurosift) utilizes pre-generated LINDI JSON files to streamline the loading process of NWB files from DANDI ([here is an example](https://neurosift.app/?p=/nwb&url=https://api.dandiarchive.org/api/assets/c04f6b30-82bf-40e1-9210-34f0bcd8be24/download/&dandisetId=000409&dandisetVersion=draft)).
 
-**Creating Amended NWB Files**: LINDI allows for the creation of amended NWB files that add new data objects to existing NWB files without duplicating the entire file. This is achieved by generating a binary or directory LINDI file that references the original NWB file and includes additional data objects stored as internal data chunks. This approach saves storage space by reducing redundancy and establishes dependencies between NWB files.
+**Creating Amended NWB Files**: LINDI allows for the creation of amended NWB files that add new data objects to existing NWB files without duplicating the entire file. This is achieved by generating a binary or directory LINDI file that references the original NWB file and includes additional data objects stored as internal data chunks. This approach saves storage space by reducing redundancy and establishing dependencies between NWB files.
 
 **Why not use Zarr?**
 
