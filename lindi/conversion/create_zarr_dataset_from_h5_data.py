@@ -266,7 +266,7 @@ def _get_default_chunks(shape: Tuple, dtype: Any) -> Tuple:
     shape_prod_0 = np.prod(shape[1:])
     optimal_chunk_size_bytes = 1024 * 1024 * 20  # 20 MB
     optimal_chunk_size = optimal_chunk_size_bytes // (dtype_size * shape_prod_0)
-    if optimal_chunk_size <= shape[0]:
+    if optimal_chunk_size > shape[0]:
         return shape
     if optimal_chunk_size < 1:
         return (1,) + shape[1:]
