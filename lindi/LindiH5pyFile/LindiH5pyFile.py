@@ -1,4 +1,4 @@
-from typing import Union, Literal, Callable
+from typing import Union, Literal
 import os
 import json
 import tempfile
@@ -12,8 +12,6 @@ from .LindiH5pyAttributes import LindiH5pyAttributes
 from .LindiH5pyReference import LindiH5pyReference
 from .LindiReferenceFileSystemStore import LindiReferenceFileSystemStore
 
-from ..LindiStagingStore.StagingArea import StagingArea
-from ..LindiStagingStore.LindiStagingStore import LindiStagingStore, _apply_templates
 from ..LindiH5ZarrStore.LindiH5ZarrStoreOpts import LindiH5ZarrStoreOpts
 
 from ..LocalCache.LocalCache import LocalCache
@@ -25,10 +23,6 @@ from ..tar.LindiTarStore import LindiTarStore
 
 
 LindiFileMode = Literal["r", "r+", "w", "w-", "x", "a"]
-
-# Accepts a string path to a file, uploads (or copies) it somewhere, and returns a string URL
-# (or local path)
-UploadFileFunc = Callable[[str], str]
 
 
 class LindiH5pyFile(h5py.File):
@@ -53,7 +47,7 @@ class LindiH5pyFile(h5py.File):
         self._is_open = True
 
     @staticmethod
-    def from_lindi_file(url_or_path: str, *, mode: LindiFileMode = "r", staging_area: Union[StagingArea, None] = None, local_cache: Union[LocalCache, None] = None):
+    def from_lindi_file(url_or_path: str, *, mode: LindiFileMode = "r", local_cache: Union[LocalCache, None] = None):
         """
         Create a LindiH5pyFile from a URL or path to a .lindi.json file.
 
@@ -62,7 +56,6 @@ class LindiH5pyFile(h5py.File):
         return LindiH5pyFile.from_reference_file_system(
             url_or_path,
             mode=mode,
-            staging_area=staging_area,
             local_cache=local_cache
         )
 
@@ -108,7 +101,7 @@ class LindiH5pyFile(h5py.File):
         )
 
     @staticmethod
-    def from_reference_file_system(rfs: Union[dict, str, None], *, mode: LindiFileMode = "r", staging_area: Union[StagingArea, None] = None, local_cache: Union[LocalCache, None] = None, _source_url_or_path: Union[str, None] = None, _source_tar_file: Union[LindiTarFile, None] = None, _close_source_tar_file_on_close: bool = False):
+    def from_reference_file_system(rfs: Union[dict, str, None], *, mode: LindiFileMode = "r", local_cache: Union[LocalCache, None] = None, _source_url_or_path: Union[str, None] = None, _source_tar_file: Union[LindiTarFile, None] = None, _close_source_tar_file_on_close: bool = False):
         """
         Create a LindiH5pyFile from a reference file system.
 
@@ -120,9 +113,6 @@ class LindiH5pyFile(h5py.File):
             be created.
         mode : Literal["r", "r+", "w", "w-", "x", "a"], optional
             The mode to open the file object in, by default "r".
-        staging_area : Union[StagingArea, None], optional
-            The staging area to use for writing data, preparing for upload. This
-            is only used in write mode, by default None.
         local_cache : Union[LocalCache, None], optional
             The local cache to use for caching data, by default None.
         _source_url_or_path : Union[str, None], optional
@@ -152,7 +142,6 @@ class LindiH5pyFile(h5py.File):
                 return LindiH5pyFile.from_reference_file_system(
                     data,
                     mode=mode,
-                    staging_area=staging_area,
                     local_cache=local_cache,
                     _source_tar_file=tar_file,
                     _source_url_or_path=rfs,
@@ -193,7 +182,6 @@ class LindiH5pyFile(h5py.File):
                 return LindiH5pyFile.from_reference_file_system(
                     data,
                     mode=mode,
-                    staging_area=staging_area,
                     local_cache=local_cache,
                     _source_url_or_path=rfs,
                     _source_tar_file=tar_file,
@@ -208,11 +196,7 @@ class LindiH5pyFile(h5py.File):
                 _source_tar_file=_source_tar_file
             )
             source_is_url = _source_url_or_path is not None and (_source_url_or_path.startswith("http://") or _source_url_or_path.startswith("https://"))
-            if staging_area:
-                if _source_tar_file and not source_is_url:
-                    raise Exception("Cannot use staging area when source is a local tar file")
-                store = LindiStagingStore(base_store=store, staging_area=staging_area)
-            elif _source_url_or_path and _source_tar_file and not source_is_url:
+            if _source_url_or_path and _source_tar_file and not source_is_url:
                 store = LindiTarStore(base_store=store, tar_file=_source_tar_file)
             return LindiH5pyFile.from_zarr_store(
                 store,
@@ -274,9 +258,6 @@ class LindiH5pyFile(h5py.File):
         if self._zarr_store is None:
             raise Exception("Cannot convert to reference file system without zarr store")
         zarr_store = self._zarr_store
-        if isinstance(zarr_store, LindiStagingStore):
-            zarr_store.consolidate_chunks()
-            zarr_store = zarr_store._base_store
         if isinstance(zarr_store, LindiTarStore):
             zarr_store = zarr_store._base_store
         if isinstance(zarr_store, LindiH5ZarrStore):
@@ -288,58 +269,6 @@ class LindiH5pyFile(h5py.File):
         LindiReferenceFileSystemStore.replace_meta_file_contents_with_dicts_in_rfs(rfs_copy)
         LindiReferenceFileSystemStore.use_templates_in_rfs(rfs_copy)
         return rfs_copy
-
-    def upload(
-        self,
-        *,
-        on_upload_blob: UploadFileFunc,
-        on_upload_main: UploadFileFunc
-    ):
-        """
-        Consolidate the chunks in the staging area, upload them to a storage
-        system, updating the references in the base store, and then upload the
-        updated reference file system .json file.
-
-        Parameters
-        ----------
-        on_upload_blob : StoreFileFunc
-            A function that takes a string path to a blob file, uploads or copies it
-            somewhere, and returns a string URL (or local path).
-        on_upload_main : StoreFileFunc
-            A function that takes a string path to the main .json file, stores
-            it somewhere, and returns a string URL (or local path).
-
-        Returns
-        -------
-        str
-            The URL (or local path) of the uploaded reference file system .json
-            file.
-        """
-        rfs = self.to_reference_file_system()
-        blobs_to_upload = set()
-        # Get the set of all local URLs in rfs['refs']
-        for k, v in rfs['refs'].items():
-            if isinstance(v, list) and len(v) == 3:
-                url = _apply_templates(v[0], rfs.get('templates', {}))
-                if not url.startswith("http://") and not url.startswith("https://"):
-                    local_path = url
-                    blobs_to_upload.add(local_path)
-        # Upload each of the local blobs using the given upload function and get a mapping from
-        # the original file paths to the URLs of the uploaded files
-        blob_mapping = _upload_blobs(blobs_to_upload, on_upload_blob=on_upload_blob)
-        # Replace the local URLs in rfs['refs'] with URLs of the uploaded files
-        for k, v in rfs['refs'].items():
-            if isinstance(v, list) and len(v) == 3:
-                url1 = _apply_templates(v[0], rfs.get('templates', {}))
-                url2 = blob_mapping.get(url1, None)
-                if url2 is not None:
-                    v[0] = url2
-        # Write the updated LINDI file to a temp directory and upload it
-        with tempfile.TemporaryDirectory() as tmpdir:
-            rfs_fname = f"{tmpdir}/rfs.lindi.json"
-            LindiReferenceFileSystemStore.use_templates_in_rfs(rfs)
-            _write_rfs_to_file(rfs=rfs, output_file_name=rfs_fname)
-            return on_upload_main(rfs_fname)
 
     def write_lindi_file(self, filename: str, *, generation_metadata: Union[dict, None] = None):
         """
@@ -568,15 +497,6 @@ class LindiH5pyFile(h5py.File):
             raise Exception("Cannot require dataset in read-only mode")
         return self._the_group.require_dataset(name, shape, dtype, exact=exact, **kwds)
 
-    ##############################
-    # staging store
-    @property
-    def staging_store(self):
-        store = self._zarr_store
-        if not isinstance(store, LindiStagingStore):
-            return None
-        return store
-
 
 def _download_file(url: str, filename: str) -> None:
     headers = {
@@ -648,35 +568,6 @@ def _deep_copy(obj):
         return tuple(_deep_copy(v) for v in obj)
     else:
         return obj
-
-
-def _upload_blobs(
-    blobs: set,
-    *,
-    on_upload_blob: UploadFileFunc
-) -> dict:
-    """
-    Upload all the blobs in a set to a storage system and return a mapping from
-    the original file paths to the URLs of the uploaded files.
-    """
-    blob_mapping = {}
-    for i, blob in enumerate(blobs):
-        size = os.path.getsize(blob)
-        print(f'Uploading blob {i + 1} of {len(blobs)} {blob} ({_format_size_bytes(size)})')
-        blob_url = on_upload_blob(blob)
-        blob_mapping[blob] = blob_url
-    return blob_mapping
-
-
-def _format_size_bytes(size_bytes: int) -> str:
-    if size_bytes < 1024:
-        return f"{size_bytes} bytes"
-    elif size_bytes < 1024 * 1024:
-        return f"{size_bytes / 1024:.1f} KB"
-    elif size_bytes < 1024 * 1024 * 1024:
-        return f"{size_bytes / 1024 / 1024:.1f} MB"
-    else:
-        return f"{size_bytes / 1024 / 1024 / 1024:.1f} GB"
 
 
 def _load_rfs_from_url(url: str):
@@ -832,3 +723,10 @@ def _update_internal_references_to_remote_tar_file(rfs: dict, remote_url: str, r
                 raise Exception(f"Unexpected length for reference: {len(v)}")
 
     LindiReferenceFileSystemStore.use_templates_in_rfs(rfs)
+
+
+def _apply_templates(x: str, templates: dict) -> str:
+    if '{{' in x and '}}' in x:
+        for key, val in templates.items():
+            x = x.replace('{{' + key + '}}', val)
+    return x
