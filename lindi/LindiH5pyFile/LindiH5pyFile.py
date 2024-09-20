@@ -26,7 +26,7 @@ LindiFileMode = Literal["r", "r+", "w", "w-", "x", "a"]
 
 
 class LindiH5pyFile(h5py.File):
-    def __init__(self, _zarr_group: zarr.Group, *, _zarr_store: Union[ZarrStore, None] = None, _mode: LindiFileMode = "r", _local_cache: Union[LocalCache, None] = None, _source_url_or_path: Union[str, None] = None, _source_tar_file: Union[LindiTarFile, None] = None, _close_source_tar_file_on_close: bool = False):
+    def __init__(self, _zarr_group: zarr.Group, *, _zarr_store: ZarrStore, _mode: LindiFileMode = "r", _local_cache: Union[LocalCache, None] = None, _source_url_or_path: Union[str, None] = None, _source_tar_file: Union[LindiTarFile, None] = None, _close_source_tar_file_on_close: bool = False):
         """
         Do not use this constructor directly. Instead, use: from_lindi_file,
         from_h5py_file, from_reference_file_system, from_zarr_store, or
@@ -92,7 +92,7 @@ class LindiH5pyFile(h5py.File):
         """
         from ..LindiH5ZarrStore.LindiH5ZarrStore import LindiH5ZarrStore  # avoid circular import
         if mode != "r":
-            raise Exception("Opening hdf5 file in write mode is not supported")
+            raise ValueError("Opening hdf5 file in write mode is not supported")
         zarr_store = LindiH5ZarrStore.from_file(url_or_path, local_cache=local_cache, opts=zarr_store_opts, url=url)
         return LindiH5pyFile.from_zarr_store(
             zarr_store=zarr_store,
@@ -101,7 +101,7 @@ class LindiH5pyFile(h5py.File):
         )
 
     @staticmethod
-    def from_reference_file_system(rfs: Union[dict, str, None], *, mode: LindiFileMode = "r", local_cache: Union[LocalCache, None] = None, _source_url_or_path: Union[str, None] = None, _source_tar_file: Union[LindiTarFile, None] = None, _close_source_tar_file_on_close: bool = False):
+    def from_reference_file_system(rfs: Union[dict, str], *, mode: LindiFileMode = "r", local_cache: Union[LocalCache, None] = None, _source_url_or_path: Union[str, None] = None, _source_tar_file: Union[LindiTarFile, None] = None, _close_source_tar_file_on_close: bool = False):
         """
         Create a LindiH5pyFile from a reference file system.
 
@@ -122,20 +122,11 @@ class LindiH5pyFile(h5py.File):
         _close_source_tar_file_on_close : bool, optional
             Internal use only
         """
-        if rfs is None:
-            rfs = {
-                "refs": {
-                    '.zgroup': {
-                        'zarr_format': 2
-                    }
-                },
-            }
-
         if isinstance(rfs, str):
             if _source_url_or_path is not None:
-                raise Exception("_source_file_path is not None even though rfs is a string")
+                raise Exception("_source_file_path is not None even though rfs is a string")  # pragma: no cover
             if _source_tar_file is not None:
-                raise Exception("_source_tar_file is not None even though rfs is a string")
+                raise Exception("_source_tar_file is not None even though rfs is a string")  # pragma: no cover
             rfs_is_url = rfs.startswith("http://") or rfs.startswith("https://")
             if rfs_is_url:
                 data, tar_file = _load_rfs_from_url(rfs)
@@ -153,11 +144,11 @@ class LindiH5pyFile(h5py.File):
                 if mode == "r":
                     # Readonly, file must exist (default)
                     if not os.path.exists(rfs):
-                        raise Exception(f"File does not exist: {rfs}")
+                        raise FileNotFoundError(f"File does not exist: {rfs}")
                 elif mode == "r+":
                     # Read/write, file must exist
                     if not os.path.exists(rfs):
-                        raise Exception(f"File does not exist: {rfs}")
+                        raise FileNotFoundError(f"File does not exist: {rfs}")
                 elif mode == "w":
                     # Create file, truncate if exists
                     need_to_create_empty_file = True
@@ -165,14 +156,16 @@ class LindiH5pyFile(h5py.File):
                 elif mode in ["w-", "x"]:
                     # Create file, fail if exists
                     if os.path.exists(rfs):
-                        raise Exception(f"File already exists: {rfs}")
+                        raise ValueError(f"File already exists: {rfs}")
                     need_to_create_empty_file = True
+                    # Now that we have already checked for existence, let's just change mode to 'w'
+                    mode = 'w'
                 elif mode == "a":
                     # Read/write if exists, create otherwise
                     if not os.path.exists(rfs):
                         need_to_create_empty_file = True
                 else:
-                    raise Exception(f"Unhandled mode: {mode}")
+                    raise Exception(f"Unhandled mode: {mode}")  # pragma: no cover
                 if need_to_create_empty_file:
                     is_tar = rfs.endswith(".tar")
                     is_dir = rfs.endswith(".d")
@@ -207,7 +200,7 @@ class LindiH5pyFile(h5py.File):
                 _close_source_tar_file_on_close=_close_source_tar_file_on_close
             )
         else:
-            raise Exception(f"Unhandled type for rfs: {type(rfs)}")
+            raise Exception(f"Unhandled type for rfs: {type(rfs)}")  # pragma: no cover
 
     @staticmethod
     def from_zarr_store(zarr_store: ZarrStore, mode: LindiFileMode = "r", local_cache: Union[LocalCache, None] = None, _source_url_or_path: Union[str, None] = None, _source_tar_file: Union[LindiTarFile, None] = None, _close_source_tar_file_on_close: bool = False):
@@ -230,7 +223,7 @@ class LindiH5pyFile(h5py.File):
         return LindiH5pyFile.from_zarr_group(zarr_group, _zarr_store=zarr_store, mode=mode, local_cache=local_cache, _source_url_or_path=_source_url_or_path, _source_tar_file=_source_tar_file, _close_source_tar_file_on_close=_close_source_tar_file_on_close)
 
     @staticmethod
-    def from_zarr_group(zarr_group: zarr.Group, *, mode: LindiFileMode = "r", _zarr_store: Union[ZarrStore, None] = None, local_cache: Union[LocalCache, None] = None, _source_url_or_path: Union[str, None] = None, _source_tar_file: Union[LindiTarFile, None] = None, _close_source_tar_file_on_close: bool = False):
+    def from_zarr_group(zarr_group: zarr.Group, *, mode: LindiFileMode = "r", _zarr_store: ZarrStore, local_cache: Union[LocalCache, None] = None, _source_url_or_path: Union[str, None] = None, _source_tar_file: Union[LindiTarFile, None] = None, _close_source_tar_file_on_close: bool = False):
         """
         Create a LindiH5pyFile from a zarr group.
 
@@ -255,15 +248,13 @@ class LindiH5pyFile(h5py.File):
         Export the internal in-memory representation to a reference file system.
         """
         from ..LindiH5ZarrStore.LindiH5ZarrStore import LindiH5ZarrStore  # avoid circular import
-        if self._zarr_store is None:
-            raise Exception("Cannot convert to reference file system without zarr store")
         zarr_store = self._zarr_store
         if isinstance(zarr_store, LindiTarStore):
             zarr_store = zarr_store._base_store
         if isinstance(zarr_store, LindiH5ZarrStore):
             return zarr_store.to_reference_file_system()
         if not isinstance(zarr_store, LindiReferenceFileSystemStore):
-            raise Exception(f"Cannot create reference file system when zarr store has type {type(self._zarr_store)}")
+            raise Exception(f"Cannot create reference file system when zarr store has type {type(self._zarr_store)}")  # pragma: no cover
         rfs = zarr_store.rfs
         rfs_copy = json.loads(json.dumps(rfs))
         LindiReferenceFileSystemStore.replace_meta_file_contents_with_dicts_in_rfs(rfs_copy)
@@ -277,19 +268,19 @@ class LindiH5pyFile(h5py.File):
         Parameters
         ----------
         filename : str
-            The filename to write to. It must end with '.lindi.json' or '.lindi.tar'.
+            The filename (or directory) to write to. It must end with '.lindi.json', '.lindi.tar', or '.lindi.d'.
         generation_metadata : Union[dict, None], optional
             The optional generation metadata to include in the reference file
             system, by default None. This information dict is simply set to the
             'generationMetadata' key in the reference file system.
         """
-        if not filename.endswith(".lindi.json") and not filename.endswith(".lindi.tar"):
-            raise Exception("Filename must end with '.lindi.json' or '.lindi.tar'")
+        if not filename.endswith(".lindi.json") and not filename.endswith(".lindi.tar") and not filename.endswith(".lindi.d"):
+            raise ValueError("Filename must end with '.lindi.json' or '.lindi.tar'")
         rfs = self.to_reference_file_system()
         if self._source_tar_file:
             source_is_remote = self._source_url_or_path is not None and (self._source_url_or_path.startswith("http://") or self._source_url_or_path.startswith("https://"))
             if not source_is_remote:
-                raise Exception("Cannot write to lindi file if the source is a local lindi tar file because it would not be able to resolve the local references within the tar file.")
+                raise ValueError("Cannot write to lindi file if the source is a local lindi tar file because it would not be able to resolve the local references within the tar file.")
             assert self._source_url_or_path is not None
             _update_internal_references_to_remote_tar_file(rfs, self._source_url_or_path, self._source_tar_file)
         if generation_metadata is not None:
@@ -301,7 +292,7 @@ class LindiH5pyFile(h5py.File):
         elif filename.endswith(".d"):
             LindiTarFile.create(filename, rfs=rfs, dir_representation=True)
         else:
-            raise Exception("Unhandled file extension")
+            raise Exception("Unhandled file extension")  # pragma: no cover
 
     @property
     def attrs(self):  # type: ignore
@@ -336,8 +327,8 @@ class LindiH5pyFile(h5py.File):
 
     def close(self):
         if not self._is_open:
-            print('Warning: LINDI file already closed.')
-            return
+            print('Warning: LINDI file already closed.')  # pragma: no cover
+            return  # pragma: no cover
         self.flush()
         if self._close_source_tar_file_on_close and self._source_tar_file:
             self._source_tar_file.close()
@@ -345,11 +336,11 @@ class LindiH5pyFile(h5py.File):
 
     def flush(self):
         if not self._is_open:
-            return
+            return  # pragma: no cover
         if self._mode != 'r' and self._source_url_or_path is not None:
             is_url = self._source_url_or_path.startswith("http://") or self._source_url_or_path.startswith("https://")
             if is_url:
-                raise Exception("Cannot write to URL")
+                raise Exception("Cannot write to URL")  # pragma: no cover
             rfs = self.to_reference_file_system()
             if self._source_tar_file:
                 self._source_tar_file.write_rfs(rfs)
@@ -394,7 +385,7 @@ class LindiH5pyFile(h5py.File):
             raise Exception("name must be provided for copy")
         src_item = self._get_item(source)
         if not isinstance(src_item, (h5py.Group, h5py.Dataset)):
-            raise Exception(f"Unexpected type for source in copy: {type(src_item)}")
+            raise Exception(f"Unexpected type for source in copy: {type(src_item)}")  # pragma: no cover
         _recursive_copy(src_item, dest, name=name)
 
     def __delitem__(self, name):
@@ -413,14 +404,14 @@ class LindiH5pyFile(h5py.File):
                 raise Exception("Getting link is not allowed for references")
             zarr_group = self._zarr_group
             if name._source != '.':
-                raise Exception(f'For now, source of reference must be ".", got "{name._source}"')
+                raise Exception(f'For now, source of reference must be ".", got "{name._source}"')  # pragma: no cover
             if name._source_object_id is not None:
-                if name._source_object_id != zarr_group.attrs.get("object_id"):
-                    raise Exception(f'Mismatch in source object_id: "{name._source_object_id}" and "{zarr_group.attrs.get("object_id")}"')
+                if name._source_object_id != zarr_group.attrs.get("object_id"):  # pragma: no cover
+                    raise Exception(f'Mismatch in source object_id: "{name._source_object_id}" and "{zarr_group.attrs.get("object_id")}"')  # pragma: no cover
             target = self[name._path]
             if name._object_id is not None:
-                if name._object_id != target.attrs.get("object_id"):
-                    raise Exception(f'Mismatch in object_id: "{name._object_id}" and "{target.attrs.get("object_id")}"')
+                if name._object_id != target.attrs.get("object_id"):  # pragma: no cover
+                    raise Exception(f'Mismatch in object_id: "{name._object_id}" and "{target.attrs.get("object_id")}"')  # pragma: no cover
             return target
         # if it contains slashes, it's a path
         if isinstance(name, str) and "/" in name:
@@ -477,24 +468,24 @@ class LindiH5pyFile(h5py.File):
     # write
     def create_group(self, name, track_order=None):
         if self._mode == 'r':
-            raise Exception("Cannot create group in read-only mode")
+            raise ValueError("Cannot create group in read-only mode")
         if track_order is not None:
             raise Exception("track_order is not supported (I don't know what it is)")
         return self._the_group.create_group(name)
 
     def require_group(self, name):
         if self._mode == 'r':
-            raise Exception("Cannot require group in read-only mode")
+            raise ValueError("Cannot require group in read-only mode")
         return self._the_group.require_group(name)
 
     def create_dataset(self, name, shape=None, dtype=None, data=None, **kwds):
         if self._mode == 'r':
-            raise Exception("Cannot create dataset in read-only mode")
+            raise ValueError("Cannot create dataset in read-only mode")
         return self._the_group.create_dataset(name, shape=shape, dtype=dtype, data=data, **kwds)
 
     def require_dataset(self, name, shape, dtype, exact=False, **kwds):
         if self._mode == 'r':
-            raise Exception("Cannot require dataset in read-only mode")
+            raise ValueError("Cannot require dataset in read-only mode")
         return self._the_group.require_dataset(name, shape, dtype, exact=exact, **kwds)
 
 
@@ -522,7 +513,7 @@ def _recursive_copy(src_item: Union[h5py.Group, h5py.Dataset], dest: h5py.File, 
         # data because we can copy the reference.
         if isinstance(src_item.file, LindiH5pyFile) and isinstance(dest, LindiH5pyFile):
             if src_item.name is None:
-                raise Exception("src_item.name is None")
+                raise Exception("src_item.name is None")  # pragma: no cover
             src_item_name = _without_initial_slash(src_item.name)
             src_zarr_store = src_item.file._zarr_store
             dst_zarr_store = dest._zarr_store

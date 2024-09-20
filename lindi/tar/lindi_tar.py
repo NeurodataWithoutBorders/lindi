@@ -10,6 +10,18 @@ INITIAL_TAR_INDEX_JSON_SIZE = 1024 * 8
 INITIAL_LINDI_JSON_SIZE = 1024 * 8
 
 
+# for tests
+def _test_set(
+    tar_entry_json_size: int,
+    initial_tar_index_json_size: int,
+    initial_lindi_json_size: int
+):
+    global TAR_ENTRY_JSON_SIZE, INITIAL_TAR_INDEX_JSON_SIZE, INITIAL_LINDI_JSON_SIZE
+    TAR_ENTRY_JSON_SIZE = tar_entry_json_size
+    INITIAL_TAR_INDEX_JSON_SIZE = initial_tar_index_json_size
+    INITIAL_LINDI_JSON_SIZE = initial_lindi_json_size
+
+
 class LindiTarFile:
     def __init__(self, tar_path_or_url: str, dir_representation=False):
         self._tar_path_or_url = tar_path_or_url
@@ -93,14 +105,18 @@ class LindiTarFile:
             self._file.seek(info['d'])
             self._file.write(data)
         else:
-            # for safety:
-            file_parts = file_name.split("/")
-            for part in file_parts[:-1]:
-                if part.startswith('..'):
-                    raise ValueError(f"Invalid path: {file_name}")
-            fname = self._tar_path_or_url + "/" + file_name
-            with open(fname, "wb") as f:
-                f.write(data)
+            # Actually not ever used. The file is just replaced.
+            raise Exception('Overwriting file content in a directory representation is not supported')  # pragma: no cover
+
+            # But if we did do it, it would look like this:
+            # # for safety:
+            # file_parts = file_name.split("/")
+            # for part in file_parts[:-1]:
+            #     if part.startswith('..'):
+            #         raise ValueError(f"Invalid path: {file_name}")
+            # fname = self._tar_path_or_url + "/" + file_name
+            # with open(fname, "wb") as f:
+            #     f.write(data)
 
     def trash_file(self, file_name: str):
         if self._is_remote:
@@ -160,8 +176,7 @@ class LindiTarFile:
                 rfs_json = _pad_bytes_to_leave_room_for_growth(rfs_json, INITIAL_LINDI_JSON_SIZE)
                 self.write_file("lindi.json", rfs_json)
         else:
-            with open(self._tar_path_or_url + "/lindi.json", "wb") as f:
-                f.write(rfs_json.encode())
+            self.write_file("lindi.json", rfs_json.encode())
 
     def get_file_byte_range(self, file_name: str) -> tuple:
         if self._dir_representation:
