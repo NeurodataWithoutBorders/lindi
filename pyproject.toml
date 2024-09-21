@@ -33,4 +33,4 @@ build-backend = "poetry.core.masonry.api"
 skip = '.git'
 check-hidden = true
 # ignore-regex = ''
-# ignore-words-list = ''
+ignore-words-list = 'tempory'
