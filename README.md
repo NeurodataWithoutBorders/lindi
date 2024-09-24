@@ -34,7 +34,7 @@ Traditional Zarr directory stores have some limitations. First, Zarr archives of
 
 HDF5 is not well-suited for cloud environments because accessing a remote HDF5 file often requires a large number of small requests to retrieve metadata before larger data chunks can be downloaded. LINDI addresses this by storing the entire group structure in a single JSON file, which can be downloaded in one request. Additionally, HDF5 lacks a built-in mechanism for referencing data chunks in external datasets. Furthermore, HDF5 does not support custom Python codecs, a feature available in both Zarr and LINDI.
 
-**Is tar format really cloud-friendly**
+**Is tar format really cloud-friendly?**
 
 With LINDI, yes. See [docs/tar.md](docs/tar.md) for details.
 
@@ -101,7 +101,6 @@ with lindi.LindiH5pyFile.from_lindi_file('example.lindi.tar', mode='r') as f:
 With LINDI, it is easy to load an NWB file stored on DANDI. The following example demonstrates how to load an NWB file from DANDI, view it using the pynwb library, and save it as a relatively smaller .lindi.json file. The LINDI JSON file can then be read directly to access the NWB file.
 
 ```python
-import json
 import pynwb
 import lindi
 

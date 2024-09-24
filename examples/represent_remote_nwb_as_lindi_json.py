@@ -1,4 +1,3 @@
-import json
 import pynwb
 import lindi
 
@@ -20,6 +19,7 @@ with pynwb.NWBHDF5IO(file=f, mode="r") as io:
 
 # Save as LINDI JSON
 f.write_lindi_file('example.nwb.lindi.json')
+f.close()
 
 # Later, read directly from the LINDI JSON file
 g = lindi.LindiH5pyFile.from_lindi_file('example.nwb.lindi.json')
