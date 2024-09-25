@@ -275,7 +275,7 @@ class LindiH5pyFile(h5py.File):
             'generationMetadata' key in the reference file system.
         """
         if not filename.endswith(".lindi.json") and not filename.endswith(".lindi.tar") and not filename.endswith(".lindi.d"):
-            raise ValueError("Filename must end with '.lindi.json' or '.lindi.tar'")
+            raise ValueError("Filename must end with '.lindi.json', '.lindi.tar', or '.lindi.d'.")
         rfs = self.to_reference_file_system()
         if self._source_tar_file:
             source_is_remote = self._source_url_or_path is not None and (self._source_url_or_path.startswith("http://") or self._source_url_or_path.startswith("https://"))
