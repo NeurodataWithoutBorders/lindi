@@ -1,7 +1,7 @@
 import h5py
 import tempfile
 import lindi
-from utils import lists_are_equal
+from .utils import lists_are_equal
 
 
 def test_store():

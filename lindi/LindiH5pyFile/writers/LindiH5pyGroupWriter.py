@@ -38,6 +38,7 @@ class LindiH5pyGroupWriter:
     def require_group(self, name):
         if name in self.p:
             ret = self.p[name]
+            from ..LindiH5pyGroup import LindiH5pyGroup  # avoid circular import
             if not isinstance(ret, LindiH5pyGroup):
                 raise Exception(f'Expected a group at {name} but got {type(ret)}')
             return ret

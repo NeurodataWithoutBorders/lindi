@@ -21,7 +21,7 @@ with pynwb.NWBHDF5IO(file=g, mode="a") as io:
         rate=1.,
         unit='s'
     )
-    ts = nwbfile.processing['behavior'].add(timeseries_test)  # type: ignore
+    nwbfile.processing['behavior'].add(timeseries_test)  # type: ignore
     io.write(nwbfile)  # type: ignore
 
 # Later on, you can read the file again

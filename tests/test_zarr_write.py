@@ -5,7 +5,7 @@ import h5py
 import lindi
 import pytest
 import numcodecs
-from utils import assert_groups_equal, arrays_are_equal
+from .utils import assert_groups_equal, arrays_are_equal
 
 
 def test_zarr_write():
@@ -121,7 +121,7 @@ def compare_example_h5_data(h5f: h5py.File, tmpdir: str):
     with h5py.File(f'{tmpdir}/for_comparison.h5', 'w') as h5f2:
         write_example_h5_data(h5f2)
     with h5py.File(f'{tmpdir}/for_comparison.h5', 'r') as h5f2:
-        assert_groups_equal(h5f, h5f2)
+        assert_groups_equal(h5f, h5f2, skip_large_datasets=False)
 
 
 if __name__ == '__main__':

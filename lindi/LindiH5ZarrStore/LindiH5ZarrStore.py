@@ -54,7 +54,7 @@ class SplitDatasetH5Item:
             nn = contiguous_dataset_max_chunk_size // size0
             if nn == 0:
                 # The chunk size should not be zero
-                nn = 1
+                nn = 1  # pragma: no cover
             self._split_chunk_shape = (nn,) + h5_item.shape[1:]
             if h5_item.chunks is not None:
                 zero_chunk_coords = (0,) * h5_item.ndim
