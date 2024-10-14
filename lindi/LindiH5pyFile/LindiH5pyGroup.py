@@ -43,10 +43,11 @@ class LindiH5pyGroup(h5py.Group):
                 "Accessing a group is done with bytes or str, "
                 "not {}".format(type(name))
             )
-        if isinstance(x, zarr.Group):
-            # follow the link if this is a soft link
+        # check for soft link
+        if isinstance(x, zarr.Group) or isinstance(x, zarr.Array):
             soft_link = x.attrs.get('_SOFT_LINK', None)
             if soft_link is not None:
+                # follow the link if this is a soft link
                 link_path = soft_link['path']
                 target_item = self._file.get(link_path)
                 if not isinstance(target_item, (LindiH5pyGroup, LindiH5pyDataset)):
@@ -54,6 +55,8 @@ class LindiH5pyGroup(h5py.Group):
                         f"Expected a group or dataset at {link_path} but got {type(target_item)}"
                     )
                 return target_item
+
+        if isinstance(x, zarr.Group):
             return LindiH5pyGroup(x, self._file)
         elif isinstance(x, zarr.Array):
             return LindiH5pyDataset(x, self._file)
