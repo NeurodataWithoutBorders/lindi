@@ -57,6 +57,8 @@ def h5_filters_to_codecs(h5obj: h5py.Dataset) -> Union[List[Codec], None]:
             filters.append(numcodecs.Zstd(level=properties[0]))
         elif str(filter_id) == "gzip":
             filters.append(numcodecs.Zlib(level=properties))
+        elif str(filter_id) == "zlib":
+            filters.append(numcodecs.Zlib(level=properties))
         elif str(filter_id) == "32004":
             raise RuntimeError(
                 f"{h5obj.name} uses lz4 compression - not supported"

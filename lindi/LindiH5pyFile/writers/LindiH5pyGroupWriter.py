@@ -82,6 +82,14 @@ class LindiH5pyGroupWriter:
                 else:
                     raise Exception(f'Unexpected type for compression_opts: {type(compression_opts)}')
                 _zarr_compressor = numcodecs.GZip(level=level)
+            elif compression == 'zlib':
+                if compression_opts is None:
+                    level = 4
+                elif isinstance(compression_opts, int):
+                    level = compression_opts
+                else:
+                    raise Exception(f'Unexpected type for compression_opts: {type(compression_opts)}')
+                _zarr_compressor = numcodecs.Zlib(level=level)
             else:
                 raise Exception(f'Compression {compression} is not supported')
         elif compression is None:
