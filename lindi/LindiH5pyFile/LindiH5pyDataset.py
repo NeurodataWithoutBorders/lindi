@@ -155,6 +155,16 @@ class LindiH5pyDataset(h5py.Dataset):
         return False
 
     @property
+    def compression(self):
+        # Return dummy value so we don't break hdmf
+        return None
+
+    @property
+    def compression_opts(self):
+        # Return dummy value so we don't break hdmf
+        return None
+
+    @property
     def chunks(self):
         return self._zarr_array.chunks
 
