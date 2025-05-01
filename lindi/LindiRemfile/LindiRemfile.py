@@ -201,7 +201,7 @@ class LindiRemfile:
         )
         if self._verbose:
             print(
-                f"Loading {self._smart_loader_chunk_sequence_length} chunks starting at {chunk_index} ({(data_end - data_start + 1)/1e6} million bytes)"
+                f"Loading {self._smart_loader_chunk_sequence_length} chunks starting at {chunk_index} ({(data_end - data_start + 1) / 1e6} million bytes)"
             )
         if data_end >= self.length:
             data_end = self.length - 1
