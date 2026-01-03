@@ -214,9 +214,17 @@ class LindiH5pyDataset(h5py.Dataset):
                 )
                 return ret
             else:
-                raise TypeError(
-                    f"Compound dataset {self.name} does not support selection with {selection}"
-                )
+                # Numeric slicing (e.g., [:], [0], [0:2])
+                # Get the raw data from zarr (will be object array of lists)
+                raw_data = zarr_array[selection]
+                # Convert to structured array with compound dtype
+                if isinstance(raw_data, np.ndarray):
+                    # Multiple elements - convert each list to tuple
+                    tuples = [tuple(item) for item in raw_data]
+                    return np.array(tuples, dtype=self._compound_dtype)
+                else:
+                    # Single element - raw_data is a list
+                    return np.array(tuple(raw_data), dtype=self._compound_dtype)[()]
 
         # We use zarr's slicing, except in the case of a scalar dataset
         if self.ndim == 0:
