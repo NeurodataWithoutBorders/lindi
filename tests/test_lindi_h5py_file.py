@@ -2,6 +2,8 @@ import tempfile
 import os
 import pytest
 import h5py
+import numpy as np
+import zarr
 import lindi
 from .utils import assert_h5py_files_equal
 
@@ -359,8 +361,6 @@ def test_create_dataset():
 
 def test_compound_dtype_slicing():
     """Test that compound dtype datasets support numeric slicing (e.g., [:], [0], [0:2])"""
-    import numpy as np
-    import zarr
 
     with tempfile.TemporaryDirectory() as tmpdir:
         dirname = f'{tmpdir}/test.zarr'

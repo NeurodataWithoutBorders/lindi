@@ -220,11 +220,16 @@ class LindiH5pyDataset(h5py.Dataset):
                 # Convert to structured array with compound dtype
                 if isinstance(raw_data, np.ndarray):
                     # Multiple elements - convert each list to tuple
-                    tuples = [tuple(item) for item in raw_data]
+                    tuples = [tuple(item) if isinstance(item, (list, np.ndarray)) else item for item in raw_data]
                     return np.array(tuples, dtype=self._compound_dtype)
-                else:
-                    # Single element - raw_data is a list
+                elif isinstance(raw_data, (list, tuple)):
+                    # Single element - raw_data is a list or tuple
                     return np.array(tuple(raw_data), dtype=self._compound_dtype)[()]
+                else:
+                    # Unexpected type - this shouldn't happen, but handle gracefully
+                    raise TypeError(
+                        f"Unexpected data type from zarr array for compound dataset {self.name}: {type(raw_data)}"
+                    )
 
         # We use zarr's slicing, except in the case of a scalar dataset
         if self.ndim == 0:
