@@ -168,6 +168,20 @@ class LindiH5pyDataset(h5py.Dataset):
     def chunks(self):
         return self._zarr_array.chunks
 
+    @property
+    def _is_empty(self):
+        # LINDI datasets backed by zarr are never HDF5 NULL-space datasets
+        return False
+
+    def __array__(self, dtype=None, copy=None):
+        if self._is_scalar:
+            arr = np.array(self[()])
+        else:
+            arr = np.array(self[:])
+        if dtype is not None:
+            arr = arr.astype(dtype)
+        return arr
+
     def __repr__(self):  # type: ignore
         return f"<{self.__class__.__name__}: {self.name}>"
 
