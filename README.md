@@ -178,6 +178,62 @@ with pynwb.NWBHDF5IO(file=h, mode="r") as io:
     print(test_timeseries)
 ```
 
+## Using the Local Cache
+
+LINDI includes a local caching feature that significantly improves performance when accessing remote files by storing frequently accessed data chunks locally. The cache uses SQLite as its storage backend and is particularly beneficial when repeatedly accessing the same remote datasets.
+
+**Basic cache usage**
+
+```python
+import lindi
+
+# Create a local cache (defaults to ~/.lindi/cache)
+local_cache = lindi.LocalCache()
+
+# Or specify a custom cache directory
+local_cache = lindi.LocalCache(cache_dir="/path/to/custom/cache")
+
+# Use the cache when loading remote files
+h5_url = "https://api.dandiarchive.org/api/assets/11f512ba-5bcf-4230-a8cb-dc8d36db38cb/download/"
+f = lindi.LindiH5pyFile.from_hdf5_file(h5_url, local_cache=local_cache)
+
+# Subsequent accesses will be much faster due to caching
+data = f['some_dataset'][:]  # First access: downloads and caches
+data = f['some_dataset'][:]  # Second access: retrieved from cache
+```
+
+**Cache with LINDI files**
+
+The cache can also be used when working with LINDI JSON files that reference remote data:
+
+```python
+import lindi
+
+# Create a local cache
+local_cache = lindi.LocalCache()
+
+# Load a LINDI file with caching enabled
+f = lindi.LindiH5pyFile.from_lindi_file('example.nwb.lindi.json', local_cache=local_cache)
+
+# Access data - first time will cache, subsequent times will be faster
+data = f['processing/ecephys/LFP/LFP/data'][:1000]
+```
+
+**How the cache works**
+
+- The cache stores data chunks from remote URLs based on URL, byte offset, and chunk size
+- By default, the cache directory is located at `~/.lindi/cache`
+- Individual chunks are limited to 900 MB due to SQLite constraints
+- The cache persists across Python sessions, so subsequent runs will benefit from previously cached data
+- Cache files are automatically created and managed by LINDI
+
+**Cache benefits**
+
+- Dramatically improves performance for repeated access to the same remote datasets
+- Reduces network bandwidth usage
+- Enables faster iteration when developing and testing code with remote data
+- Particularly effective for accessing NWB files from DANDI Archive multiple times
+
 ## Notes
 
 This project was inspired by [kerchunk](https://github.com/fsspec/kerchunk) and [hdmf-zarr](https://hdmf-zarr.readthedocs.io/en/latest/index.html).
