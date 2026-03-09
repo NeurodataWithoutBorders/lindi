@@ -47,3 +47,30 @@ def test_numpy_array_conversion():
             arr_sc = np.asarray(sc)
             assert arr_sc.shape == ()
             assert float(arr_sc) == 42.0
+
+
+def test_numpy_array_conversion_compound():
+    """Test that __array__ works for compound dtype datasets."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        h5_fname = f'{tmpdir}/test.h5'
+        lindi_json_fname = f'{tmpdir}/test.lindi.json'
+
+        compound_dtype = np.dtype([('x', np.int32), ('y', np.float64)])
+        data = np.array([(1, 2.5), (3, 4.5), (5, 6.5)], dtype=compound_dtype)
+
+        with h5py.File(h5_fname, 'w') as f:
+            f.create_dataset('compound', data=data)
+
+        with lindi.LindiH5pyFile.from_hdf5_file(h5_fname, url=h5_fname) as f:
+            f.write_lindi_file(lindi_json_fname)
+
+        with lindi.LindiH5pyFile.from_lindi_file(lindi_json_fname) as f:
+            ds = f['compound']
+            assert ds._is_empty is False
+
+            # Test field access followed by np.asarray
+            x_vals = np.asarray(ds['x'][:])
+            np.testing.assert_array_equal(x_vals, np.array([1, 3, 5], dtype=np.int32))
+
+            y_vals = np.asarray(ds['y'][:])
+            np.testing.assert_array_equal(y_vals, np.array([2.5, 4.5, 6.5], dtype=np.float64))
