@@ -168,6 +168,21 @@ class LindiH5pyDataset(h5py.Dataset):
     def chunks(self):
         return self._zarr_array.chunks
 
+    @property
+    def _is_empty(self):
+        # LINDI datasets backed by zarr are never HDF5 NULL-space datasets
+        return False
+
+    def __array__(self, dtype=None, copy=None):
+        if copy is False:
+            raise ValueError(
+                "LindiH5pyDataset.__array__ received copy=False "
+                "but memory allocation cannot be avoided on read"
+            )
+        if self._is_scalar:
+            return np.array(self[()], dtype=dtype)
+        return np.array(self[:], dtype=dtype)
+
     def __repr__(self):  # type: ignore
         return f"<{self.__class__.__name__}: {self.name}>"
 
