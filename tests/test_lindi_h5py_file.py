@@ -2,6 +2,8 @@ import tempfile
 import os
 import pytest
 import h5py
+import numpy as np
+import zarr
 import lindi
 from .utils import assert_h5py_files_equal
 
@@ -355,6 +357,57 @@ def test_create_dataset():
             ds = f['dataset1']
             assert isinstance(ds, lindi.LindiH5pyDataset)
             assert ds.shape == (3,)
+
+
+def test_compound_dtype_slicing():
+    """Test that compound dtype datasets support numeric slicing (e.g., [:], [0], [0:2])"""
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        dirname = f'{tmpdir}/test.zarr'
+        store = zarr.DirectoryStore(dirname)
+        zarr.group(store=store)
+
+        # Write compound dataset
+        with lindi.LindiH5pyFile.from_zarr_store(store, mode='r+') as h5f:
+            compound_dtype = np.dtype([('x', np.int32), ('y', np.float64)])
+            data = np.array([(1, 2.2), (3, 4.4), (5, 6.6)], dtype=compound_dtype)
+            h5f.create_dataset('dset_compound', data=data)
+
+        # Read and test slicing
+        with lindi.LindiH5pyFile.from_zarr_store(store, mode='r') as h5f:
+            dset = h5f['dset_compound']
+
+            # Test full slice
+            result = dset[:]
+            assert result.shape == (3,)
+            assert result.dtype == compound_dtype
+            assert result[0]['x'] == 1
+            assert result[0]['y'] == 2.2
+            assert result[1]['x'] == 3
+            assert result[1]['y'] == 4.4
+
+            # Test single element access
+            result = dset[0]
+            assert isinstance(result, np.void)
+            assert result['x'] == 1
+            assert result['y'] == 2.2
+
+            # Test partial slice
+            result = dset[0:2]
+            assert result.shape == (2,)
+            assert result.dtype == compound_dtype
+            assert result[0]['x'] == 1
+            assert result[1]['x'] == 3
+
+            # Test negative indexing
+            result = dset[-1]
+            assert result['x'] == 5
+            assert result['y'] == 6.6
+
+            # Test field selection (should still work)
+            result = dset['x'][:]
+            assert result.shape == (3,)
+            assert np.array_equal(result, [1, 3, 5])
 
 
 def create_example_h5_file(fname):
