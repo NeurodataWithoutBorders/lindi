@@ -1,9 +1,12 @@
 import json
 import base64
+import time
 from typing import Tuple, Union, List, IO, Any, Dict, Callable
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import numpy as np
 import zarr
 from zarr.storage import Store, MemoryStore
+import requests
 import h5py
 from tqdm import tqdm
 from ._util import (
@@ -150,7 +153,8 @@ class LindiH5ZarrStore(Store):
         _opts: LindiH5ZarrStoreOpts,
         _url: Union[str, None] = None,
         _entities_to_close: List[Any],
-        _local_cache: Union[LocalCache, None] = None
+        _local_cache: Union[LocalCache, None] = None,
+        _concurrent_max_workers: int = 8
     ):
         """
         Do not call the constructor directly. Instead, use the from_file class
@@ -161,6 +165,7 @@ class LindiH5ZarrStore(Store):
         self._url = _url
         self._opts = _opts
         self._local_cache = _local_cache
+        self._concurrent_max_workers = _concurrent_max_workers
         self._entities_to_close = _entities_to_close + [self._h5f]
 
         # Some datasets do not correspond to traditional chunked datasets. For
@@ -324,6 +329,97 @@ class LindiH5ZarrStore(Store):
                 if c < 0 or c >= chunk_coords_shape[i]:
                     return False
             return True
+
+    def getitems(self, keys, *, contexts=None):
+        """Fetch multiple keys, with concurrent HTTP fetches for remote chunks."""
+        results = {}
+        remote_chunks = []  # (key, byte_offset, byte_count)
+
+        for key in keys:
+            parts = [p for p in key.split("/") if p]
+            if not parts:
+                continue
+            key_name = parts[-1]
+
+            # Metadata keys — resolve synchronously
+            if key_name in ('.zattrs', '.zgroup', '.zarray'):
+                try:
+                    results[key] = self[key]
+                except KeyError:
+                    pass
+                continue
+
+            # Chunk keys — get byte range from h5py metadata
+            key_parent = "/".join(parts[:-1])
+            try:
+                byte_offset, byte_count, inline_data = self._get_chunk_file_bytes_data(key_parent, key_name)
+            except Exception:
+                continue
+
+            if inline_data is not None:
+                results[key] = inline_data
+                continue
+
+            # Check local cache
+            if self._local_cache is not None and self._url is not None:
+                cached = self._local_cache.get_remote_chunk(url=self._url, offset=byte_offset, size=byte_count)
+                if cached is not None:
+                    results[key] = cached
+                    continue
+
+            if self._url is not None and (self._url.startswith('http://') or self._url.startswith('https://')):
+                remote_chunks.append((key, byte_offset, byte_count))
+            else:
+                # Local file — read synchronously (byte range already known)
+                buf = _read_bytes(self._file, byte_offset, byte_count)
+                self._try_cache_put(byte_offset, byte_count, buf)
+                results[key] = buf
+
+        if not remote_chunks:
+            return self._apply_padding_to_results(results)
+
+        # Pre-resolve URL for DANDI auth
+        from ..LindiRemfile.LindiRemfile import _resolve_url
+        resolved_url = _resolve_url(self._url)
+
+        # Single chunk — skip thread pool overhead
+        if len(remote_chunks) == 1:
+            key, offset, count = remote_chunks[0]
+            val = _fetch_bytes_direct(resolved_url, offset, count)
+            self._try_cache_put(offset, count, val)
+            results[key] = val
+            return self._apply_padding_to_results(results)
+
+        # Concurrent fetch
+        max_workers = min(len(remote_chunks), self._concurrent_max_workers)
+        with ThreadPoolExecutor(max_workers=max_workers) as pool:
+            futures = {
+                pool.submit(_fetch_bytes_direct, resolved_url, offset, count): (key, offset, count)
+                for key, offset, count in remote_chunks
+            }
+            for future in as_completed(futures):
+                key, offset, count = futures[future]
+                val = future.result()
+                self._try_cache_put(offset, count, val)
+                results[key] = val
+
+        return self._apply_padding_to_results(results)
+
+    def _try_cache_put(self, byte_offset, byte_count, data):
+        """Write data to the local cache if available."""
+        if self._local_cache is not None and self._url is not None:
+            try:
+                self._local_cache.put_remote_chunk(url=self._url, offset=byte_offset, size=byte_count, data=data)
+            except ChunkTooLargeError:
+                pass
+
+    def _apply_padding_to_results(self, results):
+        for key in list(results.keys()):
+            val = results[key]
+            padded_size = _get_padded_size(self, key, val)
+            if padded_size is not None:
+                results[key] = _pad_chunk(val, padded_size)
+        return results
 
     def __delitem__(self, key):
         raise Exception("Deleting items is not allowed")
@@ -889,3 +985,23 @@ class InlineArray:
     @property
     def chunk_bytes(self):
         return self._chunk_bytes
+
+
+def _fetch_bytes_direct(resolved_url: str, offset: int, length: int) -> bytes:
+    """Fetch bytes from a resolved URL via HTTP range request. Thread-safe."""
+    num_retries = 8
+    for try_num in range(num_retries):
+        try:
+            range_header = f"bytes={offset}-{offset + length - 1}"
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3",
+                "Range": range_header
+            }
+            response = requests.get(resolved_url, headers=headers)
+            response.raise_for_status()
+            return response.content
+        except Exception as e:
+            if try_num == num_retries - 1:
+                raise
+            time.sleep(0.1 * 2 ** try_num)
+    assert False, "unreachable"  # loop always returns or raises
