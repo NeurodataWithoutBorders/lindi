@@ -154,7 +154,9 @@ class LindiH5ZarrStore(Store):
         _url: Union[str, None] = None,
         _entities_to_close: List[Any],
         _local_cache: Union[LocalCache, None] = None,
-        _concurrent_max_workers: int = 8
+        _concurrent_max_workers: int = 8,
+        _coalesce_merge_gap: int = 256 * 1024,
+        _coalesce_max_size: int = 20 * 1024 * 1024
     ):
         """
         Do not call the constructor directly. Instead, use the from_file class
@@ -166,6 +168,8 @@ class LindiH5ZarrStore(Store):
         self._opts = _opts
         self._local_cache = _local_cache
         self._concurrent_max_workers = _concurrent_max_workers
+        self._coalesce_merge_gap = _coalesce_merge_gap
+        self._coalesce_max_size = _coalesce_max_size
         self._entities_to_close = _entities_to_close + [self._h5f]
 
         # Some datasets do not correspond to traditional chunked datasets. For
@@ -382,26 +386,33 @@ class LindiH5ZarrStore(Store):
         from ..LindiRemfile.LindiRemfile import _resolve_url
         resolved_url = _resolve_url(self._url)
 
-        # Single chunk — skip thread pool overhead
-        if len(remote_chunks) == 1:
-            key, offset, count = remote_chunks[0]
-            val = _fetch_bytes_direct(resolved_url, offset, count)
-            self._try_cache_put(offset, count, val)
-            results[key] = val
-            return self._apply_padding_to_results(results)
+        # Coalesce adjacent/nearby byte ranges to reduce HTTP round-trips
+        coalesced = _coalesce_byte_ranges(remote_chunks, merge_gap=self._coalesce_merge_gap, max_size=self._coalesce_max_size)
 
-        # Concurrent fetch
-        max_workers = min(len(remote_chunks), self._concurrent_max_workers)
-        with ThreadPoolExecutor(max_workers=max_workers) as pool:
-            futures = {
-                pool.submit(_fetch_bytes_direct, resolved_url, offset, count): (key, offset, count)
-                for key, offset, count in remote_chunks
-            }
-            for future in as_completed(futures):
-                key, offset, count = futures[future]
-                val = future.result()
+        # Single request — skip thread pool overhead
+        if len(coalesced) == 1:
+            group_offset, group_length, members = coalesced[0]
+            buf = _fetch_bytes_direct(resolved_url, group_offset, group_length)
+            for key, offset, count in members:
+                val = buf[offset - group_offset: offset - group_offset + count]
                 self._try_cache_put(offset, count, val)
                 results[key] = val
+            return self._apply_padding_to_results(results)
+
+        # Concurrent fetch of coalesced groups
+        max_workers = min(len(coalesced), self._concurrent_max_workers)
+        with ThreadPoolExecutor(max_workers=max_workers) as pool:
+            futures = {
+                pool.submit(_fetch_bytes_direct, resolved_url, group_offset, group_length): (group_offset, members)
+                for group_offset, group_length, members in coalesced
+            }
+            for future in as_completed(futures):
+                group_offset, members = futures[future]
+                buf = future.result()
+                for key, offset, count in members:
+                    val = buf[offset - group_offset: offset - group_offset + count]
+                    self._try_cache_put(offset, count, val)
+                    results[key] = val
 
         return self._apply_padding_to_results(results)
 
@@ -985,6 +996,53 @@ class InlineArray:
     @property
     def chunk_bytes(self):
         return self._chunk_bytes
+
+
+def _coalesce_byte_ranges(chunks, *, merge_gap, max_size=None):
+    """Merge byte ranges that are adjacent or within merge_gap bytes of each other.
+
+    Args:
+        chunks: list of (key, byte_offset, byte_count) tuples
+        merge_gap: maximum gap in bytes between ranges to merge
+        max_size: maximum total size in bytes for a coalesced group. If merging
+            a chunk would exceed this, start a new group instead.
+
+    Returns:
+        list of (group_offset, group_length, members) where members is a list
+        of (key, byte_offset, byte_count) tuples from the original input.
+    """
+    if not chunks:
+        return []
+
+    # Sort by byte offset
+    sorted_chunks = sorted(chunks, key=lambda x: x[1])
+
+    groups = []
+    # Start first group
+    key, offset, count = sorted_chunks[0]
+    group_start = offset
+    group_end = offset + count
+    group_members = [(key, offset, count)]
+
+    for key, offset, count in sorted_chunks[1:]:
+        chunk_end = offset + count
+        merged_size = max(group_end, chunk_end) - group_start
+        within_gap = offset <= group_end + merge_gap
+        within_size = max_size is None or merged_size <= max_size
+        if within_gap and within_size:
+            # Merge into current group
+            group_end = max(group_end, chunk_end)
+            group_members.append((key, offset, count))
+        else:
+            # Finalize current group, start new one
+            groups.append((group_start, group_end - group_start, group_members))
+            group_start = offset
+            group_end = chunk_end
+            group_members = [(key, offset, count)]
+
+    # Finalize last group
+    groups.append((group_start, group_end - group_start, group_members))
+    return groups
 
 
 def _fetch_bytes_direct(resolved_url: str, offset: int, length: int) -> bytes:

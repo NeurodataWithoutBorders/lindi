@@ -130,6 +130,79 @@ def test_getitems_empty_keys():
             assert results == {}
 
 
+def test_coalesce_byte_ranges():
+    """Test that _coalesce_byte_ranges merges adjacent/nearby ranges."""
+    from lindi.LindiH5ZarrStore.LindiH5ZarrStore import _coalesce_byte_ranges
+
+    # Empty input
+    assert _coalesce_byte_ranges([], merge_gap=256) == []
+
+    # Single chunk — no merging
+    chunks = [("a", 0, 100)]
+    groups = _coalesce_byte_ranges(chunks, merge_gap=256)
+    assert len(groups) == 1
+    assert groups[0] == (0, 100, [("a", 0, 100)])
+
+    # Adjacent chunks — should merge
+    chunks = [("a", 0, 100), ("b", 100, 100)]
+    groups = _coalesce_byte_ranges(chunks, merge_gap=0)
+    assert len(groups) == 1
+    assert groups[0][0] == 0  # group_start
+    assert groups[0][1] == 200  # group_length
+    assert len(groups[0][2]) == 2  # two members
+
+    # Chunks with small gap — should merge
+    chunks = [("a", 0, 100), ("b", 200, 100)]
+    groups = _coalesce_byte_ranges(chunks, merge_gap=100)
+    assert len(groups) == 1
+    assert groups[0][0] == 0
+    assert groups[0][1] == 300
+
+    # Chunks with gap larger than threshold — should NOT merge
+    chunks = [("a", 0, 100), ("b", 500, 100)]
+    groups = _coalesce_byte_ranges(chunks, merge_gap=100)
+    assert len(groups) == 2
+
+    # Unsorted input — should still work
+    chunks = [("c", 2000, 100), ("a", 0, 100), ("b", 100, 100)]
+    groups = _coalesce_byte_ranges(chunks, merge_gap=50)
+    assert len(groups) == 2
+    assert groups[0][0] == 0
+    assert groups[0][1] == 200
+    assert groups[1][0] == 2000
+
+    # max_size — prevents merging when result would be too large
+    chunks = [("a", 0, 100), ("b", 100, 100), ("c", 200, 100)]
+    groups = _coalesce_byte_ranges(chunks, merge_gap=100, max_size=200)
+    assert len(groups) == 2
+    assert groups[0][1] == 200  # first two merged
+    assert groups[1][1] == 100  # third alone
+
+    # max_size=None — no limit
+    groups = _coalesce_byte_ranges(chunks, merge_gap=100, max_size=None)
+    assert len(groups) == 1
+
+
+def test_coalesce_integration():
+    """Test that coalesced fetching returns correct data through zarr."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        filename = f"{tmpdir}/test.h5"
+        X = np.random.randn(200, 10)
+        with h5py.File(filename, "w") as f:
+            f.create_dataset("dataset1", data=X, chunks=(20, 10))
+
+        opts = LindiH5ZarrStoreOpts(num_dataset_chunks_threshold=None)
+        with LindiH5ZarrStore.from_file(filename, opts=opts, url=filename) as store:
+            # Fetch all 10 chunk keys at once — should coalesce
+            keys = [f"dataset1/{i}.0" for i in range(10)]
+            results = store.getitems(keys)
+            assert len(results) == 10
+
+            # Verify data through zarr is correct
+            arr = zarr.open_array(store=store, path="dataset1", mode="r")
+            np.testing.assert_array_equal(arr[:], X)
+
+
 if __name__ == "__main__":
     test_getitems_local_chunks()
     test_getitems_inline_data()
@@ -137,4 +210,6 @@ if __name__ == "__main__":
     test_external_array_link_via_zarr_store()
     test_zarr_store_for_external_array()
     test_getitems_empty_keys()
+    test_coalesce_byte_ranges()
+    test_coalesce_integration()
     print("All tests passed!")
