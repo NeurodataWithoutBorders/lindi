@@ -229,9 +229,9 @@ class LindiH5pyDataset(h5py.Dataset):
                 )
                 return ret
             else:
-                raise TypeError(
-                    f"Compound dataset {self.name} does not support selection with {selection}"
-                )
+                # Integer or slice indexing on a compound dataset - return
+                # rows as numpy structured array (or np.void for scalar index)
+                return self._get_compound_rows(zarr_array, selection)
 
         # We use zarr's slicing, except in the case of a scalar dataset
         if self.ndim == 0:
@@ -242,6 +242,36 @@ class LindiH5pyDataset(h5py.Dataset):
             # Otherwise we get an error "ValueError: buffer source array is read-only"
             return zarr_array[:][0]
         return decode_references(zarr_array[selection])
+
+    def _get_compound_rows(self, zarr_array: zarr.Array, selection):
+        """Return rows from a compound dataset as a numpy structured array.
+
+        For integer indexing, returns a single np.void. For slices, returns
+        a numpy structured array with the compound dtype.
+        """
+        assert self._compound_dtype is not None
+        raw = zarr_array[selection]
+        # raw is either a single list (integer index) or list of lists (slice)
+        if isinstance(selection, (int, np.integer)):
+            # Single row - return np.void
+            row = raw
+            tup = tuple(
+                LindiH5pyReference(row[i]['_REFERENCE']) if isinstance(row[i], dict) and '_REFERENCE' in row[i]
+                else row[i]
+                for i in range(len(self._compound_dtype))
+            )
+            return np.void(tup, dtype=self._compound_dtype)
+        else:
+            # Multiple rows - return structured array
+            result = np.empty(len(raw), dtype=self._compound_dtype)
+            for row_idx, row in enumerate(raw):
+                tup = tuple(
+                    LindiH5pyReference(row[i]['_REFERENCE']) if isinstance(row[i], dict) and '_REFERENCE' in row[i]
+                    else row[i]
+                    for i in range(len(self._compound_dtype))
+                )
+                result[row_idx] = tup
+            return result
 
     def _get_external_hdf5_client(self, url: str) -> h5py.File:
         if url not in _external_hdf5_clients:

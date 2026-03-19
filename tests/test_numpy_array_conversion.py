@@ -74,3 +74,16 @@ def test_numpy_array_conversion_compound():
 
             y_vals = np.asarray(ds['y'][:])
             np.testing.assert_array_equal(y_vals, np.array([2.5, 4.5, 6.5], dtype=np.float64))
+
+            # Test integer indexing - returns np.void
+            row0 = ds[0]
+            assert isinstance(row0, np.void)
+            assert row0['x'] == 1
+            assert row0['y'] == 2.5
+
+            # Test slice indexing - returns structured array
+            rows = ds[0:2]
+            assert rows.dtype == compound_dtype
+            assert len(rows) == 2
+            np.testing.assert_array_equal(rows['x'], np.array([1, 3], dtype=np.int32))
+            np.testing.assert_array_equal(rows['y'], np.array([2.5, 4.5], dtype=np.float64))
