@@ -4,6 +4,7 @@ import json
 import time
 import base64
 import threading
+from concurrent.futures import ThreadPoolExecutor
 import numpy as np
 import requests
 from zarr.storage import Store as ZarrStore
@@ -137,13 +138,111 @@ class LindiReferenceFileSystemStore(ZarrStore):
 
     def __getitem__(self, key: str):
         val = self._get_helper(key)
+        return self._pad_if_needed(key, val)
 
+    def getitems(self, keys, *, contexts=None):
+        # Zarr requests all chunks of a selection in one call. Remote chunks
+        # are fetched concurrently because each one is a separate HTTP request
+        # whose time is dominated by latency rather than by the bytes read.
+        keys = [key for key in keys if key in self]
+        remote_locations = {}
+        for key in keys:
+            x = self.rfs["refs"][key]
+            if isinstance(x, list):
+                url_or_path, offset, length, is_url = self._get_chunk_location(key, x)
+                if is_url:
+                    remote_locations[key] = (url_or_path, offset, length)
+        if len(remote_locations) < 2:
+            return {key: self[key] for key in keys}
+
+        values = {}
+        locations_to_fetch = {}
+        for key, (url, offset, length) in remote_locations.items():
+            cached = None
+            if self.local_cache is not None:
+                cached = self.local_cache.get_remote_chunk(url=url, offset=offset, size=length)
+            if cached is not None:
+                values[key] = cached
+            else:
+                locations_to_fetch[key] = (url, offset, length)
+
+        # Resolve each URL once up front so that the worker threads do not all
+        # perform the same DANDI redirect lookup at the same time.
+        from ..LindiRemfile.LindiRemfile import _resolve_url
+        for url in {url for url, _, _ in locations_to_fetch.values()}:
+            _resolve_url(url)
+
+        executor = _get_chunk_fetch_executor()
+        futures = {
+            key: executor.submit(_read_bytes_from_url_or_path, url, offset, length)
+            for key, (url, offset, length) in locations_to_fetch.items()
+        }
+        for key, future in futures.items():
+            val = future.result()
+            url, offset, length = locations_to_fetch[key]
+            # The SQLite connection of the local cache can only be used from
+            # the thread that created it, so writes happen here.
+            self._put_in_local_cache(key, url, offset, length, val)
+            values[key] = val
+
+        items = {}
+        for key in keys:
+            val = values[key] if key in values else self._get_helper(key)
+            items[key] = self._pad_if_needed(key, val)
+        return items
+
+    def _pad_if_needed(self, key: str, val):
         if val is not None:
             padded_size = _get_padded_size(self, key, val)
             if padded_size is not None:
                 val = _pad_chunk(val, padded_size)
-
         return val
+
+    def _put_in_local_cache(self, key: str, url: str, offset: int, length: int, val: bytes):
+        if self.local_cache is None:
+            return
+        try:
+            self.local_cache.put_remote_chunk(url=url, offset=offset, size=length, data=val)
+        except ChunkTooLargeError:
+            print(f'Warning: unable to cache chunk of size {length} on LocalCache (key: {key})')
+
+    def _get_chunk_location(self, key: str, x: list):
+        if len(x) != 3:
+            raise Exception("list must have 3 elements")  # pragma: no cover
+        url_or_path = x[0]
+        offset = x[1]
+        length = x[2]
+        if '{{' in url_or_path and '}}' in url_or_path and 'templates' in self.rfs:
+            for k, v in self.rfs["templates"].items():
+                url_or_path = url_or_path.replace("{{" + k + "}}", v)
+        is_url = url_or_path.startswith('http://') or url_or_path.startswith('https://')
+        if url_or_path.startswith('./'):
+            if self._source_url_or_path is None:
+                raise Exception(f"Cannot resolve relative path {url_or_path} without source file path")
+            if self._source_tar_file is None:
+                raise Exception(f"Cannot resolve relative path {url_or_path} without source file type")
+            if self._source_tar_file and (not self._source_tar_file._dir_representation):
+                start_byte, end_byte = self._source_tar_file.get_file_byte_range(file_name=url_or_path[2:])
+                if start_byte + offset + length > end_byte:
+                    raise Exception(f"Chunk {key} is out of bounds in tar file {url_or_path}")
+                url_or_path = self._source_url_or_path
+                offset = offset + start_byte
+            elif self._source_tar_file and self._source_tar_file._dir_representation:
+                fname = self._source_tar_file._tar_path_or_url + '/' + url_or_path[2:]
+                if not os.path.exists(fname):
+                    raise Exception(f"File does not exist: {fname}")
+                file_size = os.path.getsize(fname)
+                if offset + length > file_size:
+                    raise Exception(f"Chunk {key} is out of bounds in tar file {url_or_path}: {fname}")
+                url_or_path = fname
+            else:
+                if is_url:
+                    raise Exception(f"Cannot resolve relative path {url_or_path} for URL that is not a tar")
+                else:
+                    source_file_parent_dir = '/'.join(self._source_url_or_path.split('/')[:-1])
+                    abs_path = source_file_parent_dir + '/' + url_or_path[2:]
+                    url_or_path = abs_path
+        return url_or_path, offset, length, is_url
 
     def _get_helper(self, key: str):
         if key not in self.rfs["refs"]:
@@ -157,52 +256,14 @@ class LindiReferenceFileSystemStore(ZarrStore):
         elif isinstance(x, dict):
             return json.dumps(x).encode("utf-8")
         elif isinstance(x, list):
-            if len(x) != 3:
-                raise Exception("list must have 3 elements")  # pragma: no cover
-            url_or_path = x[0]
-            offset = x[1]
-            length = x[2]
-            if '{{' in url_or_path and '}}' in url_or_path and 'templates' in self.rfs:
-                for k, v in self.rfs["templates"].items():
-                    url_or_path = url_or_path.replace("{{" + k + "}}", v)
-            is_url = url_or_path.startswith('http://') or url_or_path.startswith('https://')
-            if url_or_path.startswith('./'):
-                if self._source_url_or_path is None:
-                    raise Exception(f"Cannot resolve relative path {url_or_path} without source file path")
-                if self._source_tar_file is None:
-                    raise Exception(f"Cannot resolve relative path {url_or_path} without source file type")
-                if self._source_tar_file and (not self._source_tar_file._dir_representation):
-                    start_byte, end_byte = self._source_tar_file.get_file_byte_range(file_name=url_or_path[2:])
-                    if start_byte + offset + length > end_byte:
-                        raise Exception(f"Chunk {key} is out of bounds in tar file {url_or_path}")
-                    url_or_path = self._source_url_or_path
-                    offset = offset + start_byte
-                elif self._source_tar_file and self._source_tar_file._dir_representation:
-                    fname = self._source_tar_file._tar_path_or_url + '/' + url_or_path[2:]
-                    if not os.path.exists(fname):
-                        raise Exception(f"File does not exist: {fname}")
-                    file_size = os.path.getsize(fname)
-                    if offset + length > file_size:
-                        raise Exception(f"Chunk {key} is out of bounds in tar file {url_or_path}: {fname}")
-                    url_or_path = fname
-                else:
-                    if is_url:
-                        raise Exception(f"Cannot resolve relative path {url_or_path} for URL that is not a tar")
-                    else:
-                        source_file_parent_dir = '/'.join(self._source_url_or_path.split('/')[:-1])
-                        abs_path = source_file_parent_dir + '/' + url_or_path[2:]
-                        url_or_path = abs_path
+            url_or_path, offset, length, is_url = self._get_chunk_location(key, x)
             if is_url:
                 if self.local_cache is not None:
                     x = self.local_cache.get_remote_chunk(url=url_or_path, offset=offset, size=length)
                     if x is not None:
                         return x
                 val = _read_bytes_from_url_or_path(url_or_path, offset, length)
-                if self.local_cache is not None:
-                    try:
-                        self.local_cache.put_remote_chunk(url=url_or_path, offset=offset, size=length, data=val)
-                    except ChunkTooLargeError:
-                        print(f'Warning: unable to cache chunk of size {length} on LocalCache (key: {key})')
+                self._put_in_local_cache(key, url_or_path, offset, length, val)
             else:
                 val = _read_bytes_from_url_or_path(url_or_path, offset, length)
             return val
@@ -314,6 +375,23 @@ class LindiReferenceFileSystemStore(ZarrStore):
 
 
 _thread_local = threading.local()
+
+_MAX_CONCURRENT_CHUNK_REQUESTS = 16
+_chunk_fetch_executor: Union[ThreadPoolExecutor, None] = None
+_chunk_fetch_executor_lock = threading.Lock()
+
+
+def _get_chunk_fetch_executor() -> ThreadPoolExecutor:
+    # A single long-lived pool keeps its worker threads, and with them their
+    # open connections, alive across reads.
+    global _chunk_fetch_executor
+    with _chunk_fetch_executor_lock:
+        if _chunk_fetch_executor is None:
+            _chunk_fetch_executor = ThreadPoolExecutor(
+                max_workers=_MAX_CONCURRENT_CHUNK_REQUESTS,
+                thread_name_prefix="lindi-chunk-fetch",
+            )
+        return _chunk_fetch_executor
 
 
 def _get_thread_session() -> requests.Session:
