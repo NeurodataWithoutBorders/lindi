@@ -3,6 +3,7 @@ import os
 import json
 import time
 import base64
+import threading
 import numpy as np
 import requests
 from zarr.storage import Store as ZarrStore
@@ -312,6 +313,20 @@ class LindiReferenceFileSystemStore(ZarrStore):
         rfs['templates'] = {}
 
 
+_thread_local = threading.local()
+
+
+def _get_thread_session() -> requests.Session:
+    # Reusing a session keeps the connection open between chunk requests, so
+    # each request does not pay for a new TCP and TLS handshake. Sessions are
+    # not guaranteed to be thread-safe, so each thread gets its own.
+    session = getattr(_thread_local, "session", None)
+    if session is None:
+        session = requests.Session()
+        _thread_local.session = session
+    return session
+
+
 def _read_bytes_from_url_or_path(url_or_path: str, offset: int, length: int):
     """
     Read a range of bytes from a URL.
@@ -329,7 +344,7 @@ def _read_bytes_from_url_or_path(url_or_path: str, offset: int, length: int):
                     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3",
                     "Range": range_header
                 }
-                response = requests.get(url_resolved, headers=headers)
+                response = _get_thread_session().get(url_resolved, headers=headers)
                 response.raise_for_status()
                 return response.content
             except Exception as e:
