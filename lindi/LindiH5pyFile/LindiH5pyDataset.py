@@ -12,6 +12,7 @@ from ..conversion.decode_references import decode_references
 
 if TYPE_CHECKING:
     from .LindiH5pyFile import LindiH5pyFile  # pragma: no cover
+    from ..LindiH5ZarrStore.LindiH5ZarrStore import LindiH5ZarrStore  # pragma: no cover
 
 
 # This is a global list of external hdf5 clients, which are used by
@@ -19,6 +20,11 @@ if TYPE_CHECKING:
 # external hdf5 file, and the value is the h5py.File object.
 # TODO: figure out how to close these clients
 _external_hdf5_clients: Dict[str, h5py.File] = {}
+
+# Cache of LindiH5ZarrStore instances for remote external array links,
+# keyed by URL. Similar to _external_hdf5_clients.
+# TODO: figure out how to close these stores (same issue as _external_hdf5_clients)
+_external_zarr_stores: Dict[str, "LindiH5ZarrStore"] = {}
 
 
 class LindiH5pyDataset(h5py.Dataset):
@@ -203,10 +209,17 @@ class LindiH5pyDataset(h5py.Dataset):
                 url = external_array_link.get("url", None)
                 name = external_array_link.get("name", None)
                 if url is not None and name is not None:
-                    client = self._get_external_hdf5_client(url)
-                    dataset = client[name]
-                    assert isinstance(dataset, h5py.Dataset)
-                    return dataset[selection]
+                    is_remote = url.startswith("http://") or url.startswith("https://")
+                    if is_remote:
+                        # Use zarr + LindiH5ZarrStore for concurrent chunk fetching
+                        ext_zarr_array = self._get_external_zarr_array(url, name)
+                        return ext_zarr_array[selection]
+                    else:
+                        # Local files — use h5py directly (no concurrency benefit)
+                        client = self._get_external_hdf5_client(url)
+                        dataset = client[name]
+                        assert isinstance(dataset, h5py.Dataset)
+                        return dataset[selection]
         if self._compound_dtype is not None:
             # Compound dtype
             # In this case we index into the compound dtype using the name of the field
@@ -251,6 +264,21 @@ class LindiH5pyDataset(h5py.Dataset):
                 ff = open(url, "rb")  # this never gets closed
             _external_hdf5_clients[url] = h5py.File(ff, "r")
         return _external_hdf5_clients[url]
+
+    def _get_external_zarr_array(self, url: str, name: str) -> zarr.Array:
+        """Get a zarr array for concurrent reading of a remote external array link."""
+        from ..LindiH5ZarrStore.LindiH5ZarrStore import LindiH5ZarrStore
+        from ..LindiH5ZarrStore.LindiH5ZarrStoreOpts import LindiH5ZarrStoreOpts
+
+        if url not in _external_zarr_stores:
+            # Disable external array links (num_dataset_chunks_threshold=None)
+            # so all chunks are served through the zarr store
+            opts = LindiH5ZarrStoreOpts(num_dataset_chunks_threshold=None)
+            _external_zarr_stores[url] = LindiH5ZarrStore.from_file(
+                url, opts=opts, local_cache=self._file._local_cache
+            )
+        store = _external_zarr_stores[url]
+        return zarr.open_array(store=store, path=name, mode='r')
 
     @property
     def ref(self):
