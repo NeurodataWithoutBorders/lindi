@@ -1,14 +1,20 @@
-from typing import Literal, Dict, Union
+from typing import Literal, Dict, List, Union
 import os
 import json
 import time
 import base64
+import threading
+import weakref
+from concurrent.futures import ThreadPoolExecutor
 import numpy as np
 import requests
 from zarr.storage import Store as ZarrStore
 
 from ..LocalCache.LocalCache import ChunkTooLargeError, LocalCache
 from ..tar.lindi_tar import LindiTarFile
+
+
+DEFAULT_MAX_CONCURRENT_REQUESTS = 16
 
 
 class LindiReferenceFileSystemStore(ZarrStore):
@@ -78,6 +84,7 @@ class LindiReferenceFileSystemStore(ZarrStore):
             *,
             mode: Literal["r", "r+"] = "r+",
             local_cache: Union[LocalCache, None] = None,
+            max_concurrent_requests: int = DEFAULT_MAX_CONCURRENT_REQUESTS,
             _source_url_or_path: Union[str, None] = None,
             _source_tar_file: Union[LindiTarFile, None] = None
     ):
@@ -93,7 +100,12 @@ class LindiReferenceFileSystemStore(ZarrStore):
         local_cache : LocalCache, optional
             The local cache to use for caching data chunks read from the
             remote URLs. If None, no caching is done.
+        max_concurrent_requests : int, optional
+            The maximum number of HTTP requests used to fetch the chunks of a
+            selection in parallel. Set to 1 to fetch chunks one at a time.
         """
+        if max_concurrent_requests < 1:
+            raise ValueError(f"max_concurrent_requests must be at least 1, got {max_concurrent_requests}")
         if "refs" not in rfs:
             raise Exception("rfs must contain a 'refs' key")
 
@@ -128,6 +140,34 @@ class LindiReferenceFileSystemStore(ZarrStore):
         self._source_url_or_path = _source_url_or_path
         self._source_tar_file = _source_tar_file
 
+        # The thread pool and the HTTP sessions belong to this store, so that
+        # closing the file closes its connections and stops its threads. The
+        # finalizer also releases them if the store is garbage collected
+        # without being closed.
+        self._max_concurrent_requests = max_concurrent_requests
+        self._thread_local = threading.local()
+        self._http_resources = _HttpResources()
+        self._finalizer = weakref.finalize(self, self._http_resources.release)
+
+    def close(self):
+        """Close the HTTP connections and stop the threads used to fetch chunks."""
+        self._finalizer()
+        self._thread_local = threading.local()
+
+    def _get_session(self) -> requests.Session:
+        # Reusing a session keeps the connection open between chunk requests,
+        # so each request does not pay for a new TCP and TLS handshake.
+        # Sessions are not guaranteed to be thread-safe, so each thread gets
+        # its own.
+        session = getattr(self._thread_local, "session", None)
+        if session is None:
+            session = self._http_resources.new_session()
+            self._thread_local.session = session
+        return session
+
+    def _read_remote_chunk(self, url: str, offset: int, length: int) -> bytes:
+        return _read_bytes_from_url_or_path(url, offset, length, session=self._get_session())
+
     # These methods are overridden from MutableMapping
     def __contains__(self, key: object):
         if not isinstance(key, str):
@@ -136,13 +176,111 @@ class LindiReferenceFileSystemStore(ZarrStore):
 
     def __getitem__(self, key: str):
         val = self._get_helper(key)
+        return self._pad_if_needed(key, val)
 
+    def getitems(self, keys, *, contexts=None):
+        # Zarr requests all chunks of a selection in one call. Remote chunks
+        # are fetched concurrently because each one is a separate HTTP request
+        # whose time is dominated by latency rather than by the bytes read.
+        keys = [key for key in keys if key in self]
+        remote_locations = {}
+        for key in keys:
+            x = self.rfs["refs"][key]
+            if isinstance(x, list):
+                url_or_path, offset, length, is_url = self._get_chunk_location(key, x)
+                if is_url:
+                    remote_locations[key] = (url_or_path, offset, length)
+        if len(remote_locations) < 2 or self._max_concurrent_requests == 1:
+            return {key: self[key] for key in keys}
+
+        values = {}
+        locations_to_fetch = {}
+        for key, (url, offset, length) in remote_locations.items():
+            cached = None
+            if self.local_cache is not None:
+                cached = self.local_cache.get_remote_chunk(url=url, offset=offset, size=length)
+            if cached is not None:
+                values[key] = cached
+            else:
+                locations_to_fetch[key] = (url, offset, length)
+
+        # Resolve each URL once up front so that the worker threads do not all
+        # perform the same DANDI redirect lookup at the same time.
+        from ..LindiRemfile.LindiRemfile import _resolve_url
+        for url in {url for url, _, _ in locations_to_fetch.values()}:
+            _resolve_url(url)
+
+        executor = self._http_resources.get_executor(max_workers=self._max_concurrent_requests)
+        futures = {
+            key: executor.submit(self._read_remote_chunk, url, offset, length)
+            for key, (url, offset, length) in locations_to_fetch.items()
+        }
+        for key, future in futures.items():
+            val = future.result()
+            url, offset, length = locations_to_fetch[key]
+            # The SQLite connection of the local cache can only be used from
+            # the thread that created it, so writes happen here.
+            self._put_in_local_cache(key, url, offset, length, val)
+            values[key] = val
+
+        items = {}
+        for key in keys:
+            val = values[key] if key in values else self._get_helper(key)
+            items[key] = self._pad_if_needed(key, val)
+        return items
+
+    def _pad_if_needed(self, key: str, val):
         if val is not None:
             padded_size = _get_padded_size(self, key, val)
             if padded_size is not None:
                 val = _pad_chunk(val, padded_size)
-
         return val
+
+    def _put_in_local_cache(self, key: str, url: str, offset: int, length: int, val: bytes):
+        if self.local_cache is None:
+            return
+        try:
+            self.local_cache.put_remote_chunk(url=url, offset=offset, size=length, data=val)
+        except ChunkTooLargeError:
+            print(f'Warning: unable to cache chunk of size {length} on LocalCache (key: {key})')
+
+    def _get_chunk_location(self, key: str, x: list):
+        if len(x) != 3:
+            raise Exception("list must have 3 elements")  # pragma: no cover
+        url_or_path = x[0]
+        offset = x[1]
+        length = x[2]
+        if '{{' in url_or_path and '}}' in url_or_path and 'templates' in self.rfs:
+            for k, v in self.rfs["templates"].items():
+                url_or_path = url_or_path.replace("{{" + k + "}}", v)
+        is_url = url_or_path.startswith('http://') or url_or_path.startswith('https://')
+        if url_or_path.startswith('./'):
+            if self._source_url_or_path is None:
+                raise Exception(f"Cannot resolve relative path {url_or_path} without source file path")
+            if self._source_tar_file is None:
+                raise Exception(f"Cannot resolve relative path {url_or_path} without source file type")
+            if self._source_tar_file and (not self._source_tar_file._dir_representation):
+                start_byte, end_byte = self._source_tar_file.get_file_byte_range(file_name=url_or_path[2:])
+                if start_byte + offset + length > end_byte:
+                    raise Exception(f"Chunk {key} is out of bounds in tar file {url_or_path}")
+                url_or_path = self._source_url_or_path
+                offset = offset + start_byte
+            elif self._source_tar_file and self._source_tar_file._dir_representation:
+                fname = self._source_tar_file._tar_path_or_url + '/' + url_or_path[2:]
+                if not os.path.exists(fname):
+                    raise Exception(f"File does not exist: {fname}")
+                file_size = os.path.getsize(fname)
+                if offset + length > file_size:
+                    raise Exception(f"Chunk {key} is out of bounds in tar file {url_or_path}: {fname}")
+                url_or_path = fname
+            else:
+                if is_url:
+                    raise Exception(f"Cannot resolve relative path {url_or_path} for URL that is not a tar")
+                else:
+                    source_file_parent_dir = '/'.join(self._source_url_or_path.split('/')[:-1])
+                    abs_path = source_file_parent_dir + '/' + url_or_path[2:]
+                    url_or_path = abs_path
+        return url_or_path, offset, length, is_url
 
     def _get_helper(self, key: str):
         if key not in self.rfs["refs"]:
@@ -156,52 +294,14 @@ class LindiReferenceFileSystemStore(ZarrStore):
         elif isinstance(x, dict):
             return json.dumps(x).encode("utf-8")
         elif isinstance(x, list):
-            if len(x) != 3:
-                raise Exception("list must have 3 elements")  # pragma: no cover
-            url_or_path = x[0]
-            offset = x[1]
-            length = x[2]
-            if '{{' in url_or_path and '}}' in url_or_path and 'templates' in self.rfs:
-                for k, v in self.rfs["templates"].items():
-                    url_or_path = url_or_path.replace("{{" + k + "}}", v)
-            is_url = url_or_path.startswith('http://') or url_or_path.startswith('https://')
-            if url_or_path.startswith('./'):
-                if self._source_url_or_path is None:
-                    raise Exception(f"Cannot resolve relative path {url_or_path} without source file path")
-                if self._source_tar_file is None:
-                    raise Exception(f"Cannot resolve relative path {url_or_path} without source file type")
-                if self._source_tar_file and (not self._source_tar_file._dir_representation):
-                    start_byte, end_byte = self._source_tar_file.get_file_byte_range(file_name=url_or_path[2:])
-                    if start_byte + offset + length > end_byte:
-                        raise Exception(f"Chunk {key} is out of bounds in tar file {url_or_path}")
-                    url_or_path = self._source_url_or_path
-                    offset = offset + start_byte
-                elif self._source_tar_file and self._source_tar_file._dir_representation:
-                    fname = self._source_tar_file._tar_path_or_url + '/' + url_or_path[2:]
-                    if not os.path.exists(fname):
-                        raise Exception(f"File does not exist: {fname}")
-                    file_size = os.path.getsize(fname)
-                    if offset + length > file_size:
-                        raise Exception(f"Chunk {key} is out of bounds in tar file {url_or_path}: {fname}")
-                    url_or_path = fname
-                else:
-                    if is_url:
-                        raise Exception(f"Cannot resolve relative path {url_or_path} for URL that is not a tar")
-                    else:
-                        source_file_parent_dir = '/'.join(self._source_url_or_path.split('/')[:-1])
-                        abs_path = source_file_parent_dir + '/' + url_or_path[2:]
-                        url_or_path = abs_path
+            url_or_path, offset, length, is_url = self._get_chunk_location(key, x)
             if is_url:
                 if self.local_cache is not None:
                     x = self.local_cache.get_remote_chunk(url=url_or_path, offset=offset, size=length)
                     if x is not None:
                         return x
-                val = _read_bytes_from_url_or_path(url_or_path, offset, length)
-                if self.local_cache is not None:
-                    try:
-                        self.local_cache.put_remote_chunk(url=url_or_path, offset=offset, size=length, data=val)
-                    except ChunkTooLargeError:
-                        print(f'Warning: unable to cache chunk of size {length} on LocalCache (key: {key})')
+                val = self._read_remote_chunk(url_or_path, offset, length)
+                self._put_in_local_cache(key, url_or_path, offset, length, val)
             else:
                 val = _read_bytes_from_url_or_path(url_or_path, offset, length)
             return val
@@ -312,7 +412,39 @@ class LindiReferenceFileSystemStore(ZarrStore):
         rfs['templates'] = {}
 
 
-def _read_bytes_from_url_or_path(url_or_path: str, offset: int, length: int):
+class _HttpResources:
+    """The thread pool and HTTP sessions that a store uses to fetch chunks."""
+
+    def __init__(self):
+        self._lock = threading.Lock()
+        self._executor: Union[ThreadPoolExecutor, None] = None
+        self._sessions: List[requests.Session] = []
+
+    def get_executor(self, *, max_workers: int) -> ThreadPoolExecutor:
+        # A long-lived pool keeps its worker threads, and with them their open
+        # connections, alive across reads.
+        with self._lock:
+            if self._executor is None:
+                self._executor = ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="lindi-chunk-fetch")
+            return self._executor
+
+    def new_session(self) -> requests.Session:
+        session = requests.Session()
+        with self._lock:
+            self._sessions.append(session)
+        return session
+
+    def release(self):
+        with self._lock:
+            executor, self._executor = self._executor, None
+            sessions, self._sessions = self._sessions, []
+        if executor is not None:
+            executor.shutdown(wait=True)
+        for session in sessions:
+            session.close()
+
+
+def _read_bytes_from_url_or_path(url_or_path: str, offset: int, length: int, session: Union[requests.Session, None] = None):
     """
     Read a range of bytes from a URL.
     """
@@ -329,7 +461,7 @@ def _read_bytes_from_url_or_path(url_or_path: str, offset: int, length: int):
                     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3",
                     "Range": range_header
                 }
-                response = requests.get(url_resolved, headers=headers)
+                response = (session or requests).get(url_resolved, headers=headers)
                 response.raise_for_status()
                 return response.content
             except Exception as e:

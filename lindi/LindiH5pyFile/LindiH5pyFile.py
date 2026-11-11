@@ -10,7 +10,7 @@ from zarr.storage import Store as ZarrStore
 from .LindiH5pyGroup import LindiH5pyGroup
 from .LindiH5pyAttributes import LindiH5pyAttributes
 from .LindiH5pyReference import LindiH5pyReference
-from .LindiReferenceFileSystemStore import LindiReferenceFileSystemStore
+from .LindiReferenceFileSystemStore import DEFAULT_MAX_CONCURRENT_REQUESTS, LindiReferenceFileSystemStore
 
 from ..LindiH5ZarrStore.LindiH5ZarrStoreOpts import LindiH5ZarrStoreOpts
 
@@ -47,7 +47,7 @@ class LindiH5pyFile(h5py.File):
         self._is_open = True
 
     @staticmethod
-    def from_lindi_file(url_or_path: str, *, mode: LindiFileMode = "r", local_cache: Union[LocalCache, None] = None):
+    def from_lindi_file(url_or_path: str, *, mode: LindiFileMode = "r", local_cache: Union[LocalCache, None] = None, max_concurrent_requests: int = DEFAULT_MAX_CONCURRENT_REQUESTS):
         """
         Create a LindiH5pyFile from a URL or path to a .lindi.json file.
 
@@ -56,7 +56,8 @@ class LindiH5pyFile(h5py.File):
         return LindiH5pyFile.from_reference_file_system(
             url_or_path,
             mode=mode,
-            local_cache=local_cache
+            local_cache=local_cache,
+            max_concurrent_requests=max_concurrent_requests
         )
 
     @staticmethod
@@ -101,7 +102,7 @@ class LindiH5pyFile(h5py.File):
         )
 
     @staticmethod
-    def from_reference_file_system(rfs: Union[dict, str], *, mode: LindiFileMode = "r", local_cache: Union[LocalCache, None] = None, _source_url_or_path: Union[str, None] = None, _source_tar_file: Union[LindiTarFile, None] = None, _close_source_tar_file_on_close: bool = False):
+    def from_reference_file_system(rfs: Union[dict, str], *, mode: LindiFileMode = "r", local_cache: Union[LocalCache, None] = None, max_concurrent_requests: int = DEFAULT_MAX_CONCURRENT_REQUESTS, _source_url_or_path: Union[str, None] = None, _source_tar_file: Union[LindiTarFile, None] = None, _close_source_tar_file_on_close: bool = False):
         """
         Create a LindiH5pyFile from a reference file system.
 
@@ -115,6 +116,10 @@ class LindiH5pyFile(h5py.File):
             The mode to open the file object in, by default "r".
         local_cache : Union[LocalCache, None], optional
             The local cache to use for caching data, by default None.
+        max_concurrent_requests : int, optional
+            The maximum number of HTTP requests used to fetch the chunks of a
+            selection from a remote file in parallel, by default 16. Set to 1
+            to fetch chunks one at a time.
         _source_url_or_path : Union[str, None], optional
             Internal use only
         _source_tar_file : Union[LindiTarFile, None], optional
@@ -134,6 +139,7 @@ class LindiH5pyFile(h5py.File):
                     data,
                     mode=mode,
                     local_cache=local_cache,
+                    max_concurrent_requests=max_concurrent_requests,
                     _source_tar_file=tar_file,
                     _source_url_or_path=rfs,
                     _close_source_tar_file_on_close=_close_source_tar_file_on_close
@@ -176,15 +182,16 @@ class LindiH5pyFile(h5py.File):
                     data,
                     mode=mode,
                     local_cache=local_cache,
+                    max_concurrent_requests=max_concurrent_requests,
                     _source_url_or_path=rfs,
                     _source_tar_file=tar_file,
                     _close_source_tar_file_on_close=True
                 )
         elif isinstance(rfs, dict):
-            # This store does not need to be closed
             store = LindiReferenceFileSystemStore(
                 rfs,
                 local_cache=local_cache,
+                max_concurrent_requests=max_concurrent_requests,
                 _source_url_or_path=_source_url_or_path,
                 _source_tar_file=_source_tar_file
             )
@@ -332,6 +339,9 @@ class LindiH5pyFile(h5py.File):
         self.flush()
         if self._close_source_tar_file_on_close and self._source_tar_file:
             self._source_tar_file.close()
+        rfs_store = self._zarr_store._base_store if isinstance(self._zarr_store, LindiTarStore) else self._zarr_store
+        if isinstance(rfs_store, LindiReferenceFileSystemStore):
+            rfs_store.close()
         self._is_open = False
 
     def flush(self):
