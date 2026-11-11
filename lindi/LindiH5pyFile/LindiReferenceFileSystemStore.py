@@ -1,9 +1,10 @@
-from typing import Literal, Dict, Union
+from typing import Literal, Dict, List, Union
 import os
 import json
 import time
 import base64
 import threading
+import weakref
 from concurrent.futures import ThreadPoolExecutor
 import numpy as np
 import requests
@@ -11,6 +12,9 @@ from zarr.storage import Store as ZarrStore
 
 from ..LocalCache.LocalCache import ChunkTooLargeError, LocalCache
 from ..tar.lindi_tar import LindiTarFile
+
+
+DEFAULT_MAX_CONCURRENT_REQUESTS = 16
 
 
 class LindiReferenceFileSystemStore(ZarrStore):
@@ -80,6 +84,7 @@ class LindiReferenceFileSystemStore(ZarrStore):
             *,
             mode: Literal["r", "r+"] = "r+",
             local_cache: Union[LocalCache, None] = None,
+            max_concurrent_requests: int = DEFAULT_MAX_CONCURRENT_REQUESTS,
             _source_url_or_path: Union[str, None] = None,
             _source_tar_file: Union[LindiTarFile, None] = None
     ):
@@ -95,7 +100,12 @@ class LindiReferenceFileSystemStore(ZarrStore):
         local_cache : LocalCache, optional
             The local cache to use for caching data chunks read from the
             remote URLs. If None, no caching is done.
+        max_concurrent_requests : int, optional
+            The maximum number of HTTP requests used to fetch the chunks of a
+            selection in parallel. Set to 1 to fetch chunks one at a time.
         """
+        if max_concurrent_requests < 1:
+            raise ValueError(f"max_concurrent_requests must be at least 1, got {max_concurrent_requests}")
         if "refs" not in rfs:
             raise Exception("rfs must contain a 'refs' key")
 
@@ -130,6 +140,34 @@ class LindiReferenceFileSystemStore(ZarrStore):
         self._source_url_or_path = _source_url_or_path
         self._source_tar_file = _source_tar_file
 
+        # The thread pool and the HTTP sessions belong to this store, so that
+        # closing the file closes its connections and stops its threads. The
+        # finalizer also releases them if the store is garbage collected
+        # without being closed.
+        self._max_concurrent_requests = max_concurrent_requests
+        self._thread_local = threading.local()
+        self._http_resources = _HttpResources()
+        self._finalizer = weakref.finalize(self, self._http_resources.release)
+
+    def close(self):
+        """Close the HTTP connections and stop the threads used to fetch chunks."""
+        self._finalizer()
+        self._thread_local = threading.local()
+
+    def _get_session(self) -> requests.Session:
+        # Reusing a session keeps the connection open between chunk requests,
+        # so each request does not pay for a new TCP and TLS handshake.
+        # Sessions are not guaranteed to be thread-safe, so each thread gets
+        # its own.
+        session = getattr(self._thread_local, "session", None)
+        if session is None:
+            session = self._http_resources.new_session()
+            self._thread_local.session = session
+        return session
+
+    def _read_remote_chunk(self, url: str, offset: int, length: int) -> bytes:
+        return _read_bytes_from_url_or_path(url, offset, length, session=self._get_session())
+
     # These methods are overridden from MutableMapping
     def __contains__(self, key: object):
         if not isinstance(key, str):
@@ -152,7 +190,7 @@ class LindiReferenceFileSystemStore(ZarrStore):
                 url_or_path, offset, length, is_url = self._get_chunk_location(key, x)
                 if is_url:
                     remote_locations[key] = (url_or_path, offset, length)
-        if len(remote_locations) < 2:
+        if len(remote_locations) < 2 or self._max_concurrent_requests == 1:
             return {key: self[key] for key in keys}
 
         values = {}
@@ -172,9 +210,9 @@ class LindiReferenceFileSystemStore(ZarrStore):
         for url in {url for url, _, _ in locations_to_fetch.values()}:
             _resolve_url(url)
 
-        executor = _get_chunk_fetch_executor()
+        executor = self._http_resources.get_executor(max_workers=self._max_concurrent_requests)
         futures = {
-            key: executor.submit(_read_bytes_from_url_or_path, url, offset, length)
+            key: executor.submit(self._read_remote_chunk, url, offset, length)
             for key, (url, offset, length) in locations_to_fetch.items()
         }
         for key, future in futures.items():
@@ -262,7 +300,7 @@ class LindiReferenceFileSystemStore(ZarrStore):
                     x = self.local_cache.get_remote_chunk(url=url_or_path, offset=offset, size=length)
                     if x is not None:
                         return x
-                val = _read_bytes_from_url_or_path(url_or_path, offset, length)
+                val = self._read_remote_chunk(url_or_path, offset, length)
                 self._put_in_local_cache(key, url_or_path, offset, length, val)
             else:
                 val = _read_bytes_from_url_or_path(url_or_path, offset, length)
@@ -374,38 +412,39 @@ class LindiReferenceFileSystemStore(ZarrStore):
         rfs['templates'] = {}
 
 
-_thread_local = threading.local()
+class _HttpResources:
+    """The thread pool and HTTP sessions that a store uses to fetch chunks."""
 
-_MAX_CONCURRENT_CHUNK_REQUESTS = 16
-_chunk_fetch_executor: Union[ThreadPoolExecutor, None] = None
-_chunk_fetch_executor_lock = threading.Lock()
+    def __init__(self):
+        self._lock = threading.Lock()
+        self._executor: Union[ThreadPoolExecutor, None] = None
+        self._sessions: List[requests.Session] = []
 
+    def get_executor(self, *, max_workers: int) -> ThreadPoolExecutor:
+        # A long-lived pool keeps its worker threads, and with them their open
+        # connections, alive across reads.
+        with self._lock:
+            if self._executor is None:
+                self._executor = ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="lindi-chunk-fetch")
+            return self._executor
 
-def _get_chunk_fetch_executor() -> ThreadPoolExecutor:
-    # A single long-lived pool keeps its worker threads, and with them their
-    # open connections, alive across reads.
-    global _chunk_fetch_executor
-    with _chunk_fetch_executor_lock:
-        if _chunk_fetch_executor is None:
-            _chunk_fetch_executor = ThreadPoolExecutor(
-                max_workers=_MAX_CONCURRENT_CHUNK_REQUESTS,
-                thread_name_prefix="lindi-chunk-fetch",
-            )
-        return _chunk_fetch_executor
-
-
-def _get_thread_session() -> requests.Session:
-    # Reusing a session keeps the connection open between chunk requests, so
-    # each request does not pay for a new TCP and TLS handshake. Sessions are
-    # not guaranteed to be thread-safe, so each thread gets its own.
-    session = getattr(_thread_local, "session", None)
-    if session is None:
+    def new_session(self) -> requests.Session:
         session = requests.Session()
-        _thread_local.session = session
-    return session
+        with self._lock:
+            self._sessions.append(session)
+        return session
+
+    def release(self):
+        with self._lock:
+            executor, self._executor = self._executor, None
+            sessions, self._sessions = self._sessions, []
+        if executor is not None:
+            executor.shutdown(wait=True)
+        for session in sessions:
+            session.close()
 
 
-def _read_bytes_from_url_or_path(url_or_path: str, offset: int, length: int):
+def _read_bytes_from_url_or_path(url_or_path: str, offset: int, length: int, session: Union[requests.Session, None] = None):
     """
     Read a range of bytes from a URL.
     """
@@ -422,7 +461,7 @@ def _read_bytes_from_url_or_path(url_or_path: str, offset: int, length: int):
                     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3",
                     "Range": range_header
                 }
-                response = _get_thread_session().get(url_resolved, headers=headers)
+                response = (session or requests).get(url_resolved, headers=headers)
                 response.raise_for_status()
                 return response.content
             except Exception as e:

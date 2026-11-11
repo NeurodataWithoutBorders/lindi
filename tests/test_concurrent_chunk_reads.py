@@ -1,3 +1,4 @@
+import gc
 import os
 import tempfile
 import threading
@@ -76,24 +77,71 @@ def served_hdf5_file():
 
 def test_chunks_are_fetched_concurrently(served_hdf5_file):
     rfs, data, stats, _ = served_hdf5_file
-    client = lindi.LindiH5pyFile.from_reference_file_system(rfs)
-    stats["num_requests"] = 0
+    with lindi.LindiH5pyFile.from_reference_file_system(rfs) as client:
+        stats["num_requests"] = 0
 
-    result = client["data"][:]  # type: ignore
+        result = client["data"][:]  # type: ignore
 
     np.testing.assert_array_equal(result, data)
     assert stats["num_requests"] == 100
     assert stats["max_in_flight"] > 1
 
 
+def test_max_concurrent_requests_of_one_reads_sequentially(served_hdf5_file):
+    rfs, data, stats, _ = served_hdf5_file
+    with lindi.LindiH5pyFile.from_reference_file_system(rfs, max_concurrent_requests=1) as client:
+        stats["num_requests"] = 0
+
+        result = client["data"][:]  # type: ignore
+
+    np.testing.assert_array_equal(result, data)
+    assert stats["num_requests"] == 100
+    assert stats["max_in_flight"] == 1
+
+
+def test_max_concurrent_requests_must_be_positive(served_hdf5_file):
+    rfs, _, _, _ = served_hdf5_file
+    with pytest.raises(ValueError, match="max_concurrent_requests"):
+        lindi.LindiH5pyFile.from_reference_file_system(rfs, max_concurrent_requests=0)
+
+
+def test_close_releases_threads_and_connections(served_hdf5_file):
+    rfs, _, _, _ = served_hdf5_file
+    client = lindi.LindiH5pyFile.from_reference_file_system(rfs)
+    client["data"][:]  # type: ignore
+    http_resources = client._zarr_store._http_resources
+    threads = list(http_resources._executor._threads)
+    sessions = list(http_resources._sessions)
+    assert threads and sessions
+    assert any(adapter.poolmanager.pools for session in sessions for adapter in session.adapters.values())
+
+    client.close()
+
+    assert http_resources._executor is None
+    assert not any(thread.is_alive() for thread in threads)
+    assert not any(adapter.poolmanager.pools for session in sessions for adapter in session.adapters.values())
+
+
+def test_garbage_collection_releases_threads(served_hdf5_file):
+    rfs, _, _, _ = served_hdf5_file
+    client = lindi.LindiH5pyFile.from_reference_file_system(rfs)
+    client["data"][:]  # type: ignore
+    threads = list(client._zarr_store._http_resources._executor._threads)
+
+    del client
+    gc.collect()
+
+    assert not any(thread.is_alive() for thread in threads)
+
+
 def test_concurrent_reads_use_local_cache(served_hdf5_file):
     rfs, data, stats, tmpdir = served_hdf5_file
     local_cache = lindi.LocalCache(cache_dir=os.path.join(tmpdir, "local_cache"))
-    client = lindi.LindiH5pyFile.from_reference_file_system(rfs, local_cache=local_cache)
-    np.testing.assert_array_equal(client["data"][:], data)  # type: ignore
-    stats["num_requests"] = 0
+    with lindi.LindiH5pyFile.from_reference_file_system(rfs, local_cache=local_cache) as client:
+        np.testing.assert_array_equal(client["data"][:], data)  # type: ignore
+        stats["num_requests"] = 0
 
-    result = client["data"][:]  # type: ignore
+        result = client["data"][:]  # type: ignore
 
     np.testing.assert_array_equal(result, data)
     assert stats["num_requests"] == 0
